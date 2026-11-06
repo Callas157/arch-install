@@ -7,7 +7,7 @@ Instalação 100% automática do Arch Linux com KDE Plasma (Wayland), já config
 Dê boot na ISO do Arch Linux (modo UEFI, com internet por cabo) e rode:
 
 ```bash
-bash <(curl -sL is.gd/u0W5eU)
+bash <(curl -sL https://is.gd/archcallas157)
 ```
 
 O script só pergunta o nome de usuário e a senha. O resto é automático.
