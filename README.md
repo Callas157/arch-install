@@ -1,4 +1,5 @@
 # arch-install
+ainda e experimental mais funciona teste e ajuste a sua preferência
 
 Instalação 100% automática do Arch Linux com KDE Plasma (Wayland), já configurado em português do Brasil, teclado EUA Internacional e driver NVIDIA. Feito com Claude.
 
