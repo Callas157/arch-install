@@ -10,7 +10,7 @@ Dê boot na ISO do Arch Linux (modo UEFI, com internet por cabo) e rode:
 bash <(curl -sL https://is.gd/archcallas157)
 ```
 
-O script só pergunta o nome de usuário e a senha. O resto é automático.
+O script só pergunta sobre local de Instalação e nome de usuário e a senha. O resto é automático.
 
 ## O que vem instalado
 
