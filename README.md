@@ -20,7 +20,7 @@ O script só pergunta o nome de usuário e a senha. O resto é automático.
 - Steam
 - Shotcut (editor de vídeo)
 - GPU Screen Recorder (gravador de tela estilo ShadowPlay)
-- Driver NVIDIA (nvidia-open)
+- Driver NVIDIA (nvidia-open) e prossadores (AMD e Intel)
 - yay (AUR) e Flatpak com Flathub
 
 ## Atenção
