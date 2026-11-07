@@ -33,6 +33,7 @@ Só três coisas, o resto é automático:
 - Shotcut (editor de vídeo)
 - GPU Screen Recorder (gravador de tela estilo ShadowPlay)
 - Driver NVIDIA (nvidia-open)
+- nvibrant (Digital Vibrance para NVIDIA no Wayland)
 - yay (AUR) e Flatpak com Flathub
 - Áudio PipeWire, Bluetooth e NetworkManager
 
@@ -47,6 +48,18 @@ O script foi feito para rodar em qualquer PC. Ele detecta sozinho:
 - **Disco:** escolha pelo número, sem precisar saber o nome do dispositivo (`sda`, `nvme0n1`...)
 
 A maioria dos adaptadores (Intel, Realtek, Qualcomm, MediaTek) já funciona com o kernel e o `linux-firmware`. Alguns adaptadores Wi-Fi USB da Realtek podem precisar de driver extra do AUR, instalado depois com o `yay`.
+
+## Início automático
+
+A cada login no KDE, já iniciam sozinhos:
+
+- **Digital Vibrance:** roda o script `~/.local/bin/DigitalVibrance.sh` (`nvibrant 1023` nas seis saídas), deixando as cores mais fortes, como o digital vibrance do Windows
+- **Steam:** inicia minimizado
+- **Discord:** inicia minimizado
+
+Para ajustar a intensidade das cores, edite o `DigitalVibrance.sh` (0 é o padrão e 1023 é o máximo). Para tirar qualquer um desses programas do início, vá em **Configurações do Sistema > Início Automático**.
+
+O `nvibrant` depende da versão do driver NVIDIA. Se o efeito não aparecer, rode `yay -S nvibrant-bin` de novo e reinicie a sessão. Ele só funciona em PC com placa NVIDIA (não faz efeito em máquina virtual).
 
 ## Carteira KDE (KWallet)
 
@@ -67,6 +80,8 @@ Isso é feito uma única vez. Depois disso, o KDE e o Brave não pedem mais senh
 
 ## Atualizações
 
+- Digital Vibrance (nvibrant) instalado e ativado a cada login
+- Steam e Discord iniciando com o KDE
 - Escolha do disco por menu numerado
 - Detecção automática de processador (AMD/Intel)
 - Detecção automática de rede (cabo, Wi-Fi e Broadcom)
