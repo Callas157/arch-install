@@ -27,7 +27,7 @@ Só três coisas, o resto é automático:
 ## O que vem instalado
 
 - KDE Plasma (Wayland) com tela de login SDDM no tema Breeze
-- Brave (navegador)
+- Brave
 - Discord
 - Steam
 - Shotcut (editor de vídeo)
