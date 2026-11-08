@@ -1,4 +1,4 @@
-# Arch Install Callas
+# Arch Install Calas
 
 Instalador automático do **Arch Linux com KDE Plasma em Wayland**, em português do Brasil, com tema escuro e programas de jogos, gravação e uso diário. A instalação é voltada pra PCs com processador **AMD ou Intel** e placa de vídeo **NVIDIA compatível com `nvidia-open`**.
 
@@ -67,6 +67,7 @@ O script limpa as partições do disco escolhido e cria uma tabela **GPT** com d
 - Instala o **KDE Plasma** e o **SDDM**, a tela de login.
 - Configura o **Plasma em Wayland** como sessão padrão e o SDDM pra usar Wayland com o KWin.
 - Aplica o tema global **Brisa Escuro (Breeze Dark)** ao usuário antes do primeiro login.
+- Deixa **Dolphin** e **Brave** como os únicos aplicativos fixados no painel. O **Brave** fica fora dos favoritos do menu Super e continua disponível na lista de aplicativos.
 - Instala as ferramentas do KDE pra gerenciar rede, áudio, monitores e energia, além do portal de integração com aplicativos Flatpak.
 - Instala **PipeWire** e **WirePlumber**, com as camadas de compatibilidade com ALSA e PulseAudio.
 - Configura a integração do **KDE Wallet** com o login via PAM e tenta abrir a carteira `kdewallet` no primeiro acesso. Se ela ainda precisar ser criada, o KDE pode abrir o assistente. O Brave fica configurado pra usar a carteira como armazenamento de senhas.
@@ -91,6 +92,7 @@ A detecção **AMD ou Intel** serve pra escolher o microcódigo do **processador
 - **Solaar** pra gerenciar dispositivos Logitech compatíveis, como o headset **G733**. O programa fica configurado pra iniciar oculto, na bandeja do sistema. As informações e controles disponíveis dependem do dispositivo.
 - **Receptor USB Xbox Wireless** com tentativa de instalação do **`xone-dkms`** e do **`xone-dongle-firmware`** pelo AUR. Depois, o script confere se o DKMS marcou o módulo como instalado e avisa se ele ficou pendente.
 - **Brave** pelo pacote `brave-bin` do AUR e **qBittorrent** pelos repositórios do Arch.
+- **Spotify nativo para Linux**, instalado pelo pacote `spotify` do AUR via `yay`.
 - **Dolphin**, **Konsole**, **Kate**, **Ark**, **Gwenview**, **Okular** e **Spectacle** pra arquivos, terminal, edição de texto, compactados, imagens, PDFs e capturas de tela.
 - Ferramentas de compactação e extração pra formatos como **RAR**, **ZIP**, **7z** e **CPIO**.
 - **Flatpak** com o **Flathub** configurado no sistema. O script também tenta instalar o **Bazaar**, uma loja gráfica de aplicativos Flatpak.
