@@ -1,23 +1,26 @@
-# Arch Install Calas
+# Arch Install Callas
 
-Instalador automático do **Arch Linux com KDE Plasma em Wayland**, em português do Brasil, com tema escuro e programas de jogos, gravação e uso diário. A instalação é voltada pra PCs com processador **AMD ou Intel** e placa de vídeo **NVIDIA compatível com `nvidia-open`**.
+Instalador automático do **Arch Linux com KDE Plasma em Wayland**, em português do Brasil, com tema escuro e programas de jogos, gravação e uso diário. Funciona com processadores **AMD ou Intel** e seleciona a configuração gráfica conforme o hardware detectado.
 
 ## Como usar
 
 > [!CAUTION]
-> **O instalador apaga todas as partições e todos os dados do disco escolhido.** Faça backup antes e confira o tamanho e o modelo do disco na tela. Este script faz uma instalação limpa no disco inteiro.
+> **O instalador apaga todas as partições e todos os dados do disco escolhido.** Faça backup antes e confira o tamanho e o modelo do disco na tela. A instalação usa o disco inteiro.
 
-Inicie o PC pela **ISO oficial do Arch Linux**, em modo **UEFI**, com internet. De preferência, use cabo de rede. No terminal da ISO, como `root`, rode o comando com o **link curto**.
-
-```bash
-bash <(curl -sL is.gd/archcallas157)
-```
-
-**Plano B com o link direto do GitHub.** Use este comando se o link curto falhar.
+Inicie pela **ISO oficial do Arch Linux**, em modo **UEFI**, com internet. De preferência, use cabo de rede. No terminal da ISO, como `root`, rode o comando com o **link curto**.
 
 ```bash
-bash <(curl -sL https://raw.githubusercontent.com/Callas157/arch-install/main/instalar-arch.sh)
+bash <(curl -fsSL https://is.gd/archcallas157)
 ```
+
+Se o link curto falhar, use o link direto do GitHub.
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/Callas157/arch-install/main/instalar-arch.sh)
+```
+
+> [!NOTE]
+> Em uma máquina virtual, habilite **EFI** nas configurações da VM e inicie pela ISO do Arch. Para placas NVIDIA detectadas, o instalador usa `nvidia-open`, que exige uma GPU compatível com esse driver.
 
 ## O que o script pergunta
 
@@ -25,99 +28,59 @@ bash <(curl -sL https://raw.githubusercontent.com/Callas157/arch-install/main/in
 2. **Nome do usuário.** Use minúsculas e evite espaços.
 3. **Senha.** Digite duas vezes pra confirmar. A mesma senha inicial será usada para o seu usuário e para a conta `root`. É normal o terminal ficar em branco enquanto você digita.
 
-Quando aparecer **Instalação concluída**, remova o pendrive e digite `reboot`.
+Quando aparecer **Instalação concluída**, remova o pendrive ou desmonte a ISO da VM e digite `reboot`.
 
-## O que o instalador faz
+## O que o instalador configura
 
-### 1. Verifica a ISO, o processador e a rede
+### Boot e sistema
 
-- Confere se o script foi executado como `root`, se o PC iniciou em **UEFI** e se consegue alcançar `archlinux.org`.
-- Tenta carregar o teclado **EUA Internacional com acentos** no console da ISO antes de pedir o usuário e a senha.
-- Detecta se o processador é **AMD** ou **Intel** e seleciona o microcódigo correspondente, `amd-ucode` ou `intel-ucode`.
-- Procura adaptadores de rede por PCI e USB. Quando detecta Wi-Fi, inclui `wpa_supplicant`, `iw` e `wireless-regdb` na instalação.
-- Para os modelos Broadcom identificados pela regra do script, tenta instalar o driver **`broadcom-wl-dkms`** pelo AUR.
-- Ativa a sincronização de horário na ISO e atualiza o `archlinux-keyring` antes de instalar o sistema base.
+- Cria uma tabela **GPT** com uma partição EFI de **1 GiB** em FAT32, montada em `/boot`, e uma partição **ext4** para o sistema no restante do disco.
+- Instala o kernel `linux`, o firmware, os cabeçalhos para DKMS e o microcódigo correspondente ao processador AMD ou Intel.
+- Configura o **systemd-boot** com **3 segundos** de menu. Depois que o Arch começa a carregar, o **Plymouth** exibe o escudo do dragão azul do projeto. O menu também oferece uma entrada de diagnóstico com inicialização em texto.
+- Define português do Brasil, fuso de São Paulo, teclado EUA Internacional, pastas do usuário em português e acesso ao `sudo` pelo grupo `wheel`.
+- Habilita NetworkManager, Bluetooth, sincronização de horário, TRIM periódico e swap comprimida com **zram**. Inclui suporte a Wi-Fi conforme o adaptador detectado.
 
-### 2. Particiona o disco e configura o boot
+### KDE Plasma
 
-O script limpa as partições do disco escolhido e cria uma tabela **GPT** com duas partições.
+- Aplica o **Brisa Escuro**, configura o **SDDM em Wayland** e ativa a integração da **Carteira KDE** com o login. Se a carteira precisar ser criada, o assistente pode aparecer no primeiro acesso.
+- Configura o formulário de login na tela principal, com o wallpaper nas outras telas. A contagem de desligamento e reinício do KDE é ajustada para **5 segundos**.
+- Inicia uma sessão vazia. **Steam** abre em modo silencioso, **Discord** minimizado e **Solaar** na bandeja. O perfil do **Digital Vibrance** é aplicado quando o utilitário está disponível. Brave e Spotify ficam fechados no login.
+- Usa o escudo Callas no menu Super e fixa Dolphin e Brave no painel, conforme a disponibilidade.
 
-| Partição | Tamanho | Formato | Montagem |
-| --- | --- | --- | --- |
-| EFI | 1 GiB | FAT32 | `/boot` |
-| Raiz | Restante do disco | ext4 | `/` |
+### Gráficos, jogos e gravação
 
-- Instala o sistema base, o kernel **`linux`**, o firmware e os cabeçalhos usados pra compilar módulos DKMS.
-- Gera o `/etc/fstab` com UUIDs e instala o **systemd-boot**. A entrada padrão é **Arch Linux**, com três segundos de espera no menu.
-- Configura o **zram** como swap comprimida em memória, com tamanho definido em metade da RAM e compressão **Zstandard (`zstd`)**.
-
-### 3. Configura o sistema em português
-
-- Define **Português do Brasil (`pt_BR.UTF-8`)** como idioma padrão e também gera `en_US.UTF-8`.
-- Ajusta o fuso para **`America/Sao_Paulo`** e sincroniza o relógio de hardware durante a instalação.
-- Configura **EUA Internacional com acentos** no console e grava a variante `us(intl)` na configuração do Xorg.
-- Define **`arch`** como nome inicial do computador.
-- Cria o usuário com **Bash** e libera o `sudo` pelo grupo `wheel`.
-- Ativa cores e downloads paralelos no `pacman`. Habilita o repositório **`multilib`** pra instalar a Steam e as bibliotecas de 32 bits.
-- Prepara as pastas do usuário em português, como **Documentos** e **Imagens**.
-- Habilita **NetworkManager**, **SDDM**, **Bluetooth**, **sincronização de horário** e **TRIM periódico** para SSDs compatíveis.
-
-### 4. Prepara o KDE Plasma em Wayland com tema escuro
-
-- Instala o **KDE Plasma** e o **SDDM**, a tela de login.
-- Configura o **Plasma em Wayland** como sessão padrão e o SDDM pra usar Wayland com o KWin.
-- Aplica o tema global **Brisa Escuro (Breeze Dark)** ao usuário antes do primeiro login.
-- Deixa **Dolphin** e **Brave** como os únicos aplicativos fixados no painel. O **Brave** fica fora dos favoritos do menu Super e continua disponível na lista de aplicativos.
-- Instala as ferramentas do KDE pra gerenciar rede, áudio, monitores e energia, além do portal de integração com aplicativos Flatpak.
-- Instala **PipeWire** e **WirePlumber**, com as camadas de compatibilidade com ALSA e PulseAudio.
-- Configura a integração do **KDE Wallet** com o login via PAM e tenta abrir a carteira `kdewallet` no primeiro acesso. Se ela ainda precisar ser criada, o KDE pode abrir o assistente. O Brave fica configurado pra usar a carteira como armazenamento de senhas.
-
-### 5. Instala o driver NVIDIA e os programas pra jogos e gravação
-
-| Componente | O que o script faz |
+| Componente | Configuração |
 | --- | --- |
-| **NVIDIA** | Instala `nvidia-open`, `nvidia-utils`, `nvidia-settings` e `egl-wayland`. Inclui os módulos NVIDIA no initramfs e configura os parâmetros de DRM no boot. |
-| **Vulkan** | Instala os carregadores Vulkan de 64 e 32 bits e as bibliotecas NVIDIA de 32 bits. |
-| **Steam** | Instala a versão nativa dos repositórios do Arch e configura a abertura silenciosa no login. |
-| **Discord** | Instala a versão nativa dos repositórios do Arch e configura a abertura minimizada. |
-| **ProtonPlus** | Tenta instalar pelo Flathub. Serve pra gerenciar ferramentas de compatibilidade da Steam, como versões alternativas do Proton. |
-| **GPU Screen Recorder** | Tenta instalar o gravador e a interface GTK pelo AUR. A interface oferece controles no estilo ShadowPlay. |
-| **Digital Vibrance** | Tenta instalar `nvibrant-bin` pelo AUR e prepara o perfil de cores da NVIDIA pra aplicar ao entrar no KDE. |
-| **Shotcut** | Instala o editor de vídeo pelos repositórios do Arch. |
+| **NVIDIA** | Instala `nvidia-open` e os utilitários NVIDIA quando detecta uma GPU da marca. Carrega os módulos gráficos no initramfs e tenta instalar o Digital Vibrance. |
+| **Mesa e máquinas virtuais** | Em sistemas sem NVIDIA detectada, usa Mesa. O driver Vulkan acompanha a GPU detectada, com renderização por software disponível para configurações sem driver Vulkan específico. |
+| **Steam e ProtonPlus** | Instala a Steam nativa com suporte a bibliotecas de 32 bits via `multilib` e tenta instalar o ProtonPlus pelo Flathub. |
+| **GPU Screen Recorder** | Tenta instalar o gravador e a interface GTK via Paru. O início automático do overlay depende de a rotina encontrar a interface separada `gsr-ui` (pacote `gpu-screen-recorder-ui`) ou a versão Flatpak. |
+| **Shotcut** | Instalado pelos repositórios do Arch. |
 
-A detecção **AMD ou Intel** serve pra escolher o microcódigo do **processador**. A configuração gráfica usa **`nvidia-open`** em todas as instalações. PCs com GPU AMD, Intel ou NVIDIA que precise de driver legado exigem adaptação dessa etapa.
+### Periféricos e aplicativos
 
-### 6. Instala suporte a periféricos e programas de uso diário
+- **Solaar nativo**, com tema escuro e permissões para dispositivos Logitech compatíveis, como o G733. A variante Flatpak fica com os ajustes de tema e acesso preparados para quem instalar essa versão.
+- **Receptor USB Xbox Wireless** com `xone-dkms` e `xone-dongle-firmware`. O script confere o módulo no kernel instalado e tenta recompilá-lo se necessário.
+- **Discord nativo** com configuração automática do **BetterDiscord** quando o perfil estiver pronto. O atualizador reabre o Discord minimizado se precisar fechá-lo durante a atualização.
+- **Spotify nativo** com **Spicetify** e **Marketplace**. A personalização é aplicada automaticamente depois que o Spotify cria o perfil e o app está fechado.
+- **Brave**, **qBittorrent**, **Flatpak** com Flathub e tentativa de instalação do **Bazaar**. O **Ark** recebe suporte a RAR, ZIP e 7z, entre outros formatos.
 
-- **Solaar** pra gerenciar dispositivos Logitech compatíveis, como o headset **G733**. O programa fica configurado pra iniciar oculto, na bandeja do sistema. As informações e controles disponíveis dependem do dispositivo.
-- **Receptor USB Xbox Wireless** com tentativa de instalação do **`xone-dkms`** e do **`xone-dongle-firmware`** pelo AUR. Depois, o script confere se o DKMS marcou o módulo como instalado e avisa se ele ficou pendente.
-- **Brave** pelo pacote `brave-bin` do AUR e **qBittorrent** pelos repositórios do Arch.
-- **Spotify nativo para Linux**, instalado pelo pacote `spotify` do AUR via `yay`.
-- **Dolphin**, **Konsole**, **Kate**, **Ark**, **Gwenview**, **Okular** e **Spectacle** pra arquivos, terminal, edição de texto, compactados, imagens, PDFs e capturas de tela.
-- Ferramentas de compactação e extração pra formatos como **RAR**, **ZIP**, **7z** e **CPIO**.
-- **Flatpak** com o **Flathub** configurado no sistema. O script também tenta instalar o **Bazaar**, uma loja gráfica de aplicativos Flatpak.
-- Fontes **Noto**, **Noto Emoji**, **DejaVu**, **Liberation** e **JetBrains Mono Nerd Font**.
+### Paru, Fastfetch e Nekofetch
 
-### 7. Prepara o AUR, o Fastfetch e o Nekofetch
+- **Paru** é preparado a partir do pacote `paru-bin` e usado tanto na instalação inicial quanto na etapa de atualização dos pacotes do AUR. A permissão temporária de instalação é removida ao terminar essa etapa.
+- **Fastfetch** vem dos repositórios do Arch. O **Nekofetch** é instalado com `uv` e aparece ao abrir um terminal Bash interativo. O layout inclui kernel, ambiente gráfico, resolução, taxa de atualização, GPU, driver e **VRAM dedicada usada e total** quando o driver fornece esses dados.
 
-O script tenta instalar o **`yay`** a partir do pacote `yay-bin`. A compilação roda com o usuário criado durante a instalação. O script cria uma regra temporária de `sudo` sem senha pra essa etapa e remove a regra ao terminar o bloco de instalação dos pacotes do AUR.
+## Atualizador do sistema
 
-O **Fastfetch** vem dos repositórios do Arch. O **Nekofetch** é instalado via `uv` no perfil do usuário e configurado pra aparecer automaticamente ao abrir um terminal interativo do **Bash**, como o Konsole. O script usa o layout da versão instalada e tenta complementar os campos abaixo.
+Procure por **Atualizador do sistema** no menu do KDE. Ele já entra nos favoritos iniciais, e você pode remover o favorito e continuar encontrando o atualizador pela busca.
 
-- Versão do **kernel**.
-- Nome e versão do **ambiente gráfico**.
-- Resolução e taxa de atualização do **monitor**.
-- Nome da **GPU** e **driver** em uso.
-- **VRAM** dedicada e em uso, quando o driver disponibiliza esses dados.
+| Atualização automática | Frequência | O que atualiza |
+| --- | --- | --- |
+| **Aplicativos** | Semanal, às **13h** | Flatpaks, Discord nativo e BetterDiscord. |
+| **Sistema** | Mensal, às **14h** | Pacotes oficiais do Arch e pacotes do AUR via Paru. |
 
-## O que inicia junto com o KDE
+Se o PC perder o horário, a execução fica para a próxima tarde em que estiver ligado no horário previsto. Pelo menu, também dá pra atualizar manualmente o sistema, os aplicativos ou só Discord e BetterDiscord. Os registros são acrescentados ao arquivo `Documentos/Logs de Atualizações/atualizacoes.log`.
 
-- **Steam** em modo silencioso.
-- **Discord** minimizado.
-- **Solaar** na bandeja do sistema.
-- **Digital Vibrance** pra aplicar o perfil de cores configurado.
-- A rotina de abertura da **Carteira KDE** roda no primeiro login. O **Nekofetch** roda ao abrir o terminal interativo.
+## Se algo ficar pendente
 
-## Como o instalador trata falhas
-
-Erros em etapas essenciais, como o particionamento, a instalação da base ou a configuração do boot, normalmente interrompem o script. Se uma etapa opcional falhar, como um pacote do AUR, um aplicativo do Flathub, o tema escuro ou o Nekofetch, o script emite um aviso e segue quando possível. Se aparecer **Instalação concluída** depois de um desses avisos, confira a saída do terminal pra ver o que ficou pendente.
+Erros em etapas essenciais, como particionamento, instalação da base ou configuração do boot, interrompem a instalação. Se uma etapa opcional falhar, confira os avisos do terminal e o arquivo `/var/log/callas-instalacao-avisos.log`, quando ele estiver presente no sistema instalado.
