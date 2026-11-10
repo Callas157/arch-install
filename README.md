@@ -13,7 +13,7 @@ Instalador automático do **Arch Linux com KDE Plasma em Wayland**, em portuguê
 Inicie pela **ISO oficial do Arch Linux**, em modo **UEFI**, com internet. De preferência, use cabo de rede. No terminal da ISO, como `root`, rode o comando com o **link curto**.
 
 ```bash
-bash <(curl -fsSL https://is.gd/archcallas157)
+bash <(curl -sL is.gd/archcallas157)
 ```
 
 Se o link curto falhar, use o link direto do GitHub.
