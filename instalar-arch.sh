@@ -190,19 +190,87 @@ install -d /mnt/usr/local/libexec /mnt/usr/share/plymouth/themes/callas
 install -d /mnt/usr/share/icons/hicolor/256x256/apps
 # Assets visuais do Callas OS ficam organizados no repositório.
 # Isso reduz bastante o tamanho do instalador e evita duplicar imagens em base64.
-install -d /mnt/usr/share/callas-os/grub
+install -d \
+  /mnt/usr/share/callas-os/grub \
+  /mnt/usr/share/callas-os/login \
+  /mnt/usr/share/callas-os/lockscreen \
+  /mnt/usr/share/wallpapers
+
 curl -fsSL "$CALLAS_ASSET_BASE/logo/callas-plasma-icon.png" \
   -o /mnt/usr/share/plymouth/themes/callas/logo.png
 install -m 0644 /mnt/usr/share/plymouth/themes/callas/logo.png \
   /mnt/usr/share/icons/hicolor/256x256/apps/callas-plasma-icon.png
 install -m 0644 /mnt/usr/share/plymouth/themes/callas/logo.png \
   /mnt/usr/share/callas-os/grub/logo.png
+
+# GRUB
 curl -fsSL "$CALLAS_ASSET_BASE/grub/theme.txt" \
   -o /mnt/usr/share/callas-os/grub/theme.txt
+curl -fsSL "$CALLAS_ASSET_BASE/grub/background.jpg" \
+  -o /mnt/usr/share/callas-os/grub/background.jpg
+
+# Plymouth
 curl -fsSL "$CALLAS_ASSET_BASE/plymouth/callas/callas.plymouth" \
   -o /mnt/usr/share/plymouth/themes/callas/callas.plymouth
 curl -fsSL "$CALLAS_ASSET_BASE/plymouth/callas/callas.script" \
   -o /mnt/usr/share/plymouth/themes/callas/callas.script
+curl -fsSL "$CALLAS_ASSET_BASE/plymouth/callas/background.jpg" \
+  -o /mnt/usr/share/plymouth/themes/callas/background.jpg
+
+# Login e tela de bloqueio
+curl -fsSL "$CALLAS_ASSET_BASE/login/background.jpg" \
+  -o /mnt/usr/share/callas-os/login/background.jpg
+curl -fsSL "$CALLAS_ASSET_BASE/lockscreen/background.jpg" \
+  -o /mnt/usr/share/callas-os/lockscreen/background.jpg
+
+# Coleção Callas OS: 19 wallpapers instalados como pacotes reconhecíveis pelo KDE.
+CALLAS_WALLPAPERS=(
+  callas-wallpaper-01-boot-blue.jpg
+  callas-wallpaper-02-city-neon.jpg
+  callas-wallpaper-03-cosmic.jpg
+  callas-wallpaper-04-cyber-shield.jpg
+  callas-wallpaper-05-dark-minimal.jpg
+  callas-wallpaper-06-futuristic.jpg
+  callas-wallpaper-07-gamer-corridor.jpg
+  callas-wallpaper-08-grub-concept.jpg
+  callas-wallpaper-09-hardware-tech.jpg
+  callas-wallpaper-10-loading-concept.jpg
+  callas-wallpaper-11-login-concept.jpg
+  callas-wallpaper-12-moon-lake.jpg
+  callas-wallpaper-13-mountains-crest.jpg
+  callas-wallpaper-14-mountains-moon.jpg
+  callas-wallpaper-15-neon-city.jpg
+  callas-wallpaper-16-neon-default.jpg
+  callas-wallpaper-17-neon-horizon.jpg
+  callas-wallpaper-18-sanctuary.jpg
+  callas-wallpaper-19-waves.jpg
+)
+for wallpaper in "${CALLAS_WALLPAPERS[@]}"; do
+  id="CallasOS-${wallpaper%.jpg}"
+  destino="/mnt/usr/share/wallpapers/$id"
+  install -d "$destino/contents/images"
+  curl -fsSL "$CALLAS_ASSET_BASE/wallpapers/$wallpaper" \
+    -o "$destino/contents/images/1920x1080.jpg"
+  cat > "$destino/metadata.json" <<EOF
+{
+  "KPackageStructure": "Plasma/Wallpaper",
+  "KPlugin": {
+    "Id": "$id",
+    "Name": "Callas OS - ${wallpaper%.jpg}",
+    "Description": "Wallpaper oficial do Callas OS",
+    "License": "CC0-1.0"
+  }
+}
+EOF
+done
+
+# O Breeze usa este arquivo para o fundo do SDDM.
+if [[ -d /mnt/usr/share/sddm/themes/breeze ]]; then
+  cat > /mnt/usr/share/sddm/themes/breeze/theme.conf.user <<'CALLAS_SDDM_BACKGROUND'
+[General]
+background=/usr/share/callas-os/login/background.jpg
+CALLAS_SDDM_BACKGROUND
+fi
 
 cat > "/mnt/usr/local/libexec/put-update" <<'CALLAS_UPDATER'
 #!/usr/bin/env bash
@@ -2181,6 +2249,7 @@ test -s /boot/vmlinuz-linux && test -s /boot/initramfs-linux.img
 install -d /boot/grub/themes/callas
 install -m 0644 /usr/share/callas-os/grub/theme.txt /boot/grub/themes/callas/theme.txt
 install -m 0644 /usr/share/callas-os/grub/logo.png /boot/grub/themes/callas/logo.png
+install -m 0644 /usr/share/callas-os/grub/background.jpg /boot/grub/themes/callas/background.jpg
 
 # GRUB UEFI: instalação limpa experimental, preservando a partição EFI em /boot.
 # Plymouth permanece integrado ao initramfs; sem atrasos artificiais no carregamento.
@@ -2333,6 +2402,21 @@ chown -R "$usuario:$usuario" "$home/.local" "$home/.config"
 como_usuario env LANG="$locale" xdg-user-dirs-update || aviso 'Não consegui preparar as pastas do usuário.'
 como_usuario env QT_QPA_PLATFORM=offscreen dbus-run-session -- plasma-apply-lookandfeel --apply org.kde.breezedark.desktop ||
   aviso 'Não consegui aplicar o tema Brisa Escuro.'
+
+# Fundo padrão da tela de bloqueio do Callas OS.
+como_usuario kwriteconfig6 --file kscreenlockerrc \
+  --group Greeter --group Wallpaper --group org.kde.image --group General \
+  --key Image "file:///usr/share/callas-os/lockscreen/background.jpg" ||
+  aviso 'Não consegui definir o wallpaper da tela de bloqueio.'
+
+# Tenta deixar o Dark Minimal como wallpaper inicial sem impedir a instalação se
+# o Plasma ainda não tiver criado a configuração da área de trabalho.
+if command -v plasma-apply-wallpaperimage >/dev/null; then
+  como_usuario env QT_QPA_PLATFORM=offscreen dbus-run-session -- \
+    plasma-apply-wallpaperimage \
+    /usr/share/wallpapers/CallasOS-callas-wallpaper-05-dark-minimal/contents/images/1920x1080.jpg ||
+    aviso 'Os wallpapers Callas OS foram instalados, mas o wallpaper inicial precisa ser escolhido no KDE.'
+fi
 como_usuario "$libexec/callas-inicio-kde" || aviso 'Não consegui aplicar o início de sessão do KDE.'
 "$libexec/callas-kde-desligamento-login" --preparar-instalacao ||
   aviso 'O ajuste de desligamento ou do tema de login precisa ser conferido.'
