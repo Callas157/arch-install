@@ -257,8 +257,8 @@ curl -fsSL "$CALLAS_ASSET_BASE/plymouth/callas/background.jpg" \
   -o /mnt/usr/share/plymouth/themes/callas/background.jpg
 
 # Login e tela de bloqueio
-curl -fsSL "$CALLAS_ASSET_BASE/login/background.jpg" \
-  -o /mnt/usr/share/callas-os/login/background.jpg
+curl -fsSL "$CALLAS_ASSET_BASE/login/background.png" \
+  -o /mnt/usr/share/callas-os/login/background.png
 curl -fsSL "$CALLAS_ASSET_BASE/lockscreen/background.jpg" \
   -o /mnt/usr/share/callas-os/lockscreen/background.jpg
 
@@ -303,7 +303,7 @@ done
 if [[ -d /mnt/usr/share/sddm/themes/breeze ]]; then
   cat > /mnt/usr/share/sddm/themes/breeze/theme.conf.user <<'CALLAS_SDDM_BACKGROUND'
 [General]
-background=/usr/share/callas-os/login/background.jpg
+background=/usr/share/callas-os/login/background.png
 CALLAS_SDDM_BACKGROUND
 fi
 
@@ -2134,6 +2134,9 @@ if (fileExists("/usr/share/applications/brave-browser.desktop")) {
 }
 
 panels().forEach(function (panel) {
+    // Altura padrão do painel Callas OS.
+    panel.height = 60;
+
     panel.widgets("org.kde.plasma.icontasks").forEach(function (tasks) {
         tasks.currentConfigGroup = ["General"];
         tasks.writeConfig("launchers", callasLaunchers);
@@ -2147,6 +2150,18 @@ panels().forEach(function (panel) {
             menu.reloadConfig();
         });
     }
+});
+
+// Define o wallpaper antes da área de trabalho terminar de aparecer.
+// Assim evitamos o flash do wallpaper padrão do KDE no primeiro login.
+desktops().forEach(function (desktop) {
+    desktop.wallpaperPlugin = "org.kde.image";
+    desktop.currentConfigGroup = ["Wallpaper", "org.kde.image", "General"];
+    desktop.writeConfig(
+        "Image",
+        "file:///usr/share/wallpapers/CallasOS-callas-wallpaper-14-mountains-moon/contents/images/1920x1080.jpg"
+    );
+    desktop.reloadConfig();
 });
 PLASMA_PANEL
 then
@@ -2512,6 +2527,10 @@ como_usuario env LANG="$locale" xdg-user-dirs-update || aviso 'Não consegui pre
 como_usuario env QT_QPA_PLATFORM=offscreen dbus-run-session -- plasma-apply-lookandfeel --apply org.kde.breezedark.desktop ||
   aviso 'Não consegui aplicar o tema Brisa Escuro.'
 
+# Mantém o efeito de transparência/blur usado pelo painel e menus do Plasma.
+como_usuario kwriteconfig6 --file kwinrc --group Plugins --key blurEnabled true ||
+  aviso 'Não consegui garantir o efeito de blur do KWin.'
+
 # Captura estilo Windows: Super+Shift+S abre a seleção retangular do Spectacle.
 # O modo de região do Spectacle pode atravessar todos os monitores.
 como_usuario kwriteconfig6 --file kglobalshortcutsrc \
@@ -2529,47 +2548,6 @@ como_usuario kwriteconfig6 --file kscreenlockerrc \
 # A configuração de sessão vazia é preparada ainda no chroot.
 como_usuario "$libexec/callas-inicio-kde" || aviso 'Não consegui aplicar o início de sessão do KDE.'
 
-# O wallpaper precisa de um plasmashell real em execução. Em vez de tentar aplicar
-# no chroot/offscreen, fazemos isso uma única vez no primeiro login do usuário.
-cat > "$libexec/callas-wallpaper-primeiro-login" <<'CALLAS_FIRST_WALLPAPER'
-#!/usr/bin/bash
-set -u
-
-imagem=/usr/share/wallpapers/CallasOS-callas-wallpaper-14-mountains-moon/contents/images/1920x1080.jpg
-estado="${XDG_STATE_HOME:-$HOME/.local/state}/callas"
-atalho="${XDG_CONFIG_HOME:-$HOME/.config}/autostart/callas-wallpaper-inicial.desktop"
-marcador="$estado/wallpaper-inicial-aplicado"
-
-[[ -f "$marcador" ]] && { rm -f -- "$atalho"; exit 0; }
-[[ -r "$imagem" ]] || exit 1
-command -v plasma-apply-wallpaperimage >/dev/null || exit 1
-
-for _ in {1..30}; do
-  pgrep -u "$EUID" -x plasmashell >/dev/null && break
-  sleep 1
-done
-pgrep -u "$EUID" -x plasmashell >/dev/null || exit 1
-sleep 2
-
-if plasma-apply-wallpaperimage "$imagem"; then
-  mkdir -p -- "$estado"
-  : > "$marcador"
-  rm -f -- "$atalho"
-fi
-CALLAS_FIRST_WALLPAPER
-chmod 0755 "$libexec/callas-wallpaper-primeiro-login"
-
-cat > "$home/.config/autostart/callas-wallpaper-inicial.desktop" <<'CALLAS_FIRST_WALLPAPER_DESKTOP'
-[Desktop Entry]
-Type=Application
-Name=Aplicar wallpaper inicial do Callas OS
-Exec=/usr/local/libexec/callas-wallpaper-primeiro-login
-OnlyShowIn=KDE;
-NoDisplay=true
-StartupNotify=false
-X-KDE-AutostartScript=true
-CALLAS_FIRST_WALLPAPER_DESKTOP
-chown "$usuario:$usuario" "$home/.config/autostart/callas-wallpaper-inicial.desktop"
 "$libexec/callas-kde-desligamento-login" --preparar-instalacao ||
   aviso 'O ajuste de desligamento ou do tema de login precisa ser conferido.'
 "$libexec/put-update" --instalar-para "$usuario" || aviso 'Não consegui instalar o atualizador do sistema.'
