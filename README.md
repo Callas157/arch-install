@@ -234,17 +234,21 @@ Existem duas rotinas automáticas:
 
 | Rotina | Frequência | Conteúdo |
 | --- | --- | --- |
-| **Aplicativos** | Semanal | Flatpaks e Discord |
-| **Sistema** | Mensal, no **dia 10** | Pacotes oficiais do Arch e pacotes AUR via Paru |
+| **Aplicativos** | A cada **7 dias** | Flatpaks e Discord |
+| **Sistema** | A cada **1 mês** | Pacotes oficiais do Arch e pacotes AUR via Paru |
 
-Não existe horário fixo.
+Não existe horário fixo nem um dia fixo do mês.
+
+Os vencimentos são calculados a partir da instalação e, depois disso, a partir da última atualização concluída com sucesso.
 
 A agenda é verificada:
 
 - pouco depois do boot;
 - periodicamente enquanto o computador permanece ligado.
 
-Se o computador for ligado em qualquer horário dentro do dia programado, a atualização pode ser executada naquela sessão.
+Se o computador estiver desligado no dia em que uma atualização vencer, ela continua pendente. No primeiro boot ou verificação seguinte, a atualização roda automaticamente.
+
+Quando a atualização semanal termina com sucesso, o KDE mostra uma notificação informando que os aplicativos foram atualizados.
 
 Quando a atualização mensal termina com sucesso, o KDE apresenta uma notificação oferecendo:
 
