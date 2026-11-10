@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.10.1"
+VERSAO="2026.11.10.2"
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/main"
 ASSET_BASE="$BASE_RAW/assets"
 ESTADO_DIR="/var/lib/callas-os"
@@ -48,6 +48,89 @@ if command -v flatpak >/dev/null; then
     flatpak install --system --noninteractive --assumeyes flathub "$app" ||
       aviso "Não consegui instalar/confirmar $app."
   done
+fi
+
+
+# Brave + Bonjourr
+install -d /etc/brave/policies/managed /etc/brave/policies/recommended /usr/share/callas-os
+cat > /etc/brave/policies/managed/callas-bonjourr.json <<'EOF'
+{
+  "ExtensionSettings": {
+    "dlnejlppicbjfcfcedcflplfjajinajd": {
+      "installation_mode": "normal_installed",
+      "update_url": "https://clients2.google.com/service/update2/crx"
+    }
+  }
+}
+EOF
+
+cat > /etc/brave/policies/recommended/callas-defaults.json <<'EOF'
+{
+  "RestoreOnStartup": 5,
+  "ShowHomeButton": true,
+  "HomepageIsNewTabPage": true,
+  "BookmarkBarEnabled": true
+}
+EOF
+
+curl -fsSL --retry 2 "$ASSET_BASE/bonjourr/callas-profile.json"   -o /usr/share/callas-os/bonjourr-profile.json ||
+  aviso "Não consegui atualizar o perfil padrão do Bonjourr."
+
+# Se o Brave estiver fechado, também reaplica preferências que não têm política
+# própria. Se estiver aberto, não mexe diretamente em Preferences para evitar
+# perda/corrupção de dados.
+brave_pref="$home/.config/BraveSoftware/Brave-Browser/Default/Preferences"
+if ! pgrep -u "$usuario" -f '(^|/)(brave|brave-browser)( |$)' >/dev/null 2>&1; then
+  if [[ -f "$brave_pref" ]]; then
+    cp -a "$brave_pref" "$backup/Brave-Preferences" 2>/dev/null || true
+    python3 - "$brave_pref" <<'EOF'
+import json, os, sys
+path=sys.argv[1]
+try:
+    with open(path, "r", encoding="utf-8") as f:
+        data=json.load(f)
+except Exception:
+    data={}
+data.setdefault("browser", {})["custom_chrome_frame"]=False
+data["browser"]["show_home_button"]=True
+data["homepage_is_newtabpage"]=True
+data.setdefault("bookmark_bar", {})["show_on_all_tabs"]=True
+data.setdefault("tab_search", {})["pinned_to_tabstrip"]=True
+data.setdefault("everything_menu", {})["pinned_to_tabstrip"]=True
+actions=data.setdefault("toolbar", {}).setdefault("pinned_actions", [])
+if "kActionTabSearch" not in actions:
+    actions.append("kActionTabSearch")
+os.makedirs(os.path.dirname(path), exist_ok=True)
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
+EOF
+    chown "$usuario:$grupo" "$brave_pref" 2>/dev/null || true
+  elif [[ -d /opt/brave-bin ]]; then
+    initial=/opt/brave-bin/initial_preferences
+    python3 - "$initial" <<'EOF'
+import json, os, sys
+path=sys.argv[1]
+data={}
+try:
+    with open(path, "r", encoding="utf-8") as f:
+        data=json.load(f)
+except Exception:
+    pass
+data.setdefault("browser", {})["custom_chrome_frame"]=False
+data["browser"]["show_home_button"]=True
+data["homepage_is_newtabpage"]=True
+data.setdefault("bookmark_bar", {})["show_on_all_tabs"]=True
+data.setdefault("tab_search", {})["pinned_to_tabstrip"]=True
+data.setdefault("everything_menu", {})["pinned_to_tabstrip"]=True
+actions=data.setdefault("toolbar", {}).setdefault("pinned_actions", [])
+if "kActionTabSearch" not in actions:
+    actions.append("kActionTabSearch")
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(data, f, ensure_ascii=False, indent=2)
+EOF
+  fi
+else
+  aviso "Brave está aberto: as políticas foram atualizadas, mas barra de título/botões visuais serão reaplicados quando o Brave estiver fechado em uma próxima atualização."
 fi
 
 # Coleção atual de wallpapers do Callas OS.
