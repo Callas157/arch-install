@@ -8,7 +8,7 @@
 # Solaar na bandeja | xone para receptor Xbox Wireless | qBittorrent | Spotify (AUR)
 #
 # ATENÇÃO: APAGA TODO O DISCO ESCOLHIDO NO INÍCIO DO SCRIPT
-# Tema GRUB + Plymouth Callas OS | atualizador do KDE | Spotify + Spicetify
+# Tema GRUB + Plymouth Callas OS | atualizador do KDE | Spotify
 # Rodar na ISO do Arch Linux, com internet por cabo.
 # =====================================================================
 set -Eeuo pipefail
@@ -504,330 +504,77 @@ atualizar_discord_integrado() (
         --pacman) acao=pacman ;;
         --agendado) acao=agendado ;;
         --sessao) acao=sessao ;;
-        --desinstalar) acao=desinstalar ;;
         -h|--help)
-            printf 'Uso: bash %s --discord [--pacman | --desinstalar]\n' "${0##*/}"
-            printf 'Com --discord: atualiza o Discord pelo atualizador oficial e instala ou atualiza o BetterDiscord.\n'
-            printf '%s\n' '--pacman: inclui a atualização completa do Arch e do pacote discord pelo pacman.' \
-                '--desinstalar: remove o carregador do BetterDiscord, preservando plugins e temas.'
+            printf 'Uso: bash %s --discord [--pacman]\n' "${0##*/}"
+            printf 'Atualiza somente o Discord nativo.\n'
             exit 0
             ;;
         *) falhar "Opção desconhecida: $1. Use --help." ;;
     esac
     [[ $# -le 1 ]] || falhar 'Passe apenas uma opção.'
     (( EUID != 0 )) || falhar 'Rode com seu usuário normal. O modo --pacman pede sudo quando necessário.'
-    [[ $(uname -sm) == 'Linux x86_64' ]] || falhar 'Este arquivo foi preparado para Linux x86_64.'
-
-    via_servico=0
-    if [[ $acao == agendado || $acao == sessao ]]; then
-        via_servico=1
-    fi
 
     config_dir=${XDG_CONFIG_HOME:-"$HOME/.config"}
-    [[ $config_dir == /* ]] || falhar 'XDG_CONFIG_HOME precisa ser um caminho absoluto.'
     discord_dir="$config_dir/discord"
     aviso_discord='Discord Stable nativo não encontrado no perfil. Abra o Discord pelo menu, aguarde a janela principal carregar e tente novamente.'
-    if [[ ! -d $discord_dir ]]; then
-        if [[ $acao == agendado ]]; then
-            printf '%s\n' "$aviso_discord"
-            return 0
-        fi
+    [[ -d $discord_dir ]] || {
+        [[ $acao == agendado ]] && { printf '%s\n' "$aviso_discord"; return 0; }
         falhar "$aviso_discord"
-    fi
-    discord_real=$(realpath -e -- "$discord_dir")
-    export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
+    }
+
     if ! lancador=$(command -v discord); then
-        for candidato in /opt/Discord/Discord /opt/discord/Discord; do
-            if [[ -x $candidato ]]; then
-                lancador=$candidato
-                break
-            fi
+        for candidato in /opt/Discord/Discord /opt/discord/Discord /usr/share/discord/Discord /usr/lib/discord/Discord; do
+            [[ -x $candidato ]] && { lancador=$candidato; break; }
         done
-        if [[ -z $lancador ]]; then
-            if [[ $acao == agendado ]]; then
-                printf 'Lançador do Discord nativo ausente.\n'
-                return 0
-            fi
-            falhar 'O lançador nativo discord não foi encontrado.'
-        fi
     fi
-    lancador_real=$(realpath -- "$lancador")
-    runtime_dir=${XDG_RUNTIME_DIR:-/run/user/$EUID}
-    if (( via_servico )); then
-        export XDG_RUNTIME_DIR="$runtime_dir"
-    fi
-    [[ -d $runtime_dir ]] || runtime_dir=$config_dir
-    log_reabertura="$runtime_dir/callas-discord-reabertura.log"
-
-    exec 9>"$discord_dir/callas-betterdiscord.lock"
-    if ! flock -n 9; then
-        if [[ $acao == agendado ]]; then
-            printf 'O atualizador do Discord já está em execução.\n'
-            return 0
-        fi
-        falhar 'Já existe outra execução do script em andamento.'
-    fi
-
-    shopt -s nullglob
-
-    tem_arquivo_discord() {
-        [[ -s $1/app.asar || -s $1/betterdiscord.app.asar ]]
-    }
-
-    descobrir_recursos() {
-        local pasta versao
-        local -a pastas=("$discord_dir"/app-*/resources)
-        (( ${#pastas[@]} )) || return 1
-        while IFS= read -r -d '' pasta; do
-            versao=${pasta%/resources}
-            [[ ${versao##*/} =~ ^app-[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
-            if tem_arquivo_discord "$pasta"; then
-                printf '%s\n' "$pasta"
-                return 0
-            fi
-        done < <(printf '%s\0' "${pastas[@]}" | sort -zVr)
-        return 1
-    }
-
-    verificar_recursos() {
-        [[ -w $recursos ]] || falhar "Sem permissão de escrita em $recursos."
-        carregador="$recursos/app"
-        if [[ -e $carregador || -L $carregador ]]; then
-            if [[ -L $carregador || ! -f $carregador/index.js ]] ||
-                ! grep -Fq '../betterdiscord.app.asar' "$carregador/index.js"; then
-                falhar "Já existe um carregador diferente em $carregador."
-            fi
-        fi
-    }
+    [[ -n ${lancador:-} ]] || falhar 'O lançador nativo discord não foi encontrado.'
 
     pids_discord() {
-        local pid exe
-        while IFS= read -r pid; do
-            exe=$(readlink -- "/proc/$pid/exe") || continue
-            exe=${exe% (deleted)}
-            if [[ $exe == "$discord_real"/app-*/Discord || $exe == "$discord_real/Discord" ||
-                $exe == "$lancador_real" || $exe == /opt/Discord/Discord ||
-                $exe == /opt/discord/Discord || $exe == /usr/share/discord/Discord ||
-                $exe == /usr/lib/discord/Discord ]]; then
-                printf '%s\n' "$pid"
-            fi
-        done < <(pgrep -u "$EUID" -x 'Discord|discord' || true)
+        pgrep -u "$EUID" -x 'Discord|discord' || true
     }
 
-    discord_em_execucao() {
-        pgrep -u "$EUID" -x 'Discord|discord' >/dev/null
-    }
-
-    betterdiscord_injetado() {
-        [[ ! -e $recursos/app.asar && -s $recursos/betterdiscord.app.asar &&
-            -s $carregador/index.js && -s $carregador/package.json && -s $mod_asar ]]
-    }
-
-    reabrir_discord() {
-        if [[ -n $(pids_discord) ]]; then
-            return 0
-        fi
-        printf 'Reabrindo o Discord pelo lançador do sistema...\n'
-        local tentativa unidade="app-discord-callas@$$.service"
-        if (( via_servico )); then
-            # O processo precisa da sessão gráfica e deve sobreviver ao fim do serviço de atualização.
-            systemd-run --user --collect --unit="$unidade" --slice=app.slice \
-                --property=Type=exec --property=PartOf=graphical-session.target \
-                -- "$lancador" --start-minimized 9>&- || return 1
-        else
-            nohup "$lancador" --start-minimized </dev/null >"$log_reabertura" 2>&1 9>&- &
-        fi
-        for ((tentativa=0; tentativa<60; tentativa++)); do
-            if [[ -n $(pids_discord) ]]; then
-                printf 'Discord reaberto.\n'
-                return 0
-            fi
-            sleep 0.25
-        done
-        if (( via_servico )); then
-            printf 'O Discord não iniciou a tempo. Confira com journalctl --user -u %s\n' "$unidade" >&2
-        else
-            printf 'O Discord não iniciou a tempo. Abra pelo menu e confira o log em %s\n' "$log_reabertura" >&2
-        fi
-        return 1
-    }
-
-    limpar() {
-        local codigo=$?
-        trap - EXIT
-        if (( mod_em_alteracao )) && [[ -f $temp_dir/betterdiscord.anterior.asar ]]; then
-            cp -p -- "$temp_dir/betterdiscord.anterior.asar" "$mod_asar" ||
-                printf 'Não foi possível restaurar o arquivo anterior do BetterDiscord.\n' >&2
-        fi
-        rm -rf -- "$temp_dir" || true
-        if (( reabrir )); then
-            reabrir_discord || { (( codigo != 0 )) || codigo=1; }
-        fi
-        exit "$codigo"
-    }
-
-    fechar_discord() {
-        local -a pids=()
-        local tentativa
-        mapfile -t pids < <(pids_discord)
-        (( ${#pids[@]} )) || return 0
-        if (( via_servico )) && ! systemctl --user is-active --quiet graphical-session.target; then
-            falhar 'O Discord está aberto, mas a sessão gráfica não está acessível para reabri-lo.'
-        fi
-        reabrir=1
+    estava_aberto=0
+    if [[ -n $(pids_discord) ]]; then
+        estava_aberto=1
         printf 'Fechando o Discord para atualizar...\n'
-        kill -TERM "${pids[@]}" 2>/dev/null || true
-        for ((tentativa=0; tentativa<40; tentativa++)); do
-            if [[ -z $(pids_discord) ]]; then
-                return 0
-            fi
+        kill -TERM $(pids_discord) 2>/dev/null || true
+        for _ in {1..40}; do
+            [[ -z $(pids_discord) ]] && break
             sleep 0.25
         done
-        falhar 'O Discord ainda está aberto. Encerre-o pelo ícone da bandeja e tente novamente.'
-    }
+        [[ -z $(pids_discord) ]] || falhar 'O Discord ainda está aberto.'
+    fi
 
-    atualizar_discord() {
-        local bootstrap candidato saida pasta_nova versao anterior=$recursos
-        for candidato in "$(dirname -- "$(realpath -- "$lancador")")/updater_bootstrap" \
-            /usr/share/discord/updater_bootstrap /opt/Discord/updater_bootstrap \
-            /opt/discord/updater_bootstrap; do
-            if [[ -x $candidato ]]; then
-                bootstrap=$candidato
-                break
-            fi
-        done
-        if [[ -z ${bootstrap:-} ]]; then
-            printf 'O atualizador oficial do Discord não foi encontrado.\n' >&2
-            return 1
-        fi
-
-        printf 'Verificando a atualização do Discord nativo...\n'
-        if ! saida=$(timeout --kill-after=10s 10m "$bootstrap" --no-zenity \
-            "$discord_dir" stable https://updates.discord.com/ 9>&-); then
-            printf 'A atualização do Discord falhou.\n' >&2
-            return 1
-        fi
-
-        pasta_nova=${saida##*$'\n'}
-        if [[ $pasta_nova =~ ^app-[0-9]+\.[0-9]+\.[0-9]+$ ]] &&
-            tem_arquivo_discord "$discord_dir/$pasta_nova/resources"; then
-            recursos="$discord_dir/$pasta_nova/resources"
+    reabrir() {
+        (( estava_aberto )) || return 0
+        printf 'Reabrindo o Discord...\n'
+        if [[ $acao == agendado || $acao == sessao ]]; then
+            systemd-run --user --collect --slice=app.slice --property=Type=exec \
+                -- "$lancador" --start-minimized >/dev/null 2>&1 || return 1
         else
-            recursos=$(descobrir_recursos) || falhar "$aviso_discord"
-        fi
-        if [[ $recursos == "$anterior" ]]; then
-            printf 'O Discord já está na versão atual.\n'
-        else
-            versao=${recursos%/resources}
-            printf 'Discord atualizado para %s.\n' "${versao##*/app-}"
+            nohup "$lancador" --start-minimized </dev/null >/dev/null 2>&1 &
         fi
     }
+    trap reabrir EXIT
 
-    if ! recursos=$(descobrir_recursos); then
-        if [[ $acao == agendado ]]; then
-            printf '%s\n' "$aviso_discord"
-            return 0
-        fi
-        falhar "$aviso_discord"
-    fi
-    verificar_recursos
-    mod_asar="$config_dir/BetterDiscord/data/betterdiscord.asar"
-    mod_desativado="$discord_dir/.callas-betterdiscord-desativado"
-    atualizar_mod=1
-    if [[ $acao == desinstalar && ! -e $recursos/betterdiscord.app.asar && ! -e $carregador ]]; then
-        touch -- "$mod_desativado"
-        printf 'O BetterDiscord já está desativado nesta versão do Discord.\n'
-        return 0
-    elif [[ $acao == agendado && -e $mod_desativado ]]; then
-        atualizar_mod=0
-    fi
-
-    # A CLI é fixa para conferir o SHA-256. O mod é baixado na versão estável atual.
-    versao_cli=1.0.0
-    arquivo="bdcli_${versao_cli}_linux_amd64.tar.gz"
-    sha256=df0a97f64be42abed3bb534c7770207ca78f79e5f82eaeb6027f2cbd46e0df44
-
-    temp_dir=$(mktemp -d)
-    reabrir=0
-    mod_em_alteracao=0
-    trap limpar EXIT
-    trap 'exit 130' INT
-    trap 'exit 143' TERM
-    baixar_cli() {
-        printf 'Baixando o instalador oficial do BetterDiscord...\n'
-        curl --fail --silent --show-error --location --retry 2 \
-            --proto '=https' --proto-redir '=https' --connect-timeout 10 --max-time 90 \
-            --output "$temp_dir/$arquivo" \
-            "https://github.com/BetterDiscord/cli/releases/download/v$versao_cli/$arquivo" ||
-            return 1
-        printf '%s  %s\n' "$sha256" "$temp_dir/$arquivo" | sha256sum --check --status ||
-            { printf 'O arquivo baixado não confere com o SHA-256 esperado.\n' >&2; return 1; }
-        tar -xzf "$temp_dir/$arquivo" -C "$temp_dir" -- bdcli
-    }
-
-    falha_mod=0
-    if (( atualizar_mod )) && ! baixar_cli; then
-        if [[ $acao != agendado ]]; then
-            falhar 'Não foi possível preparar a CLI do BetterDiscord.'
-        fi
-        falha_mod=1
-        printf 'Não foi possível preparar a CLI do BetterDiscord.\n' >&2
-    fi
-
-    falha_discord=0
     if [[ $acao == pacman ]]; then
         pacman -Q discord >/dev/null || falhar 'O pacote discord não está instalado pelo pacman.'
-        printf 'Verificando o pacote discord e as atualizações do Arch pelo pacman...\n'
-        sudo pacman -Syu --needed discord 9>&- || falha_discord=1
+        sudo pacman -Syu --needed discord || falhar 'Falha ao atualizar o Discord pelo pacman.'
     fi
 
-    fechar_discord
-    if [[ $acao != desinstalar ]]; then
-        if ! atualizar_discord; then
-            falha_discord=1
-            recursos=$(descobrir_recursos) || falhar "$aviso_discord"
-            printf 'Continuando com o BetterDiscord na versão disponível do Discord.\n'
-        fi
-        verificar_recursos
-    fi
+    bootstrap=
+    for candidato in "$(dirname -- "$(realpath -- "$lancador")")/updater_bootstrap" \
+        /usr/share/discord/updater_bootstrap /opt/Discord/updater_bootstrap /opt/discord/updater_bootstrap; do
+        [[ -x $candidato ]] && { bootstrap=$candidato; break; }
+    done
 
-    if (( ! atualizar_mod )); then
-        printf 'BetterDiscord desativado no perfil.\n'
-        return "$falha_discord"
-    fi
-    (( ! falha_mod )) || return 1
-
-    unset BDCLI_DEV_BUILD
-    if [[ $acao == desinstalar ]]; then
-        comando_cli=(uninstall --path "$recursos")
-    elif betterdiscord_injetado; then
-        comando_cli=(update)
+    if [[ -n $bootstrap ]]; then
+        printf 'Verificando atualização do Discord nativo...\n'
+        timeout --kill-after=10s 10m "$bootstrap" --no-zenity \
+            "$discord_dir" stable https://updates.discord.com/ >/dev/null ||
+            falhar 'A atualização do Discord nativo falhou.'
     else
-        comando_cli=(install --path "$recursos")
-    fi
-
-    # A CLI v1.0.0 tenta encerrar qualquer processo chamado Discord em install/uninstall.
-    fechar_discord
-    if [[ ${comando_cli[0]} != update ]] && discord_em_execucao; then
-        falhar 'Outra instância do Discord está aberta e impede a aplicação segura do carregador.'
-    fi
-    if [[ $acao != desinstalar && -s $mod_asar ]]; then
-        cp -p -- "$mod_asar" "$temp_dir/betterdiscord.anterior.asar"
-        mod_em_alteracao=1
-    fi
-    timeout --kill-after=10s 5m "$temp_dir/bdcli" "${comando_cli[@]}" 9>&- ||
-        falhar 'A CLI do BetterDiscord não concluiu a operação. Confira a mensagem acima.'
-    mod_em_alteracao=0
-
-    if [[ $acao == desinstalar ]]; then
-        touch -- "$mod_desativado"
-        printf '\nBetterDiscord desativado. Os plugins e temas continuam guardados.\n'
-    elif [[ $acao != agendado ]]; then
-        rm -f -- "$mod_desativado"
-        printf '\nNo Discord, vá em Configurações → BetterDiscord → Plugins ou Temas.\n'
-    fi
-    if (( falha_discord )); then
-        falhar 'A etapa do BetterDiscord terminou, mas uma atualização do Discord falhou.'
+        printf 'Atualizador interno do Discord não encontrado; o pacote será mantido pelo pacman/AUR.\n'
     fi
 )
 
@@ -855,7 +602,7 @@ atualizar_apps() {
         printf 'Flatpak ausente.\n'
     fi
 
-    etapa 'Discord nativo e BetterDiscord' como_usuario "$usuario" "$home" "$program" --discord-agendado ||
+    etapa 'Discord nativo' como_usuario "$usuario" "$home" "$program" --discord-agendado ||
         falhou=1
     return "$falhou"
 }
@@ -869,7 +616,7 @@ registrar_atualizacao() {
             sistema) atualizar_sistema "$origem" || codigo=$? ;;
             apps) atualizar_apps "$usuario" "$home" || codigo=$? ;;
             discord)
-                etapa 'Discord nativo e BetterDiscord' como_usuario "$usuario" "$home" \
+                etapa 'Discord nativo' como_usuario "$usuario" "$home" \
                     "$program" --discord-sessao || codigo=$?
                 ;;
         esac
@@ -903,7 +650,7 @@ TryExec=$program
 Icon=system-software-update
 Terminal=true
 Categories=System;
-Keywords=atualizador;atualização;Arch;pacman;Flatpak;Discord;BetterDiscord;
+Keywords=atualizador;atualização;Arch;pacman;Flatpak;Discord;
 DESKTOP
     install -D -m 0644 -T -- "$arquivo" "$atalho_menu"
     printf 'Atualizador do sistema disponível no menu de aplicativos.\n'
@@ -1065,9 +812,9 @@ menu() {
         printf '\n=== Atualizador do sistema ===\n'
         printf '%s\n' \
             '1. Ativar ou reparar o automático (sistema mensal e aplicativos semanais)' \
-            '2. Atualizar só os aplicativos agora (Flatpak, Discord e BetterDiscord)' \
+            '2. Atualizar só os aplicativos agora (Flatpak e Discord)' \
             '3. Atualizar só o sistema agora (Arch, pacman e AUR)' \
-            '4. Atualizar só o Discord e o BetterDiscord agora' \
+            '4. Atualizar só o Discord agora' \
             '5. Sair'
         read -r -p 'Escolha [1-5]: ' opcao || return 0
         case $opcao in
@@ -2021,101 +1768,7 @@ grep -Fvx -e "$startup" -e "$comment" \
 cat "$temp" > "$bashrc"
 printf '\n%s\n%s\n' "$comment" "$startup" >> "$bashrc"
 CALLAS_NEKO
-cat > "/mnt/usr/local/libexec/callas-apps-pos-login" <<'CALLAS_APPS'
-#!/usr/bin/bash
-set -uo pipefail
-config=${XDG_CONFIG_HOME:-$HOME/.config}
-estado=${XDG_STATE_HOME:-$HOME/.local/state}/callas
-mkdir -p "$estado" || exit 1
-
-preparar_betterdiscord() {
-  local perfil="$config/discord" recursos
-  [[ ! -e "$estado/betterdiscord-inicial" && ! -e "$perfil/.callas-betterdiscord-desativado" ]] || return 0
-  # O Discord gera os recursos locais só na primeira execução.
-  for recursos in "$perfil"/app-*/resources; do
-    if [[ -s "$recursos/app.asar" || -s "$recursos/betterdiscord.app.asar" ]]; then
-      # A mesma trava por perfil impede alterações simultâneas pelo atualizador.
-      /usr/local/libexec/put-update --discord-sessao &&
-        touch "$estado/betterdiscord-inicial"
-      return
-    fi
-  done
-}
-
-instalar_marketplace() (
-  set -e
-  local raiz="$config/spicetify"
-  local apps="$raiz/CustomApps" tmp
-  install -d "$apps" || return 1
-  tmp=$(mktemp -d -- "$apps/.callas-marketplace.XXXXXXXX") || return 1
-  trap 'rm -rf -- "$tmp"' EXIT
-  curl -fsSL --retry 2 --max-time 90 \
-    https://github.com/spicetify/marketplace/releases/latest/download/marketplace.zip \
-    -o "$tmp/marketplace.zip" || return 1
-  unzip -q "$tmp/marketplace.zip" -d "$tmp" || return 1
-  [[ -s "$tmp/marketplace-dist/manifest.json" ]] || return 1
-  install -d "$apps/marketplace" || return 1
-  cp -a "$tmp/marketplace-dist/." "$apps/marketplace/" || return 1
-)
-
-preparar_spicetify() {
-  local prefs="$config/spotify/prefs" versao
-  command -v spicetify >/dev/null && [[ -s $prefs && -w /opt/spotify/Apps ]] || return 0
-  # Aplica quando o Spotify estiver fechado, sem abri-lo junto com a sessão.
-  pgrep -u "$EUID" -x spotify >/dev/null && return 0
-  versao=$(pacman -Q spotify spicetify-cli) || return 1
-  if [[ -f "$estado/spotify-versao" && $(< "$estado/spotify-versao") == "$versao" ]]; then
-    return 0
-  fi
-  spicetify config spotify_path /opt/spotify || return 1
-  spicetify config prefs_path "$prefs" || return 1
-  spicetify backup apply || return 1
-  if [[ ! -s "$config/spicetify/CustomApps/marketplace/manifest.json" ]]; then
-    instalar_marketplace || return 1
-  fi
-  spicetify config inject_css 1 replace_colors 1 || return 1
-  spicetify config custom_apps marketplace || return 1
-  spicetify apply && printf '%s\n' "$versao" > "$estado/spotify-versao"
-}
-
-resultado=0
-preparar_betterdiscord || resultado=1
-preparar_spicetify || resultado=1
-exit "$resultado"
-CALLAS_APPS
-cat > /mnt/usr/local/libexec/callas-spotify-permissoes <<'CALLAS_SPOTIFY_ACL'
-#!/usr/bin/bash
-set -euo pipefail
-usuario=$1
-[[ -d /opt/spotify/Apps && ! -L /opt/spotify && ! -L /opt/spotify/Apps ]]
-setfacl -m "u:$usuario:rwx" /opt/spotify
-setfacl -R -m "u:$usuario:rwX" /opt/spotify/Apps
-CALLAS_SPOTIFY_ACL
-chmod 0755 /mnt/usr/local/libexec/{put-update,callas-inicio-kde,callas-kde-desligamento-login,callas-nekofetch,callas-apps-pos-login,callas-spotify-permissoes}
-
-install -d /mnt/usr/lib/systemd/user
-cat > /mnt/usr/lib/systemd/user/callas-apps-pos-login.service <<'APPS_SERVICE'
-[Unit]
-Description=Preparar BetterDiscord e Spicetify nos perfis dos aplicativos
-After=graphical-session.target
-PartOf=graphical-session.target
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/libexec/callas-apps-pos-login
-TimeoutStartSec=25min
-APPS_SERVICE
-
-cat > /mnt/usr/lib/systemd/user/callas-apps-pos-login.timer <<'APPS_TIMER'
-[Unit]
-Description=Verificar os complementos dos aplicativos durante a sessão
-PartOf=graphical-session.target
-
-[Timer]
-OnActiveSec=3min
-OnUnitInactiveSec=5min
-APPS_TIMER
-
+chmod 0755 /mnt/usr/local/libexec/{put-update,callas-inicio-kde,callas-kde-desligamento-login,callas-nekofetch}
 install -d /mnt/etc/xdg
 cat > /mnt/etc/xdg/kicker-extra-favoritesrc <<'KICKER_FAVORITES'
 [General]
@@ -2483,7 +2136,6 @@ if como_usuario git clone --depth 1 https://aur.archlinux.org/paru-bin.git "$tem
     rm -f -- "$chave_spotify"
     aviso 'A chave do Spotify não pôde ser verificada ou importada.'
   fi
-  instalar_aur spicetify-cli || :
   if instalar_aur xone-dkms xone-dongle-firmware; then
     # O uname do chroot ainda retorna o kernel da ISO. Verifica o kernel do disco.
     for pkgbase in /usr/lib/modules/*/pkgbase; do
@@ -2544,29 +2196,6 @@ como_usuario "$libexec/callas-inicio-kde" || aviso 'Não consegui aplicar o iní
 "$libexec/put-update" --instalar-para "$usuario" || aviso 'Não consegui instalar o atualizador do sistema.'
 como_usuario "$libexec/callas-nekofetch" || aviso 'Não consegui configurar o Nekofetch.'
 
-# Apenas o usuário da instalação ganha acesso para o Spicetify modificar os recursos.
-if pacman -Qq spotify >/dev/null && [[ -d /opt/spotify/Apps ]]; then
-  install -d /etc/pacman.d/hooks
-  cat > /etc/pacman.d/hooks/99-callas-spotify.hook <<SPOTIFY_HOOK
-[Trigger]
-Operation = Install
-Operation = Upgrade
-Type = Package
-Target = spotify
-
-[Action]
-Description = Ajustando permissões dos recursos do Spotify para Spicetify...
-When = PostTransaction
-Exec = /usr/local/libexec/callas-spotify-permissoes $usuario
-SPOTIFY_HOOK
-  "$libexec/callas-spotify-permissoes" "$usuario" || aviso 'Não consegui configurar as permissões do Spotify.'
-fi
-
-# A ativação de BetterDiscord e Spicetify depende dos perfis gerados pelos apps.
-install -d "$home/.config/systemd/user/graphical-session.target.wants"
-ln -sfn /usr/lib/systemd/user/callas-apps-pos-login.timer \
-  "$home/.config/systemd/user/graphical-session.target.wants/callas-apps-pos-login.timer"
-chown -R "$usuario:$usuario" "$home/.config/systemd"
 CALLAS_CHROOT
 
 # Senhas pelo stdin, sem interpolar em código ou passar na linha de comando.
