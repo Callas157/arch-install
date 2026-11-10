@@ -262,19 +262,15 @@ curl -fsSL "$CALLAS_ASSET_BASE/login/background.jpg" \
 curl -fsSL "$CALLAS_ASSET_BASE/lockscreen/background.jpg" \
   -o /mnt/usr/share/callas-os/lockscreen/background.jpg
 
-# Coleção Callas OS: 19 wallpapers instalados como pacotes reconhecíveis pelo KDE.
+# Coleção de wallpapers de desktop do Callas OS. Artes exclusivas de boot/login não entram no seletor do KDE.
 CALLAS_WALLPAPERS=(
-  callas-wallpaper-01-boot-blue.jpg
   callas-wallpaper-02-city-neon.jpg
   callas-wallpaper-03-cosmic.jpg
   callas-wallpaper-04-cyber-shield.jpg
   callas-wallpaper-05-dark-minimal.jpg
   callas-wallpaper-06-futuristic.jpg
   callas-wallpaper-07-gamer-corridor.jpg
-  callas-wallpaper-08-grub-concept.jpg
   callas-wallpaper-09-hardware-tech.jpg
-  callas-wallpaper-10-loading-concept.jpg
-  callas-wallpaper-11-login-concept.jpg
   callas-wallpaper-12-moon-lake.jpg
   callas-wallpaper-13-mountains-crest.jpg
   callas-wallpaper-14-mountains-moon.jpg
@@ -1573,6 +1569,24 @@ ajustar_tema_sddm() {
         /^[[:space:]]*\/\/ Callas KDE: inicio do login por tela[[:space:]]*$/ { bloco = 1; next }
         /^[[:space:]]*\/\/ Callas KDE: fim do login por tela[[:space:]]*$/ { bloco = 0; next }
         bloco || /^import QtQuick.Window \/\/ Callas KDE$/ { next }
+
+        # O Breeze usa WallpaperFader para escurecer/desfocar o fundo enquanto
+        # os controles de login estão visíveis. Mantemos a imagem original nítida.
+        /^[[:space:]]*WallpaperFader[[:space:]]*\{/ { fader = 1 }
+        acao == "desfazer" && /visible:[[:space:]]*false[[:space:]]*\/\/ Callas KDE: wallpaper nitido/ {
+            sub(/visible:[[:space:]]*false[[:space:]]*\/\/ Callas KDE: wallpaper nitido/,
+                "visible: config.type == \"image\"")
+            print
+            fader = 0
+            next
+        }
+        acao == "aplicar" && fader && /^[[:space:]]*visible:[[:space:]]*config\.type[[:space:]]*==[[:space:]]*[\"'\'' ]image[\"'\'' ]/ {
+            sub(/visible:.*/, "visible: false // Callas KDE: wallpaper nitido")
+            print
+            fader = 0
+            next
+        }
+
         {
             if (acao == "aplicar" && ! importado && /^import QtQuick([[:space:]]|$)/) {
                 print "import QtQuick.Window // Callas KDE"
@@ -2490,19 +2504,26 @@ como_usuario env LANG="$locale" xdg-user-dirs-update || aviso 'Não consegui pre
 como_usuario env QT_QPA_PLATFORM=offscreen dbus-run-session -- plasma-apply-lookandfeel --apply org.kde.breezedark.desktop ||
   aviso 'Não consegui aplicar o tema Brisa Escuro.'
 
+# Captura estilo Windows: Super+Shift+S abre a seleção retangular do Spectacle.
+# O modo de região do Spectacle pode atravessar todos os monitores.
+como_usuario kwriteconfig6 --file kglobalshortcutsrc \
+  --group org.kde.spectacle.desktop \
+  --key RectangularRegionScreenShot \
+  'Meta+Shift+S,Meta+Shift+Print,Capture Rectangular Region' ||
+  aviso 'Não consegui configurar Super+Shift+S para o Spectacle.'
+
 # Fundo padrão da tela de bloqueio do Callas OS.
 como_usuario kwriteconfig6 --file kscreenlockerrc \
   --group Greeter --group Wallpaper --group org.kde.image --group General \
   --key Image "file:///usr/share/callas-os/lockscreen/background.jpg" ||
   aviso 'Não consegui definir o wallpaper da tela de bloqueio.'
 
-# Tenta deixar o Dark Minimal como wallpaper inicial sem impedir a instalação se
-# o Plasma ainda não tiver criado a configuração da área de trabalho.
+# Wallpaper inicial do Callas OS: montanhas, lua azul e logo central.
 if command -v plasma-apply-wallpaperimage >/dev/null; then
   como_usuario env QT_QPA_PLATFORM=offscreen dbus-run-session -- \
     plasma-apply-wallpaperimage \
-    /usr/share/wallpapers/CallasOS-callas-wallpaper-05-dark-minimal/contents/images/1920x1080.jpg ||
-    aviso 'Os wallpapers Callas OS foram instalados, mas o wallpaper inicial precisa ser escolhido no KDE.'
+    /usr/share/wallpapers/CallasOS-callas-wallpaper-14-mountains-moon/contents/images/1920x1080.jpg ||
+    aviso 'O wallpaper inicial do Callas OS precisa ser escolhido manualmente no KDE.'
 fi
 como_usuario "$libexec/callas-inicio-kde" || aviso 'Não consegui aplicar o início de sessão do KDE.'
 "$libexec/callas-kde-desligamento-login" --preparar-instalacao ||
