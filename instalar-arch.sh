@@ -203,7 +203,7 @@ mount --mkdir -o fmask=0077,dmask=0077 "$EFI" /mnt/boot
 # ---------------- Instalação base ----------------
 echo ">>> Instalando pacotes (isso demora)"
 pacstrap -K /mnt \
-  base linux linux-firmware "$UCODE_PACKAGE" base-devel sudo nano git curl gnupg acl grub efibootmgr \
+  base linux linux-firmware "$UCODE_PACKAGE" base-devel sudo nano git curl gnupg acl grub efibootmgr libjpeg-turbo \
   linux-headers dkms pciutils usbutils \
   networkmanager "${REDE_PACOTES[@]}" \
   plasma-desktop sddm sddm-kcm plasma-nm plasma-pa kscreen powerdevil xorg-xwayland \
@@ -1580,7 +1580,7 @@ ajustar_tema_sddm() {
             fader = 0
             next
         }
-        acao == "aplicar" && fader && /^[[:space:]]*visible:[[:space:]]*config\.type[[:space:]]*==[[:space:]]*"image"/ {
+        acao == "aplicar" && fader && /^[[:space:]]*visible:[[:space:]]*config\.type[[:space:]]*={2,3}[[:space:]]*"image"/ {
             sub(/visible:.*/, "visible: false // Callas KDE: wallpaper nitido")
             print
             fader = 0
@@ -2301,11 +2301,19 @@ fi
 mkinitcpio -P
 test -s /boot/vmlinuz-linux && test -s /boot/initramfs-linux.img
 
-# Tema gráfico Callas OS. A estrutura do boot não muda; só a camada visual.
+# Tema gráfico Callas OS. O asset original do fundo pode ser JPEG progressivo,
+# formato que costuma falhar no GRUB. Convertemos para JPEG baseline antes do boot.
 install -d /boot/grub/themes/callas
 install -m 0644 /usr/share/callas-os/grub/theme.txt /boot/grub/themes/callas/theme.txt
 install -m 0644 /usr/share/callas-os/grub/logo.png /boot/grub/themes/callas/logo.png
-install -m 0644 /usr/share/callas-os/grub/background.jpg /boot/grub/themes/callas/background.jpg
+if jpegtran -copy none -optimize \
+    -outfile /boot/grub/themes/callas/background.jpg \
+    /usr/share/callas-os/grub/background.jpg; then
+  chmod 0644 /boot/grub/themes/callas/background.jpg
+else
+  echo "ERRO: não consegui converter o background do GRUB para JPEG baseline." >&2
+  exit 1
+fi
 
 # GRUB UEFI: instalação limpa experimental, preservando a partição EFI em /boot.
 # Plymouth permanece integrado ao initramfs; sem atrasos artificiais no carregamento.
@@ -2518,14 +2526,50 @@ como_usuario kwriteconfig6 --file kscreenlockerrc \
   --key Image "file:///usr/share/callas-os/lockscreen/background.jpg" ||
   aviso 'Não consegui definir o wallpaper da tela de bloqueio.'
 
-# Wallpaper inicial do Callas OS: montanhas, lua azul e logo central.
-if command -v plasma-apply-wallpaperimage >/dev/null; then
-  como_usuario env QT_QPA_PLATFORM=offscreen dbus-run-session -- \
-    plasma-apply-wallpaperimage \
-    /usr/share/wallpapers/CallasOS-callas-wallpaper-14-mountains-moon/contents/images/1920x1080.jpg ||
-    aviso 'O wallpaper inicial do Callas OS precisa ser escolhido manualmente no KDE.'
-fi
+# A configuração de sessão vazia é preparada ainda no chroot.
 como_usuario "$libexec/callas-inicio-kde" || aviso 'Não consegui aplicar o início de sessão do KDE.'
+
+# O wallpaper precisa de um plasmashell real em execução. Em vez de tentar aplicar
+# no chroot/offscreen, fazemos isso uma única vez no primeiro login do usuário.
+cat > "$libexec/callas-wallpaper-primeiro-login" <<'CALLAS_FIRST_WALLPAPER'
+#!/usr/bin/bash
+set -u
+
+imagem=/usr/share/wallpapers/CallasOS-callas-wallpaper-14-mountains-moon/contents/images/1920x1080.jpg
+estado="${XDG_STATE_HOME:-$HOME/.local/state}/callas"
+atalho="${XDG_CONFIG_HOME:-$HOME/.config}/autostart/callas-wallpaper-inicial.desktop"
+marcador="$estado/wallpaper-inicial-aplicado"
+
+[[ -f "$marcador" ]] && { rm -f -- "$atalho"; exit 0; }
+[[ -r "$imagem" ]] || exit 1
+command -v plasma-apply-wallpaperimage >/dev/null || exit 1
+
+for _ in {1..30}; do
+  pgrep -u "$EUID" -x plasmashell >/dev/null && break
+  sleep 1
+done
+pgrep -u "$EUID" -x plasmashell >/dev/null || exit 1
+sleep 2
+
+if plasma-apply-wallpaperimage "$imagem"; then
+  mkdir -p -- "$estado"
+  : > "$marcador"
+  rm -f -- "$atalho"
+fi
+CALLAS_FIRST_WALLPAPER
+chmod 0755 "$libexec/callas-wallpaper-primeiro-login"
+
+cat > "$home/.config/autostart/callas-wallpaper-inicial.desktop" <<'CALLAS_FIRST_WALLPAPER_DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Aplicar wallpaper inicial do Callas OS
+Exec=/usr/local/libexec/callas-wallpaper-primeiro-login
+OnlyShowIn=KDE;
+NoDisplay=true
+StartupNotify=false
+X-KDE-AutostartScript=true
+CALLAS_FIRST_WALLPAPER_DESKTOP
+chown "$usuario:$usuario" "$home/.config/autostart/callas-wallpaper-inicial.desktop"
 "$libexec/callas-kde-desligamento-login" --preparar-instalacao ||
   aviso 'O ajuste de desligamento ou do tema de login precisa ser conferido.'
 "$libexec/put-update" --instalar-para "$usuario" || aviso 'Não consegui instalar o atualizador do sistema.'
