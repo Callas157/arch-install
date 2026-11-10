@@ -1,89 +1,333 @@
-# Arch Install Callas Os
+# Callas OS
 
 > [!CAUTION]
-Ainda experimental e passando por mudanças constantes podendo passar por momentos de instabilidades teste por sua conta e risco
+> Projeto experimental, em evolução constante e sujeito a mudanças. Use por sua conta e risco e mantenha backup dos seus arquivos importantes.
 
-Instalador automático do **Arch Linux com KDE Plasma em Wayland**, em português do Brasil, com tema escuro e programas de jogos, gravação e uso diário. Funciona com processadores **AMD ou Intel** e seleciona a configuração gráfica conforme o hardware detectado.
+O **Callas OS** é uma instalação automatizada do **Arch Linux com KDE Plasma em Wayland**, em português do Brasil, voltada para jogos, uso diário, gravação, periféricos e personalização do sistema.
+
+O instalador parte da **ISO oficial do Arch Linux**, detecta o hardware disponível e monta o sistema automaticamente com o conjunto de drivers, aplicativos, serviços e personalizações compatíveis com a máquina.
 
 ## Como usar
 
 > [!CAUTION]
-> **O instalador apaga todas as partições e todos os dados do disco escolhido.** Faça backup antes e confira o tamanho e o modelo do disco na tela. A instalação usa o disco inteiro.
+> **O instalador apaga todas as partições e todos os dados do disco escolhido.** Faça backup antes de começar e confira com atenção o tamanho e o modelo do disco exibido na tela. A instalação usa o disco inteiro.
 
-Inicie pela **ISO oficial do Arch Linux**, em modo **UEFI**, com internet. De preferência, use cabo de rede. No terminal da ISO, como `root`, rode o comando com o **link curto**.
+Inicie o computador pela **ISO oficial do Arch Linux**, em modo **UEFI**, com acesso à internet. De preferência, use cabo de rede.
+
+No terminal da ISO, como `root`, rode:
 
 ```bash
 bash <(curl -sL is.gd/archcallas157)
 ```
 
-Se o link curto falhar, use o link direto do GitHub.
+Se o link curto falhar, use o link direto do GitHub:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/Callas157/arch-install/main/instalar-arch.sh)
 ```
 
 > [!NOTE]
-> Em uma máquina virtual, habilite **EFI** nas configurações da VM e inicie pela ISO do Arch. Para placas NVIDIA detectadas, o instalador usa `nvidia-open`, que exige uma GPU compatível com esse driver.
+> Em uma máquina virtual, habilite **EFI/UEFI** nas configurações da VM antes de iniciar pela ISO do Arch.
 
-## O que o script pergunta
+## O que o instalador pergunta
 
-1. **Em qual disco instalar.** Ele lista os discos com tamanho e modelo pra facilitar a identificação.
-2. **Nome do usuário.** Use minúsculas e evite espaços.
-3. **Senha.** Digite duas vezes pra confirmar. A mesma senha inicial será usada para o seu usuário e para a conta `root`. É normal o terminal ficar em branco enquanto você digita.
+Durante a instalação, o script pede apenas as informações essenciais:
 
-Quando aparecer **Instalação concluída**, remova o pendrive ou desmonte a ISO da VM e digite `reboot`.
+1. **Disco de destino** — mostra os discos disponíveis com tamanho e modelo.
+2. **Nome do usuário** — use letras minúsculas e sem espaços.
+3. **Senha** — digitada duas vezes para confirmação. A mesma senha inicial é aplicada ao usuário criado e à conta `root`.
 
-## O que o instalador configura
+É normal o terminal não mostrar caracteres enquanto a senha está sendo digitada.
 
-### Boot e sistema
+Quando aparecer **Instalação concluída**, remova o pendrive ou desmonte a ISO da máquina virtual e execute `reboot`.
 
-- Cria uma tabela **GPT** com uma partição EFI de **1 GiB** em FAT32, montada em `/boot`, e uma partição **ext4** para o sistema no restante do disco.
-- Instala o kernel `linux`, o firmware, os cabeçalhos para DKMS e o microcódigo correspondente ao processador AMD ou Intel.
-- Configura o **systemd-boot** com **3 segundos** de menu. Depois que o Arch começa a carregar, o **Plymouth** exibe o escudo do dragão azul do projeto. O menu também oferece uma entrada de diagnóstico com inicialização em texto.
-- Define português do Brasil, fuso de São Paulo, teclado EUA Internacional, pastas do usuário em português e acesso ao `sudo` pelo grupo `wheel`.
-- Habilita NetworkManager, Bluetooth, sincronização de horário, TRIM periódico e swap comprimida com **zram**. Inclui suporte a Wi-Fi conforme o adaptador detectado.
+## Detecção automática de hardware
 
-### KDE Plasma
+O instalador identifica o hardware antes de montar o sistema e adapta a instalação automaticamente.
 
-- Aplica o **Brisa Escuro**, configura o **SDDM em Wayland** e ativa a integração da **Carteira KDE** com o login. Se a carteira precisar ser criada, o assistente pode aparecer no primeiro acesso.
-- Configura o formulário de login na tela principal, com o wallpaper nas outras telas. A contagem de desligamento e reinício do KDE é ajustada para **5 segundos**.
-- Inicia uma sessão vazia. **Steam** abre em modo silencioso, **Discord** minimizado e **Solaar** na bandeja. O perfil do **Digital Vibrance** é aplicado quando o utilitário está disponível. Brave e Spotify ficam fechados no login.
-- Usa o escudo Callas no menu Super e fixa Dolphin e Brave no painel, conforme a disponibilidade.
+### Processador
 
-### Gráficos, jogos e gravação
+- Detecta processadores **AMD** e **Intel**.
+- Instala automaticamente o microcódigo correspondente:
+  - `amd-ucode`
+  - `intel-ucode`
 
-| Componente | Configuração |
+### Placa de vídeo
+
+O Callas OS identifica o fabricante da GPU e prepara os drivers e bibliotecas adequados.
+
+| GPU detectada | Configuração aplicada |
 | --- | --- |
-| **NVIDIA** | Instala `nvidia-open` e os utilitários NVIDIA quando detecta uma GPU da marca. Carrega os módulos gráficos no initramfs e tenta instalar o Digital Vibrance. |
-| **Mesa e máquinas virtuais** | Em sistemas sem NVIDIA detectada, usa Mesa. O driver Vulkan acompanha a GPU detectada, com renderização por software disponível para configurações sem driver Vulkan específico. |
-| **Steam e ProtonPlus** | Instala a Steam nativa com suporte a bibliotecas de 32 bits via `multilib` e tenta instalar o ProtonPlus pelo Flathub. |
-| **GPU Screen Recorder** | Tenta instalar o gravador e a interface GTK via Paru. O início automático do overlay depende de a rotina encontrar a interface separada `gsr-ui` (pacote `gpu-screen-recorder-ui`) ou a versão Flatpak. |
-| **Shotcut** | Instalado pelos repositórios do Arch. |
+| **NVIDIA** | Instala `nvidia-open`, `nvidia-utils`, `nvidia-settings`, `egl-wayland`, suporte Vulkan e bibliotecas de 32 bits para jogos. |
+| **AMD Radeon** | Usa **Mesa + RADV**, com `vulkan-radeon` e bibliotecas Vulkan de 32 bits. |
+| **Intel** | Usa **Mesa + ANV**, com `vulkan-intel` e bibliotecas Vulkan de 32 bits. |
+| **Máquina virtual / GPU genérica** | Usa Mesa e seleciona Vulkan virtual ou renderização por software quando necessário. |
 
-### Periféricos e aplicativos
+O instalador também consegue lidar com máquinas que apresentam **mais de uma GPU**, adicionando os componentes compatíveis com cada fabricante encontrado.
 
-- **Solaar nativo**, com tema escuro e permissões para dispositivos Logitech compatíveis, como o G733. A variante Flatpak fica com os ajustes de tema e acesso preparados para quem instalar essa versão.
-- **Receptor USB Xbox Wireless** com `xone-dkms` e `xone-dongle-firmware`. O script confere o módulo no kernel instalado e tenta recompilá-lo se necessário.
-- **Discord nativo** com configuração automática do **BetterDiscord** quando o perfil estiver pronto. O atualizador reabre o Discord minimizado se precisar fechá-lo durante a atualização.
-- **Spotify nativo** com **Spicetify** e **Marketplace**. A personalização é aplicada automaticamente depois que o Spotify cria o perfil e o app está fechado.
-- **Brave**, **qBittorrent**, **Flatpak** com Flathub e tentativa de instalação do **Bazaar**. O **Ark** recebe suporte a RAR, ZIP e 7z, entre outros formatos.
+### Water cooler Rise Mode
 
-### Paru, Fastfetch e Nekofetch
+O instalador procura automaticamente o dispositivo USB **Rise Mode Aura Ice Black**, identificado por `aa88:8666`.
 
-- **Paru** é preparado a partir do pacote `paru-bin` e usado tanto na instalação inicial quanto na etapa de atualização dos pacotes do AUR. A permissão temporária de instalação é removida ao terminar essa etapa.
-- **Fastfetch** vem dos repositórios do Arch. O **Nekofetch** é instalado com `uv` e aparece ao abrir um terminal Bash interativo. O layout inclui kernel, ambiente gráfico, resolução, taxa de atualização, GPU, driver e **VRAM dedicada usada e total** quando o driver fornece esses dados.
+- **Se o dispositivo for encontrado:** instala as dependências necessárias, configura Rust, baixa o `risemode-driver`, compila o driver, instala a regra udev e habilita o serviço `risemode-driver.service` para iniciar automaticamente com o sistema.
+- **Se o dispositivo não for encontrado:** essa etapa é totalmente ignorada e a instalação continua normalmente.
+- **Se o dispositivo for detectado, mas a compilação falhar:** o erro é registrado como aviso e a instalação principal continua.
+
+## Particionamento, boot e sistema base
+
+O instalador:
+
+- cria uma tabela de partição **GPT**;
+- cria uma partição EFI de **1 GiB** em FAT32, montada em `/boot`;
+- usa **ext4** no restante do disco;
+- instala o kernel `linux`, firmware e cabeçalhos necessários para DKMS;
+- configura português do Brasil;
+- usa o fuso horário **America/Sao_Paulo**;
+- configura teclado **EUA Internacional**;
+- prepara as pastas do usuário em português;
+- habilita `sudo` para o grupo `wheel`;
+- habilita **NetworkManager**;
+- habilita **Bluetooth**;
+- ativa sincronização automática de horário;
+- ativa **TRIM periódico**;
+- configura **zram** com compressão;
+- adiciona os pacotes de rede necessários conforme o hardware detectado.
+
+## GRUB Callas OS
+
+O sistema usa **GRUB em UEFI** com identidade visual própria do Callas OS.
+
+O instalador:
+
+- instala o GRUB na partição EFI;
+- cria também o caminho UEFI de fallback `EFI/BOOT/BOOTX64.EFI`;
+- usa menu com **3 segundos**;
+- aplica o tema visual do Callas OS;
+- carrega logo e background próprios;
+- mantém uma entrada de **diagnóstico sem splash**, útil caso seja necessário iniciar com mensagens visíveis;
+- preserva os parâmetros necessários para NVIDIA quando a placa é detectada.
+
+## Plymouth e carregamento
+
+Depois do GRUB, o **Plymouth** assume a tela de carregamento.
+
+O tema Callas OS inclui:
+
+- identidade visual própria;
+- logo do projeto;
+- background dedicado;
+- indicador de progresso;
+- integração ao `initramfs`;
+- carregamento sem atraso artificial adicionado pelo tema.
+
+## KDE Plasma
+
+O sistema é instalado com **KDE Plasma em Wayland** e tema escuro.
+
+O instalador prepara:
+
+- **Brisa Escuro**;
+- login pelo **SDDM em Wayland**;
+- formulário de login concentrado no monitor principal;
+- demais monitores mantendo o wallpaper visível;
+- integração da **Carteira KDE** com o login;
+- sessão vazia ao entrar no Plasma;
+- tempo reduzido de desligamento e reinicialização;
+- ícone oficial do Callas OS no menu;
+- painel e atalhos iniciais personalizados.
+
+Na inicialização da sessão:
+
+- **Steam** abre silenciosamente;
+- **Discord** inicia minimizado;
+- **Solaar** fica disponível na bandeja;
+- **Digital Vibrance** é aplicado quando o utilitário está instalado;
+- **Brave** e **Spotify** não são restaurados automaticamente apenas porque estavam abertos antes do desligamento.
+
+## Identidade visual e wallpapers
+
+O instalador baixa os assets visuais diretamente do repositório do projeto.
+
+São instalados:
+
+- background próprio do **GRUB**;
+- background próprio do **Plymouth**;
+- background da **tela de login**;
+- background da **tela de bloqueio**;
+- coleção com **19 wallpapers Callas OS**.
+
+Os wallpapers ficam instalados em estrutura reconhecida pelo KDE e aparecem junto das opções de papel de parede do sistema.
+
+O instalador tenta aplicar o **Callas OS Dark Minimal** como wallpaper inicial, sem remover os wallpapers originais do KDE.
+
+## Jogos e gravação
+
+### Steam
+
+- Instala a **Steam nativa**.
+- Ativa o repositório `multilib`.
+- Instala bibliotecas gráficas de 32 bits adequadas à GPU detectada.
+- Instala suporte Vulkan correspondente ao hardware.
+
+### ProtonPlus
+
+O instalador tenta instalar o **ProtonPlus** pelo Flathub para facilitar o gerenciamento de versões do Proton e ferramentas relacionadas.
+
+### GPU Screen Recorder
+
+O instalador tenta instalar:
+
+- `gpu-screen-recorder`
+- `gpu-screen-recorder-gtk`
+
+Quando a interface compatível está disponível, os ajustes de integração são preparados para o ambiente KDE.
+
+### Shotcut
+
+O **Shotcut** é instalado pelos repositórios do Arch.
+
+## Periféricos
+
+### Logitech / Solaar
+
+O instalador inclui **Solaar nativo** e prepara permissões udev para dispositivos Logitech compatíveis.
+
+Também aplica o tema escuro e deixa ajustes preparados para a variante Flatpak caso ela seja utilizada no futuro.
+
+### Xbox Wireless
+
+Para receptor USB Xbox Wireless, o instalador tenta instalar:
+
+- `xone-dkms`
+- `xone-dongle-firmware`
+
+O módulo é conferido no kernel instalado e recompilado via DKMS quando necessário.
+
+## Aplicativos
+
+O Callas OS prepara um conjunto de aplicativos voltado a uso diário, jogos e multimídia.
+
+Entre eles:
+
+- **Brave**
+- **Discord**
+- **Spotify**
+- **Steam**
+- **qBittorrent**
+- **Shotcut**
+- **Solaar**
+- **Ark**
+- **Fastfetch**
+- **Nekofetch**
+- **ProtonPlus**
+- **Bazaar**
+- **GPU Screen Recorder**
+
+Também ficam disponíveis os componentes necessários para Flatpak e Flathub.
+
+## Discord e BetterDiscord
+
+O **Discord nativo** é instalado no sistema.
+
+O instalador também prepara a automação do **BetterDiscord**. Quando o perfil necessário já existe, a personalização pode ser aplicada automaticamente.
+
+O atualizador do sistema também consegue atualizar Discord e BetterDiscord e, quando necessário, fechar o Discord, aplicar a atualização e reabri-lo minimizado.
+
+## Spotify e Spicetify
+
+O instalador prepara:
+
+- **Spotify nativo**
+- **Spicetify**
+- **Marketplace**
+
+A personalização é aplicada quando o Spotify já criou os arquivos necessários para o perfil.
+
+Também existe uma rotina para reaplicar permissões necessárias após atualizações do Spotify.
+
+## Paru e AUR
+
+O **Paru** é preparado a partir do `paru-bin`.
+
+Ele é usado para instalar e atualizar pacotes disponíveis no AUR, incluindo componentes opcionais do ambiente.
+
+As permissões temporárias usadas durante a instalação são removidas depois da etapa correspondente.
+
+## Fastfetch e Nekofetch
+
+O sistema inclui **Fastfetch** e prepara o **Nekofetch** para aparecer automaticamente ao abrir um terminal Bash interativo.
+
+O layout pode exibir informações como:
+
+- sistema;
+- kernel;
+- KDE Plasma;
+- resolução;
+- taxa de atualização;
+- CPU;
+- GPU;
+- driver;
+- VRAM dedicada usada e total, quando o driver disponibiliza esses dados.
+
+## Digital Vibrance
+
+Em sistemas NVIDIA, o instalador tenta instalar o `nvibrant-bin`.
+
+Quando disponível, o Callas OS prepara o script de Digital Vibrance e sua execução junto da sessão.
 
 ## Atualizador do sistema
 
-Procure por **Atualizador do sistema** no menu do KDE. Ele já entra nos favoritos iniciais, e você pode remover o favorito e continuar encontrando o atualizador pela busca.
+O Callas OS instala um **Atualizador do sistema** pesquisável pelo menu do KDE.
+
+Ele também entra nos favoritos iniciais e pode ser removido dos favoritos sem perder o acesso pela pesquisa.
 
 | Atualização automática | Frequência | O que atualiza |
 | --- | --- | --- |
 | **Aplicativos** | Semanal, às **13h** | Flatpaks, Discord nativo e BetterDiscord. |
 | **Sistema** | Mensal, às **14h** | Pacotes oficiais do Arch e pacotes do AUR via Paru. |
 
-Se o PC perder o horário, a execução fica para a próxima tarde em que estiver ligado no horário previsto. Pelo menu, também dá pra atualizar manualmente o sistema, os aplicativos ou só Discord e BetterDiscord. Os registros são acrescentados ao arquivo `Documentos/Logs de Atualizações/atualizacoes.log`.
+Também é possível iniciar atualizações manualmente pelo menu.
 
-## Se algo ficar pendente
+Os registros são adicionados em:
 
-Erros em etapas essenciais, como particionamento, instalação da base ou configuração do boot, interrompem a instalação. Se uma etapa opcional falhar, confira os avisos do terminal e o arquivo `/var/log/callas-instalacao-avisos.log`, quando ele estiver presente no sistema instalado.
+`Documentos/Logs de Atualizações/atualizacoes.log`
+
+Se o computador estiver desligado no horário previsto, a rotina aguarda uma próxima oportunidade válida em vez de interromper o uso normal do sistema.
+
+## Segurança da instalação
+
+Etapas essenciais, como:
+
+- particionamento;
+- criação do sistema de arquivos;
+- instalação da base;
+- configuração do boot;
+- criação do GRUB;
+
+interrompem a instalação caso ocorram erros graves.
+
+Componentes opcionais, como determinados programas, integrações ou drivers adicionais, podem apenas registrar um aviso e permitir que a instalação principal continue.
+
+Os avisos da instalação ficam disponíveis, quando necessário, em:
+
+`/var/log/callas-instalacao-avisos.log`
+
+## Resumo
+
+O Callas OS automatiza uma instalação limpa do Arch Linux com foco em:
+
+- **KDE Plasma Wayland**
+- **GRUB personalizado**
+- **Plymouth personalizado**
+- **NVIDIA, AMD e Intel**
+- **Steam e jogos**
+- **Vulkan e bibliotecas de 32 bits**
+- **GPU Screen Recorder**
+- **Logitech / Solaar**
+- **Xbox Wireless / xone**
+- **Rise Mode automático**
+- **Discord + BetterDiscord**
+- **Spotify + Spicetify**
+- **Fastfetch + Nekofetch**
+- **atualizações automáticas**
+- **wallpapers e identidade visual Callas OS**
