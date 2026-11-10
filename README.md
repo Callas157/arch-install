@@ -144,7 +144,6 @@ Na inicialização da sessão:
 - **Digital Vibrance** é aplicado quando o utilitário está instalado;
 - **Brave** e **Spotify** não são restaurados automaticamente apenas porque estavam abertos antes do desligamento.
 
-
 ## Jogos e gravação
 
 ### Steam
@@ -210,25 +209,17 @@ Entre eles:
 
 Também ficam disponíveis os componentes necessários para Flatpak e Flathub.
 
-## Discord e BetterDiscord
+## Discord
 
 O **Discord nativo** é instalado no sistema.
 
-O instalador também prepara a automação do **BetterDiscord**. Quando o perfil necessário já existe, a personalização pode ser aplicada automaticamente.
+O atualizador do sistema também consegue atualizar o Discord e, quando necessário, fechar o aplicativo, aplicar a atualização e reabri-lo minimizado.
 
-O atualizador do sistema também consegue atualizar Discord e BetterDiscord e, quando necessário, fechar o Discord, aplicar a atualização e reabri-lo minimizado.
+## Spotify
 
-## Spotify e Spicetify
+O instalador inclui o **Spotify nativo** e prepara sua integração ao ambiente do sistema.
 
-O instalador prepara:
-
-- **Spotify nativo**
-- **Spicetify**
-- **Marketplace**
-
-A personalização é aplicada quando o Spotify já criou os arquivos necessários para o perfil.
-
-Também existe uma rotina para reaplicar permissões necessárias após atualizações do Spotify.
+Também existe uma rotina para manter as permissões necessárias após atualizações do aplicativo.
 
 ## Paru e AUR
 
@@ -268,7 +259,7 @@ Ele também entra nos favoritos iniciais e pode ser removido dos favoritos sem p
 
 | Atualização automática | Frequência | O que atualiza |
 | --- | --- | --- |
-| **Aplicativos** | Semanal, às **13h** | Flatpaks, Discord nativo e BetterDiscord. |
+| **Aplicativos** | Semanal, às **13h** | Flatpaks, Discord nativo. |
 | **Sistema** | Mensal, às **14h** | Pacotes oficiais do Arch e pacotes do AUR via Paru. |
 
 Também é possível iniciar atualizações manualmente pelo menu.
@@ -311,7 +302,7 @@ O Callas OS automatiza uma instalação limpa do Arch Linux com foco em:
 - **Logitech / Solaar**
 - **Xbox Wireless / xone**
 - **Rise Mode automático**
-- **Discord + BetterDiscord**
-- **Spotify + Spicetify**
+- **Discord**
+- **Spotify**
 - **Fastfetch + Nekofetch**
 - **atualizações automáticas**
