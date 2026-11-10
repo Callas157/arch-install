@@ -316,7 +316,6 @@ program=/usr/local/libexec/put-update
 atalho_menu=/usr/local/share/applications/io.github.Callas157.AtualizadorDoSistema.desktop
 servico_check=put-update-check.service
 timer_check=put-update-check.timer
-dia_sistema=10
 agenda_dir=/var/lib/put-update/agenda
 recuperacao_dir=/var/lib/put-update/recuperacao
 lock_atualizador=/run/put-update.lock
@@ -332,21 +331,12 @@ erro() {
 }
 
 proxima_data() {
-    local modo=$1 inicio=$2 hoje=$3 mes dia_atual
-    if [[ $modo == apps ]]; then
-        TZ=UTC0 date -d "$hoje +7 days" +%F
-        return
-    fi
-
-    # A atualização mensal do sistema usa sempre o dia 10.
-    mes=${hoje:0:7}
-    dia_atual=${hoje:8:2}
-    if (( 10#$dia_atual < dia_sistema )); then
-        printf '%s-%02d\n' "$mes" "$dia_sistema"
-    else
-        mes=$(TZ=UTC0 date -d "$mes-01 +1 month" +%Y-%m) || return
-        printf '%s-%02d\n' "$mes" "$dia_sistema"
-    fi
+    local modo=$1 base=$2
+    case $modo in
+        apps) TZ=UTC0 date -d "$base +7 days" +%F ;;
+        sistema) TZ=UTC0 date -d "$base +1 month" +%F ;;
+        *) erro 'Agenda inválida.' ;;
+    esac
 }
 
 ler_data_agenda() {
@@ -364,7 +354,7 @@ gravar_data_agenda() {
 }
 
 preparar_agenda() {
-    local inicio modo data existente
+    local inicio modo data
     install -d -m 0700 -- "$agenda_dir"
     if [[ ! -e $agenda_dir/inicio ]]; then
         data=$(date +%F)
@@ -373,39 +363,29 @@ preparar_agenda() {
     inicio=$(ler_data_agenda inicio)
     for modo in sistema apps; do
         if [[ ! -e $agenda_dir/$modo ]]; then
-            data=$(proxima_data "$modo" "$inicio" "$inicio")
+            data=$(proxima_data "$modo" "$inicio")
             gravar_data_agenda "$modo" "$data"
         fi
     done
-
-    # Versões antigas podiam ter o mensal em outro dia. Ao reparar o automático,
-    # normaliza a próxima execução mensal para o dia 10.
-    existente=$(ler_data_agenda sistema)
-    if [[ ${existente:8:2} != 10 ]]; then
-        data=$(proxima_data sistema "$inicio" "$(date +%F)")
-        gravar_data_agenda sistema "$data"
-    fi
 }
 
 executar_agendado() {
-    local usuario=$1 modo=$2 hoje vencimento inicio proxima
+    local usuario=$1 modo=$2 hoje vencimento proxima
     hoje=$(date +%F)
-    inicio=$(ler_data_agenda inicio)
     vencimento=$(ler_data_agenda "$modo")
 
-    # Se a máquina ficou desligada durante a data marcada, pula apenas as datas
-    # vencidas. A atualização automática só roda dentro das 24h da data agendada.
-    while [[ $vencimento < $hoje ]]; do
-        vencimento=$(proxima_data "$modo" "$inicio" "$vencimento")
-        gravar_data_agenda "$modo" "$vencimento"
-    done
-    [[ $hoje == "$vencimento" ]] || return 0
+    # A data funciona como vencimento, não como uma janela de 24 horas.
+    # Se o computador ficou desligado no dia previsto, a atualização roda
+    # no primeiro boot/verificação seguinte.
+    [[ $hoje < $vencimento ]] && return 0
 
-    # Registra a próxima data antes de atualizar para impedir repetição automática
-    # no mesmo dia caso a atualização falhe.
-    proxima=$(proxima_data "$modo" "$inicio" "$vencimento")
-    gravar_data_agenda "$modo" "$proxima"
-    registrar_atualizacao "$usuario" "$modo" automatico
+    if registrar_atualizacao "$usuario" "$modo" automatico; then
+        # O próximo ciclo começa no dia em que a atualização realmente terminou.
+        proxima=$(proxima_data "$modo" "$hoje")
+        gravar_data_agenda "$modo" "$proxima"
+    else
+        return 1
+    fi
 }
 
 verificar_agenda() {
@@ -646,6 +626,19 @@ marcar_reinicio_pendente() {
     fi
 }
 
+notificar_apps_usuario() {
+    local usuario=$1 home=$2 uid runtime
+    uid=$(id -u "$usuario") || return 1
+    runtime="/run/user/$uid"
+    [[ -S "$runtime/bus" ]] || return 0
+    runuser -u "$usuario" -- env \
+        HOME="$home" USER="$usuario" LOGNAME="$usuario" \
+        XDG_RUNTIME_DIR="$runtime" DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
+        notify-send -a 'Atualizador do sistema' -i system-software-update \
+        'Aplicativos atualizados' \
+        'Os aplicativos foram atualizados com sucesso.' >/dev/null 2>&1 || :
+
+
 atualizar_sistema() {
     local origem=$1
 
@@ -690,9 +683,14 @@ registrar_atualizacao() {
                     "$program" --discord-sessao || codigo=$?
                 ;;
         esac
-        if [[ $modo == sistema && $codigo -eq 0 ]]; then
-            marcar_reinicio_pendente "$usuario" "$home" ||
-                printf 'Aviso: não consegui preparar a notificação de reinício.\n' >&2
+        if [[ $codigo -eq 0 ]]; then
+            if [[ $modo == sistema ]]; then
+                marcar_reinicio_pendente "$usuario" "$home" ||
+                    printf 'Aviso: não consegui preparar a notificação de reinício.\n' >&2
+            elif [[ $modo == apps ]]; then
+                notificar_apps_usuario "$usuario" "$home" ||
+                    printf 'Aviso: não consegui exibir a notificação dos aplicativos.\n' >&2
+            fi
         fi
         printf '===== Fim da atualização | %s | código %s =====\n' "$(date -Is)" "$codigo"
         return "$codigo"
@@ -872,9 +870,9 @@ REBOOT_DESKTOP
     fi
 
     printf '\nAgendamento automático configurado.\n'
-    printf 'Próxima atualização do sistema: %s (qualquer horário do dia).\n' "$(ler_data_agenda sistema)"
-    printf 'Próxima atualização dos aplicativos: %s (qualquer horário do dia).\n' "$(ler_data_agenda apps)"
-    printf 'A agenda é verificada no boot e periodicamente enquanto o PC estiver ligado.\n'
+    printf 'Atualização mensal do sistema vence em: %s.\n' "$(ler_data_agenda sistema)"
+    printf 'Atualização semanal dos aplicativos vence em: %s.\n' "$(ler_data_agenda apps)"
+    printf 'Se o PC estiver desligado no vencimento, a atualização roda no primeiro boot/verificação seguinte.\n'
     como_usuario "$usuario" "$home" "$program" --instalar-atalhos
     if pasta=$(como_usuario "$usuario" "$home" "$program" --log-dir); then
         printf 'Log em Documentos: %s/atualizacoes.log\n' "$pasta"
