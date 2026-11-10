@@ -2328,6 +2328,63 @@ fi
 limpar_aur
 trap - EXIT
 
+# ---------------- Brave + Bonjourr ----------------
+# Bonjourr é pré-instalado pela política do Brave. As preferências abaixo
+# funcionam como padrão do Callas OS e continuam alteráveis pelo usuário.
+install -d /etc/brave/policies/managed /etc/brave/policies/recommended /usr/share/callas-os
+
+cat > /etc/brave/policies/managed/callas-bonjourr.json <<'CALLAS_BRAVE_EXTENSION'
+{
+  "ExtensionSettings": {
+    "dlnejlppicbjfcfcedcflplfjajinajd": {
+      "installation_mode": "normal_installed",
+      "update_url": "https://clients2.google.com/service/update2/crx"
+    }
+  }
+}
+CALLAS_BRAVE_EXTENSION
+
+cat > /etc/brave/policies/recommended/callas-defaults.json <<'CALLAS_BRAVE_DEFAULTS'
+{
+  "RestoreOnStartup": 5,
+  "ShowHomeButton": true,
+  "HomepageIsNewTabPage": true,
+  "BookmarkBarEnabled": true
+}
+CALLAS_BRAVE_DEFAULTS
+
+curl -fsSL --retry 2 "$CALLAS_ASSET_BASE/bonjourr/callas-profile.json"   -o /usr/share/callas-os/bonjourr-profile.json ||
+  aviso 'Não consegui baixar o perfil padrão do Bonjourr.'
+
+# Preferências que não possuem política própria no Brave são pré-carregadas no
+# primeiro perfil. No Linux, false em browser.custom_chrome_frame significa
+# usar barra de título e bordas do sistema.
+if [[ -d /opt/brave-bin ]]; then
+  BRAVE_INITIAL=/opt/brave-bin/initial_preferences
+  python3 - "$BRAVE_INITIAL" <<'CALLAS_BRAVE_PREFS'
+import json, os, sys
+path=sys.argv[1]
+data={}
+try:
+    with open(path, "r", encoding="utf-8") as f:
+        data=json.load(f)
+except Exception:
+    data={}
+data.setdefault("browser", {})["custom_chrome_frame"]=False
+data["browser"]["show_home_button"]=True
+data["homepage_is_newtabpage"]=True
+data.setdefault("bookmark_bar", {})["show_on_all_tabs"]=True
+data.setdefault("tab_search", {})["pinned_to_tabstrip"]=True
+data.setdefault("everything_menu", {})["pinned_to_tabstrip"]=True
+actions=data.setdefault("toolbar", {}).setdefault("pinned_actions", [])
+if "kActionTabSearch" not in actions:
+    actions.append("kActionTabSearch")
+os.makedirs(os.path.dirname(path), exist_ok=True)
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(data, f, ensure_ascii=False, indent=2)
+CALLAS_BRAVE_PREFS
+fi
+
 if command -v nvibrant >/dev/null; then
   cat > "$home/.local/bin/DigitalVibrance.sh" <<'VIBRANCE'
 #!/usr/bin/bash
