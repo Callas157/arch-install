@@ -1227,6 +1227,39 @@ for aviso in avisos:
 print("Sessão vazia configurada para o próximo login no KDE.")
 PY
 CALLAS_KDE_START
+
+cat > "/mnt/usr/local/libexec/callas-limpar-atalho-ixin" <<'CALLAS_IXIN_DESKTOP'
+#!/usr/bin/env bash
+set -u
+
+desktop=$(xdg-user-dir DESKTOP 2>/dev/null || true)
+[[ $desktop == /* ]] || desktop="$HOME/Desktop"
+
+# O IXin/IXLauncher pode recriar o lançador alguns segundos depois do login.
+# Remove apenas cópias na Área de Trabalho; a entrada do menu em
+# ~/.local/share/applications ou /usr/share/applications é preservada.
+for _ in {1..6}; do
+    if [[ -d $desktop ]]; then
+        find "$desktop" -maxdepth 1 -type f \( \
+            -iname '*ixin*.desktop' -o \
+            -iname '*ixlauncher*.desktop' \
+        \) -delete 2>/dev/null || true
+    fi
+    sleep 10
+done
+CALLAS_IXIN_DESKTOP
+chmod 0755 /mnt/usr/local/libexec/callas-limpar-atalho-ixin
+
+cat > "/mnt/etc/xdg/autostart/callas-limpar-atalho-ixin.desktop" <<'CALLAS_IXIN_AUTOSTART'
+[Desktop Entry]
+Type=Application
+Name=Limpar atalho do IXin
+Exec=/usr/local/libexec/callas-limpar-atalho-ixin
+OnlyShowIn=KDE;
+NoDisplay=true
+StartupNotify=false
+CALLAS_IXIN_AUTOSTART
+
 cat > "/mnt/usr/local/libexec/callas-kde-desligamento-login" <<'CALLAS_KDE_LOGIN'
 #!/usr/bin/env bash
 # Arch Linux e Plasma Wayland, com Plasma Login Manager ou SDDM.
