@@ -228,7 +228,19 @@ Também é possível executar manualmente pelo Atualizador do sistema:
 
 - atualização dos aplicativos;
 - atualização completa do Arch/AUR;
-- atualização do Discord.
+- atualização do Discord;
+- atualização das configurações do Callas OS.
+
+### Atualizar configurações do Callas OS
+
+Essa opção baixa a versão mais recente do script de migrações do projeto e aplica apenas mudanças consideradas seguras para uma instalação já existente, como ajustes do KDE, favoritos, atalhos, autostart, wallpapers, Flatpaks e scripts auxiliares.
+
+> [!WARNING]
+> Essa atualização pode reaplicar padrões do Callas OS e alterar preferências que o usuário tenha personalizado manualmente, como comportamento do KDE, atalhos, favoritos ou wallpapers. Antes de aplicar, o atualizador mostra um aviso e pede confirmação.
+
+O processo cria um backup das configurações que serão alteradas e registra a versão aplicada em `/var/lib/callas-os/config-version`.
+
+Mudanças críticas, como particionamento, sistema de arquivos, troca de bootloader ou alterações de EFI, **não são aplicadas por esse mecanismo**. Essas mudanças exigem tratamento específico ou uma instalação limpa.
 
 ---
 
