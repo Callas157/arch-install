@@ -20,7 +20,7 @@ HOSTNAME="arch"
 FUSO="America/Sao_Paulo"
 LOCALE="pt_BR.UTF-8"
 TECLADO="us-acentos"   # console: EUA Internacional (com acentos)
-CALLAS_ASSET_REF="${CALLAS_ASSET_REF:-beta-visual-callas}"
+CALLAS_ASSET_REF="${CALLAS_ASSET_REF:-main}"
 CALLAS_ASSET_BASE="https://raw.githubusercontent.com/Callas157/arch-install/${CALLAS_ASSET_REF}/assets"
 # -----------------------------------------------
 
