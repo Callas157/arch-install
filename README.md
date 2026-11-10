@@ -1,11 +1,8 @@
 # Arch Install Callas OS
 
-> [!CAUTION]
-> Projeto experimental, em evolução constante e sujeito a mudanças. Use por sua conta e risco e mantenha backup dos seus arquivos importantes.
+O **Callas OS** é uma instalação automatizada do **Arch Linux com KDE Plasma em Wayland**, em português do Brasil, voltada para jogos, uso diário, gravação, periféricos e uma experiência visual própria.
 
-O **Callas OS** é uma instalação automatizada do **Arch Linux com KDE Plasma em Wayland**, em português do Brasil, voltada para jogos, uso diário, gravação, periféricos e personalização do sistema.
-
-O instalador parte da **ISO oficial do Arch Linux**, detecta o hardware disponível e monta o sistema automaticamente com o conjunto de drivers, aplicativos, serviços e personalizações compatíveis com a máquina.
+O instalador parte da **ISO oficial do Arch Linux**, detecta o hardware disponível e monta automaticamente o sistema com os drivers, aplicativos, serviços e personalizações compatíveis com a máquina.
 
 ## Como usar
 
@@ -102,8 +99,8 @@ O instalador:
 - instala o GRUB na partição EFI;
 - cria também o caminho UEFI de fallback `EFI/BOOT/BOOTX64.EFI`;
 - usa menu com **3 segundos**;
-- aplica o tema visual do Callas OS;
-- carrega logo e background próprios;
+- aplica background e identidade visual próprios do Callas OS;
+- mantém o menu funcional desenhado pelo próprio GRUB sobre a arte de fundo;
 - mantém uma entrada de **diagnóstico sem splash**, útil caso seja necessário iniciar com mensagens visíveis;
 - preserva os parâmetros necessários para NVIDIA quando a placa é detectada.
 
@@ -128,12 +125,17 @@ O instalador prepara:
 
 - **Brisa Escuro**;
 - login pelo **SDDM em Wayland**;
+- wallpaper próprio do Callas OS na tela de login;
 - formulário de login concentrado no monitor principal;
 - demais monitores mantendo o wallpaper visível;
 - integração da **Carteira KDE** com o login;
 - sessão vazia ao entrar no Plasma;
+- wallpaper inicial próprio do Callas OS;
 - tempo reduzido de desligamento e reinicialização;
 - ícone oficial do Callas OS no menu;
+- painel do Plasma com **60 px** de altura;
+- efeito de transparência/blur do KWin habilitado;
+- atalho **Super+Shift+S** para captura retangular pelo Spectacle;
 - painel e atalhos iniciais personalizados.
 
 Na inicialização da sessão:
@@ -215,11 +217,13 @@ O **Discord nativo** é instalado no sistema.
 
 O atualizador do sistema também consegue atualizar o Discord e, quando necessário, fechar o aplicativo, aplicar a atualização e reabri-lo minimizado.
 
+Nenhuma modificação de cliente é aplicada automaticamente.
+
 ## Spotify
 
-O instalador inclui o **Spotify nativo** e prepara sua integração ao ambiente do sistema.
+O instalador inclui o **Spotify nativo** pelo AUR.
 
-Também existe uma rotina para manter as permissões necessárias após atualizações do aplicativo.
+Nenhuma modificação de cliente é aplicada automaticamente.
 
 ## Paru e AUR
 
@@ -270,7 +274,7 @@ Os registros são adicionados em:
 
 Se o computador estiver desligado no horário previsto, a rotina aguarda uma próxima oportunidade válida em vez de interromper o uso normal do sistema.
 
-## Segurança da instalação
+## Tratamento de falhas
 
 Etapas essenciais, como:
 
@@ -295,6 +299,8 @@ O Callas OS automatiza uma instalação limpa do Arch Linux com foco em:
 - **KDE Plasma Wayland**
 - **GRUB personalizado**
 - **Plymouth personalizado**
+- **SDDM e identidade visual própria**
+- **KDE Plasma com painel de 60 px**
 - **NVIDIA, AMD e Intel**
 - **Steam e jogos**
 - **Vulkan e bibliotecas de 32 bits**
