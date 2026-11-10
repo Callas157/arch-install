@@ -1,4 +1,4 @@
-# Callas OS
+# Arch Install Callas OS
 
 > [!CAUTION]
 > Projeto experimental, em evolução constante e sujeito a mudanças. Use por sua conta e risco e mantenha backup dos seus arquivos importantes.
@@ -144,21 +144,6 @@ Na inicialização da sessão:
 - **Digital Vibrance** é aplicado quando o utilitário está instalado;
 - **Brave** e **Spotify** não são restaurados automaticamente apenas porque estavam abertos antes do desligamento.
 
-## Identidade visual e wallpapers
-
-O instalador baixa os assets visuais diretamente do repositório do projeto.
-
-São instalados:
-
-- background próprio do **GRUB**;
-- background próprio do **Plymouth**;
-- background da **tela de login**;
-- background da **tela de bloqueio**;
-- coleção com **19 wallpapers Callas OS**.
-
-Os wallpapers ficam instalados em estrutura reconhecida pelo KDE e aparecem junto das opções de papel de parede do sistema.
-
-O instalador tenta aplicar o **Callas OS Dark Minimal** como wallpaper inicial, sem remover os wallpapers originais do KDE.
 
 ## Jogos e gravação
 
@@ -330,4 +315,3 @@ O Callas OS automatiza uma instalação limpa do Arch Linux com foco em:
 - **Spotify + Spicetify**
 - **Fastfetch + Nekofetch**
 - **atualizações automáticas**
-- **wallpapers e identidade visual Callas OS**
