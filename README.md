@@ -1,5 +1,8 @@
 # Arch Install Callas
 
+> [!CAUTION]
+ainda experimental e passando por mudanças constantes podendo passar por momentos de instabilidades teste por sua conta e risco
+
 Instalador automático do **Arch Linux com KDE Plasma em Wayland**, em português do Brasil, com tema escuro e programas de jogos, gravação e uso diário. Funciona com processadores **AMD ou Intel** e seleciona a configuração gráfica conforme o hardware detectado.
 
 ## Como usar
