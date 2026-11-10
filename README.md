@@ -183,17 +183,17 @@ O Callas OS instala ou prepara, entre outros:
 
 | Categoria | Aplicativos |
 | --- | --- |
-| **Navegação** | Brave |
-| **Comunicação** | Discord |
-| **Jogos** | Steam, ProtonPlus |
-| **Gravação** | GPU Screen Recorder |
-| **Vídeo** | Shotcut |
-| **Downloads** | qBittorrent |
-| **Música** | Spotify |
-| **Periféricos** | Solaar |
-| **Sistema** | Mission Center, Fastfetch, Nekofetch |
-| **Flatpak** | Bazaar |
-| **Arquivos** | Dolphin, Ark |
+| **Navegação** | Brave **[Nativo — AUR]** |
+| **Comunicação** | Discord **[Nativo — Repo Arch]** |
+| **Jogos** | Steam **[Nativo — Repo Arch]**, ProtonPlus **[Flatpak]** |
+| **Gravação** | GPU Screen Recorder **[Nativo — AUR]** |
+| **Vídeo** | Shotcut **[Nativo — Repo Arch]** |
+| **Downloads** | qBittorrent **[Nativo — Repo Arch]** |
+| **Música** | Spotify **[Nativo — AUR]** |
+| **Periféricos** | Solaar **[Nativo — Repo Arch]** |
+| **Sistema** | Mission Center **[Flatpak]**, Fastfetch **[Nativo — Repo Arch]**, Nekofetch **[Nativo — uv/Python]** |
+| **Loja de aplicativos** | Bazaar **[Flatpak]** |
+| **Arquivos** | Dolphin **[Nativo — Repo Arch]**, Ark **[Nativo — Repo Arch]** |
 
 O **Mission Center** é instalado pelo Flathub e funciona como o gerenciador gráfico de processos e desempenho do sistema.
 
@@ -234,8 +234,8 @@ Existem duas rotinas automáticas:
 
 | Rotina | Frequência | Conteúdo |
 | --- | --- | --- |
-| **Aplicativos** | A cada **7 dias** | Flatpaks e Discord |
-| **Sistema** | A cada **1 mês** | Pacotes oficiais do Arch e pacotes AUR via Paru |
+| **Aplicativos** | A cada **7 dias** | Flatpaks + atualização própria do Discord |
+| **Sistema** | A cada **1 mês** | Atualização completa do Arch via pacman + pacotes AUR via Paru, incluindo os aplicativos nativos instalados por esses meios |
 
 Não existe horário fixo nem um dia fixo do mês.
 
@@ -247,6 +247,8 @@ A agenda é verificada:
 - periodicamente enquanto o computador permanece ligado.
 
 Se o computador estiver desligado no dia em que uma atualização vencer, ela continua pendente. No primeiro boot ou verificação seguinte, a atualização roda automaticamente.
+
+Os aplicativos nativos instalados pelos repositórios do Arch ou pelo AUR acompanham a atualização mensal completa do sistema. Eles não são atualizados isoladamente na rotina semanal, porque o Arch Linux não dá suporte a atualizações parciais do sistema.
 
 Quando a atualização semanal termina com sucesso, o KDE mostra uma notificação informando que os aplicativos foram atualizados.
 
