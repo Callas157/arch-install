@@ -324,6 +324,7 @@ builder_home=/var/lib/put-update/aur
 paru_conf=/etc/put-update-paru.conf
 sudo_template=/etc/put-update-aur.sudoers
 sudo_rule=/etc/sudoers.d/put-update
+config_update_url=https://raw.githubusercontent.com/Callas157/arch-install/main/callas-config-update.sh
 
 erro() {
     printf 'Erro: %s\n' "$*" >&2
@@ -881,6 +882,27 @@ REBOOT_DESKTOP
     fi
 }
 
+atualizar_config_callas() {
+    local temporario resposta
+    temporario=$(mktemp)
+    trap 'rm -f -- "$temporario"' RETURN
+
+    printf '\nATENÇÃO: esta opção reaplica padrões e migrações do Callas OS.\n'
+    printf 'Ela pode alterar preferências do KDE, favoritos, atalhos, wallpapers, autostart e aplicativos opcionais.\n'
+    printf 'Não mexe em partições, sistema de arquivos ou bootloader.\n\n'
+    read -r -p 'Continuar com a atualização das configurações? [s/N]: ' resposta
+    [[ $resposta =~ ^[sS]$ ]] || { printf 'Operação cancelada.\n'; return 0; }
+
+    printf 'Baixando a versão mais recente das configurações do Callas OS...\n'
+    curl -fsSL --retry 2 --connect-timeout 10 --max-time 120         "$config_update_url" -o "$temporario" ||
+        { printf 'Falha ao baixar o atualizador de configurações.\n' >&2; return 1; }
+
+    bash -n "$temporario" ||
+        { printf 'O arquivo baixado falhou na validação de sintaxe.\n' >&2; return 1; }
+
+    sudo /usr/bin/bash "$temporario"
+}
+
 menu() {
     local origem opcao modo
     origem=$(realpath -- "${BASH_SOURCE[0]}")
@@ -895,8 +917,9 @@ menu() {
             '2. Atualizar só os aplicativos agora (Flatpak e Discord)' \
             '3. Atualizar só o sistema agora (Arch, pacman e AUR)' \
             '4. Atualizar só o Discord agora' \
-            '5. Sair'
-        read -r -p 'Escolha [1-5]: ' opcao || return 0
+            '5. Atualizar configurações do Callas OS' \
+            '6. Sair'
+        read -r -p 'Escolha [1-6]: ' opcao || return 0
         case $opcao in
             1)
                 sudo /usr/bin/bash "$origem" --instalar ||
@@ -906,7 +929,12 @@ menu() {
             2) modo=apps ;;
             3) modo=sistema ;;
             4) modo=discord ;;
-            5) return 0 ;;
+            5)
+                atualizar_config_callas ||
+                    printf 'Falha ao atualizar as configurações do Callas OS.\n' >&2
+                continue
+                ;;
+            6) return 0 ;;
             *) printf 'Opção inválida.\n'; continue ;;
         esac
 
