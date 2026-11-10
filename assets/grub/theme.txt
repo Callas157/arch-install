@@ -2,26 +2,8 @@
 # Menu intentionally centered. Visual assets live under assets/grub/.
 
 desktop-color: "#050b16"
-desktop-image: "background.jpg"
+desktop-image: "background.png"
 desktop-image-scale-method: "stretch"
-
-+ image {
-    file = "logo.png"
-    left = 50%-96
-    top = 7%
-    width = 192
-    height = 192
-}
-
-+ label {
-    text = "CALLAS OS"
-    left = 0
-    top = 28%
-    width = 100%
-    align = "center"
-    color = "#f4f8ff"
-    font = "Unifont Regular 28"
-}
 
 + boot_menu {
     left = 27%
