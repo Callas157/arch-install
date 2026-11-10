@@ -160,21 +160,6 @@ O wallpaper inicial do desktop também é instalado junto da coleção de wallpa
   <img src="assets/wallpapers/callas-wallpaper-14-mountains-moon.jpg" alt="Wallpaper padrão do Callas OS" width="850">
 </p>
 
-### Favoritos do menu
-
-A instalação inicial deixa fixados no menu do KDE:
-
-- Configurações do Sistema
-- Atualizador do sistema
-- Steam
-- Konsole
-- Bazaar
-- ProtonPlus
-- Mission Center
-- qBittorrent
-- Spotify
-- Solaar
-
 ---
 
 ## Aplicativos
