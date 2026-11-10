@@ -17,7 +17,7 @@ Inicie o computador pela **ISO oficial do Arch Linux**, em modo **UEFI**, com ac
 No terminal da ISO, como `root`, rode:
 
 ```bash
-bash <(curl -sL https://bit.ly/archcallas157)
+bash <(curl -sL bit.ly/archcallas157)
 ```
 
 Se o link curto falhar, use o link direto do GitHub:
