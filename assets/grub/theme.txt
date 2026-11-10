@@ -2,6 +2,8 @@
 # Menu intentionally centered. Visual assets live under assets/grub/.
 
 desktop-color: "#050b16"
+desktop-image: "background.jpg"
+desktop-image-scale-method: "stretch"
 
 + image {
     file = "logo.png"
