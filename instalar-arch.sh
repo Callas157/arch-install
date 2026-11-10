@@ -83,7 +83,7 @@ GPU_PACOTES=(mesa)
 
 if grep -q '^10de:' <<<"$GPU_PCI"; then
   NVIDIA=1
-  GPU_PACOTES+=(nvidia-open nvidia-utils nvidia-settings egl-wayland)
+  GPU_PACOTES+=(nvidia-open nvidia-open-lts nvidia-utils nvidia-settings egl-wayland)
   echo "GPU NVIDIA detectada: usando nvidia-open."
 fi
 if grep -q '^1002:' <<<"$GPU_PCI"; then
@@ -203,8 +203,8 @@ mount --mkdir -o fmask=0077,dmask=0077 "$EFI" /mnt/boot
 # ---------------- Instalação base ----------------
 echo ">>> Instalando pacotes (isso demora)"
 pacstrap -K /mnt \
-  base linux linux-firmware "$UCODE_PACKAGE" base-devel sudo nano git curl gnupg acl grub efibootmgr \
-  linux-headers dkms pciutils usbutils \
+  base linux linux-lts linux-firmware "$UCODE_PACKAGE" base-devel sudo nano git curl gnupg acl grub efibootmgr \
+  linux-headers linux-lts-headers dkms pciutils usbutils libnotify \
   networkmanager "${REDE_PACOTES[@]}" \
   plasma-desktop sddm sddm-kcm plasma-nm plasma-pa kscreen powerdevil xorg-xwayland \
   konsole dolphin kate ark gwenview okular spectacle kdeplasma-addons \
@@ -314,12 +314,11 @@ export PATH=/usr/bin:/bin
 
 program=/usr/local/libexec/put-update
 atalho_menu=/usr/local/share/applications/io.github.Callas157.AtualizadorDoSistema.desktop
-servico=put-update@.service
-timer_sistema=put-update-sistema.timer
-timer_apps=put-update-apps.timer
-hora_sistema=14
-hora_apps=13
+servico_check=put-update-check.service
+timer_check=put-update-check.timer
+dia_sistema=10
 agenda_dir=/var/lib/put-update/agenda
+recuperacao_dir=/var/lib/put-update/recuperacao
 lock_atualizador=/run/put-update.lock
 builder=put-aur
 builder_home=/var/lib/put-update/aur
@@ -332,29 +331,22 @@ erro() {
     exit 1
 }
 
-hora_agendada() {
-    case $1 in
-        sistema) printf '%s\n' "$hora_sistema" ;;
-        apps) printf '%s\n' "$hora_apps" ;;
-        *) erro 'Agenda inválida.' ;;
-    esac
-}
-
 proxima_data() {
-    local modo=$1 inicio=$2 hoje=$3 mes ultimo dia
+    local modo=$1 inicio=$2 hoje=$3 mes dia_atual
     if [[ $modo == apps ]]; then
         TZ=UTC0 date -d "$hoje +7 days" +%F
         return
     fi
 
-    # Usa o primeiro dia do próximo mês para preservar a referência nos meses curtos.
-    mes=$(TZ=UTC0 date -d "${hoje:0:7}-01 +1 month" +%Y-%m) || return
-    ultimo=$(TZ=UTC0 date -d "$mes-01 +1 month -1 day" +%d) || return
-    dia=${inicio:8:2}
-    if (( 10#$dia > 10#$ultimo )); then
-        dia=$ultimo
+    # A atualização mensal do sistema usa sempre o dia 10.
+    mes=${hoje:0:7}
+    dia_atual=${hoje:8:2}
+    if (( 10#$dia_atual < dia_sistema )); then
+        printf '%s-%02d\n' "$mes" "$dia_sistema"
+    else
+        mes=$(TZ=UTC0 date -d "$mes-01 +1 month" +%Y-%m) || return
+        printf '%s-%02d\n' "$mes" "$dia_sistema"
     fi
-    printf '%s-%s\n' "$mes" "$dia"
 }
 
 ler_data_agenda() {
@@ -388,23 +380,31 @@ preparar_agenda() {
 }
 
 executar_agendado() {
-    local usuario=$1 modo=$2 hoje hora agora vencimento inicio data
-    agora=$(date '+%F %H')
-    read -r hoje hora <<< "$agora"
-    # Se o PC acordar da suspensão depois do horário, aguarda a próxima tarde.
-    if [[ $hora != "$(hora_agendada "$modo")" ]]; then
-        return 0
-    fi
-    vencimento=$(ler_data_agenda "$modo")
-    if [[ $hoje < $vencimento ]]; then
-        return 0
-    fi
-
+    local usuario=$1 modo=$2 hoje vencimento inicio proxima
+    hoje=$(date +%F)
     inicio=$(ler_data_agenda inicio)
-    data=$(proxima_data "$modo" "$inicio" "$hoje")
-    # Registra a tentativa antes de atualizar para evitar repetições automáticas após falhas.
-    gravar_data_agenda "$modo" "$data"
+    vencimento=$(ler_data_agenda "$modo")
+
+    # Se a máquina ficou desligada durante a data marcada, pula apenas as datas
+    # vencidas. A atualização automática só roda dentro das 24h da data agendada.
+    while [[ $vencimento < $hoje ]]; do
+        vencimento=$(proxima_data "$modo" "$inicio" "$vencimento")
+        gravar_data_agenda "$modo" "$vencimento"
+    done
+    [[ $hoje == "$vencimento" ]] || return 0
+
+    # Registra a próxima data antes de atualizar para impedir repetição automática
+    # no mesmo dia caso a atualização falhe.
+    proxima=$(proxima_data "$modo" "$inicio" "$vencimento")
+    gravar_data_agenda "$modo" "$proxima"
     registrar_atualizacao "$usuario" "$modo" automatico
+}
+
+verificar_agenda() {
+    local usuario=$1 falhou=0
+    executar_agendado "$usuario" sistema || falhou=1
+    executar_agendado "$usuario" apps || falhou=1
+    return "$falhou"
 }
 
 home_do_usuario() {
@@ -578,8 +578,70 @@ atualizar_discord_integrado() (
     fi
 )
 
+criar_ponto_recuperacao() {
+    local destino antigo
+    install -d -m 0700 -- "$recuperacao_dir"
+    destino="$recuperacao_dir/$(date +%Y%m%d-%H%M%S)"
+    install -d -m 0700 -- "$destino"
+
+    pacman -Q > "$destino/pacotes.txt"
+    pacman -Qqe > "$destino/pacotes-explicitos.txt"
+    tar -C / -czf "$destino/etc.tar.gz" etc
+    tar -C / -czf "$destino/pacman-local.tar.gz" var/lib/pacman/local
+    cp -a /boot/grub/grub.cfg "$destino/grub.cfg" 2>/dev/null || :
+
+    # Mantém somente os três registros mais recentes.
+    mapfile -t antigos < <(find "$recuperacao_dir" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -r)
+    if (( ${#antigos[@]} > 3 )); then
+        for antigo in "${antigos[@]:3}"; do
+            rm -rf -- "$recuperacao_dir/$antigo"
+        done
+    fi
+    printf 'Ponto de recuperação pré-update criado em %s\n' "$destino"
+}
+
+notificar_reinicio_usuario() {
+    local estado acao
+    (( EUID != 0 )) || erro 'A notificação deve rodar na sessão do usuário.'
+    estado="${XDG_STATE_HOME:-$HOME/.local/state}/callas/reinicio-pendente"
+    [[ -f $estado ]] || return 0
+
+    if command -v notify-send >/dev/null; then
+        acao=$(notify-send -a 'Atualizador do sistema' -i system-reboot -u normal \
+            -A reiniciar='Reiniciar agora' -A depois='Mais tarde' \
+            'Atualização do sistema concluída' \
+            'A atualização mensal terminou. É recomendado reiniciar o computador.' || true)
+    else
+        acao=
+    fi
+    rm -f -- "$estado"
+    if [[ $acao == reiniciar ]]; then
+        systemctl reboot
+    fi
+}
+
+marcar_reinicio_pendente() {
+    local usuario=$1 home=$2 uid runtime estado grupo
+    uid=$(id -u "$usuario") || return 1
+    grupo=$(id -gn "$usuario") || return 1
+    estado="$home/.local/state/callas"
+    install -d -m 0700 -o "$usuario" -g "$grupo" -- "$estado"
+    runuser -u "$usuario" -- touch "$estado/reinicio-pendente"
+
+    runtime="/run/user/$uid"
+    if [[ -S "$runtime/bus" ]]; then
+        runuser -u "$usuario" -- env \
+            HOME="$home" USER="$usuario" LOGNAME="$usuario" \
+            XDG_RUNTIME_DIR="$runtime" DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
+            systemd-run --user --collect --unit=callas-update-reinicio \
+            "$program" --notificar-reinicio >/dev/null 2>&1 || :
+    fi
+}
+
 atualizar_sistema() {
     local origem=$1
+
+    etapa 'Ponto de recuperação pré-update' criar_ponto_recuperacao || return
 
     if ! etapa 'Arch e aplicativos dos repositórios' atualizar_arch "$origem"; then
         printf 'A etapa do AUR aguarda uma atualização bem-sucedida do Arch.\n'
@@ -620,6 +682,10 @@ registrar_atualizacao() {
                     "$program" --discord-sessao || codigo=$?
                 ;;
         esac
+        if [[ $modo == sistema && $codigo -eq 0 ]]; then
+            marcar_reinicio_pendente "$usuario" "$home" ||
+                printf 'Aviso: não consegui preparar a notificação de reinício.\n' >&2
+        fi
         printf '===== Fim da atualização | %s | código %s =====\n' "$(date -Is)" "$codigo"
         return "$codigo"
     } 2>&1 | {
@@ -657,31 +723,30 @@ DESKTOP
 }
 
 desativar_agendamento_antigo() {
-    local em_chroot=$1 estado
+    local em_chroot=$1 unidade estado
+    local -a antigas=(
+        put-update.timer put-update-sistema.timer put-update-apps.timer put-update-check.timer
+    )
 
     if (( em_chroot )); then
-        if [[ -f /etc/systemd/system/put-update.timer ]]; then
-            systemctl --root=/ disable put-update.timer
-        fi
-        rm -f -- /etc/systemd/system/put-update.timer /etc/systemd/system/put-update.service
-        return
-    fi
-
-    estado=$(systemctl show -p LoadState --value put-update.timer)
-    if [[ $estado != not-found ]]; then
-        systemctl disable --now put-update.timer
-    fi
-
-    # Deixa uma atualização antiga em andamento terminar antes de trocar o programa.
-    estado=$(systemctl show -p ActiveState --value put-update.service)
-    if [[ $estado != inactive && $estado != failed ]]; then
-        printf 'Aguardando a atualização antiga terminar para fazer a troca...\n'
-        while [[ $estado != inactive && $estado != failed ]]; do
-            sleep 5
-            estado=$(systemctl show -p ActiveState --value put-update.service)
+        for unidade in "${antigas[@]}"; do
+            systemctl --root=/ disable "$unidade" 2>/dev/null || :
+        done
+    else
+        for unidade in "${antigas[@]}"; do
+            estado=$(systemctl show -p LoadState --value "$unidade" 2>/dev/null || :)
+            [[ $estado == not-found || -z $estado ]] || systemctl disable --now "$unidade" 2>/dev/null || :
         done
     fi
-    rm -f -- /etc/systemd/system/put-update.timer /etc/systemd/system/put-update.service
+
+    rm -f -- \
+        /etc/systemd/system/put-update.timer \
+        /etc/systemd/system/put-update.service \
+        /etc/systemd/system/put-update-sistema.timer \
+        /etc/systemd/system/put-update-apps.timer \
+        /etc/systemd/system/put-update@.service \
+        /etc/systemd/system/put-update-check.timer \
+        /etc/systemd/system/put-update-check.service
 }
 
 instalar() {
@@ -701,36 +766,32 @@ instalar() {
     temporario=$(mktemp -d)
     trap "rm -rf -- $(printf '%q' "$temporario")" EXIT
 
-    cat > "$temporario/$servico" <<UNIT
+    cat > "$temporario/$servico_check" <<UNIT
 [Unit]
-Description=Atualizador Callas (%i)
+Description=Verificar agenda de atualização do Callas OS
 Wants=network-online.target
 After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=$program --run $usuario %i
-ExecStopPost=/usr/bin/flock -n -E 0 $lock_atualizador /usr/bin/rm -f -- $sudo_rule
+ExecStart=$program --check $usuario
 StandardOutput=journal
 StandardError=journal
 UNIT
 
-    for modo in sistema apps; do
-        timer=put-update-$modo.timer
-        hora=$(hora_agendada "$modo")
-        cat > "$temporario/$timer" <<UNIT
+    cat > "$temporario/$timer_check" <<UNIT
 [Unit]
-Description=Atualização agendada ($modo)
+Description=Verificar a agenda de atualização ao longo do dia
 
 [Timer]
-OnCalendar=*-*-* $hora:00:00
-Persistent=false
-Unit=put-update@$modo.service
+OnBootSec=2min
+OnUnitInactiveSec=1h
+AccuracySec=1min
+Unit=$servico_check
 
 [Install]
 WantedBy=timers.target
 UNIT
-    done
 
     desativar_agendamento_antigo "$em_chroot"
     rm -f -- "$sudo_rule"
@@ -778,21 +839,34 @@ PARU
     if [[ $origem != "$program" ]]; then
         install -D -m 0755 -T -- "$origem" "$program"
     fi
-    install -m 0644 -- "$temporario/$servico" "$temporario/$timer_sistema" \
-        "$temporario/$timer_apps" /etc/systemd/system/
+    install -m 0644 -- "$temporario/$servico_check" "$temporario/$timer_check" /etc/systemd/system/
     instalar_entrada_menu "$temporario/${atalho_menu##*/}"
+
+    install -d -m 0755 "$home/.config/autostart"
+    cat > "$home/.config/autostart/callas-update-reinicio.desktop" <<'REBOOT_DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Notificação de reinício do Callas OS
+Exec=/usr/local/libexec/put-update --notificar-reinicio
+OnlyShowIn=KDE;
+NoDisplay=true
+StartupNotify=false
+X-KDE-AutostartScript=true
+REBOOT_DESKTOP
+    chown "$usuario:$(id -gn "$usuario")" "$home/.config/autostart/callas-update-reinicio.desktop"
+
     if (( em_chroot )); then
-        systemctl --root=/ enable "$timer_sistema" "$timer_apps"
+        systemctl --root=/ enable "$timer_check"
     else
         systemctl daemon-reload
-        systemctl enable "$timer_sistema" "$timer_apps"
-        systemctl restart "$timer_sistema" "$timer_apps"
+        systemctl enable "$timer_check"
+        systemctl restart "$timer_check"
     fi
 
     printf '\nAgendamento automático configurado.\n'
-    printf 'Próxima atualização do sistema: %s às %sh.\n' "$(ler_data_agenda sistema)" "$hora_sistema"
-    printf 'Próxima atualização dos aplicativos: %s às %sh.\n' "$(ler_data_agenda apps)" "$hora_apps"
-    printf 'Se perder o horário, a atualização fica para a próxima tarde com o PC ligado.\n'
+    printf 'Próxima atualização do sistema: %s (qualquer horário do dia).\n' "$(ler_data_agenda sistema)"
+    printf 'Próxima atualização dos aplicativos: %s (qualquer horário do dia).\n' "$(ler_data_agenda apps)"
+    printf 'A agenda é verificada no boot e periodicamente enquanto o PC estiver ligado.\n'
     como_usuario "$usuario" "$home" "$program" --instalar-atalhos
     if pasta=$(como_usuario "$usuario" "$home" "$program" --log-dir); then
         printf 'Log em Documentos: %s/atualizacoes.log\n' "$pasta"
@@ -855,10 +929,14 @@ case ${1:-} in
         esac
         atualizar_discord_integrado "$@"
         ;;
-    --run)
-        (( EUID == 0 && $# == 3 )) || erro 'Esta opção é usada pelo serviço de atualização.'
-        [[ $3 == sistema || $3 == apps ]] || erro 'Modo automático inválido.'
-        exec flock -x -o "$lock_atualizador" "$program" --registrar "$2" "$3" automatico
+    --check)
+        (( EUID == 0 && $# == 2 )) || erro 'Esta opção é usada pelo serviço de atualização.'
+        exec flock -x -o "$lock_atualizador" "$program" --verificar-agenda "$2"
+        ;;
+    --verificar-agenda)
+        (( EUID == 0 && $# == 2 )) || erro 'Esta opção é interna.'
+        rm -f -- "$sudo_rule"
+        verificar_agenda "$2"
         ;;
     --manual)
         (( EUID == 0 && $# == 2 )) || erro 'Esta opção é usada pelo menu de atualização.'
@@ -875,6 +953,10 @@ case ${1:-} in
         else
             registrar_atualizacao "$2" "$3" "$4"
         fi
+        ;;
+    --notificar-reinicio)
+        (( EUID != 0 && $# == 1 )) || erro 'Esta opção é usada pela sessão gráfica do usuário.'
+        notificar_reinicio_usuario
         ;;
     --instalar)
         (( EUID == 0 && $# == 1 )) || erro 'Escolha a opção 1 no menu para instalar.'
@@ -1968,6 +2050,7 @@ if (( nvidia )); then
 fi
 mkinitcpio -P
 test -s /boot/vmlinuz-linux && test -s /boot/initramfs-linux.img
+test -s /boot/vmlinuz-linux-lts && test -s /boot/initramfs-linux-lts.img
 
 # Tema gráfico Callas OS.
 install -d /boot/grub/themes/callas
@@ -1978,6 +2061,7 @@ install -m 0644 /usr/share/callas-os/grub/background.png /boot/grub/themes/calla
 # Plymouth permanece integrado ao initramfs; sem atrasos artificiais no carregamento.
 cat > /etc/default/grub <<GRUB_DEFAULTS
 GRUB_DEFAULT=0
+GRUB_TOP_LEVEL="/boot/vmlinuz-linux"
 GRUB_TIMEOUT=3
 GRUB_TIMEOUT_STYLE=menu
 GRUB_DISTRIBUTOR="Callas OS"
