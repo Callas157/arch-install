@@ -143,6 +143,7 @@ O ambiente gráfico é o **KDE Plasma em Wayland**, com tema escuro e uma sessã
 Entre os ajustes aplicados estão:
 
 - **Brisa Escuro**;
+- suspensão automática, escurecimento e desligamento da tela por inatividade desativados por padrão; essas opções continuam disponíveis nas configurações de energia do KDE;
 - SDDM em Wayland;
 - login concentrado no monitor principal em configurações com múltiplas telas;
 - integração da **Carteira KDE** com o login;
