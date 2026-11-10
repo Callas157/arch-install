@@ -2353,7 +2353,8 @@ cat > /etc/brave/policies/recommended/callas-defaults.json <<'CALLAS_BRAVE_DEFAU
 }
 CALLAS_BRAVE_DEFAULTS
 
-curl -fsSL --retry 2 "$CALLAS_ASSET_BASE/bonjourr/callas-profile.json"   -o /usr/share/callas-os/bonjourr-profile.json ||
+curl -fsSL --retry 2 "https://raw.githubusercontent.com/Callas157/arch-install/main/assets/bonjourr/callas-profile.json" \
+  -o /usr/share/callas-os/bonjourr-profile.json ||
   aviso 'Não consegui baixar o perfil padrão do Bonjourr.'
 
 # Preferências que não possuem política própria no Brave são pré-carregadas no
