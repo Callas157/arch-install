@@ -188,27 +188,6 @@ O **Spotify** instalado é o cliente padrão, sem Spicetify.
 
 ---
 
-## Jogos
-
-A instalação prepara o sistema para jogos com:
-
-- **Steam nativa**;
-- repositório `multilib`;
-- Vulkan;
-- bibliotecas gráficas de 32 bits;
-- drivers adequados à GPU detectada;
-- **ProtonPlus** para gerenciamento de Proton-GE e ferramentas relacionadas;
-- **GPU Screen Recorder** para gravação.
-
-### Xbox Wireless
-
-O instalador tenta preparar:
-
-- `xone-dkms`
-- `xone-dongle-firmware`
-
-O módulo DKMS é conferido para os kernels instalados.
-
 ---
 
 ## Atualizações automáticas
@@ -253,18 +232,6 @@ Também é possível executar manualmente pelo Atualizador do sistema:
 - atualização do Discord.
 
 ---
-
-## AUR e Flatpak
-
-O instalador prepara o **Paru** para instalação e atualização de pacotes do AUR.
-
-O Flathub também é configurado no sistema. Entre os aplicativos instalados por ele estão:
-
-- **ProtonPlus**
-- **Bazaar**
-- **Mission Center**
-
-As permissões temporárias usadas para a etapa de instalação do AUR são removidas ao final do processo.
 
 ---
 
