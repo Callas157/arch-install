@@ -1,4 +1,4 @@
-# Arch Install Callas
+# Arch Install Callas Os
 
 > [!CAUTION]
 Ainda experimental e passando por mudanças constantes podendo passar por momentos de instabilidades teste por sua conta e risco
