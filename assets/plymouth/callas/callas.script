@@ -1,0 +1,52 @@
+Window.SetBackgroundTopColor(0.01, 0.025, 0.055);
+Window.SetBackgroundBottomColor(0.005, 0.012, 0.030);
+
+logo_image = Image("logo.png");
+logo = Sprite(logo_image);
+
+status_image = Image.Text("Callas OS", 0.90, 0.96, 1.00);
+status = Sprite(status_image);
+
+bar_image = Image.Text("[--------------------]", 0.15, 0.70, 1.00);
+bar = Sprite(bar_image);
+
+fun position_all() {
+    logo.SetX(Window.GetX() + (Window.GetWidth() - logo_image.GetWidth()) / 2);
+    logo.SetY(Window.GetY() + Window.GetHeight() * 0.28);
+
+    status.SetX(Window.GetX() + (Window.GetWidth() - status_image.GetWidth()) / 2);
+    status.SetY(Window.GetY() + Window.GetHeight() * 0.60);
+
+    bar.SetX(Window.GetX() + (Window.GetWidth() - bar_image.GetWidth()) / 2);
+    bar.SetY(Window.GetY() + Window.GetHeight() * 0.68);
+}
+
+fun progress_callback(duration, progress) {
+    if (progress < 0.10) {
+        bar_image = Image.Text("[==------------------]", 0.15, 0.70, 1.00);
+    } else if (progress < 0.20) {
+        bar_image = Image.Text("[====----------------]", 0.15, 0.70, 1.00);
+    } else if (progress < 0.30) {
+        bar_image = Image.Text("[======--------------]", 0.15, 0.70, 1.00);
+    } else if (progress < 0.40) {
+        bar_image = Image.Text("[========------------]", 0.15, 0.70, 1.00);
+    } else if (progress < 0.50) {
+        bar_image = Image.Text("[==========----------]", 0.15, 0.70, 1.00);
+    } else if (progress < 0.60) {
+        bar_image = Image.Text("[============--------]", 0.15, 0.70, 1.00);
+    } else if (progress < 0.70) {
+        bar_image = Image.Text("[==============------]", 0.15, 0.70, 1.00);
+    } else if (progress < 0.80) {
+        bar_image = Image.Text("[================----]", 0.15, 0.70, 1.00);
+    } else if (progress < 0.90) {
+        bar_image = Image.Text("[==================--]", 0.15, 0.70, 1.00);
+    } else {
+        bar_image = Image.Text("[====================]", 0.15, 0.70, 1.00);
+    }
+    bar.SetImage(bar_image);
+    position_all();
+}
+
+position_all();
+Plymouth.SetRefreshFunction(position_all);
+Plymouth.SetBootProgressFunction(progress_callback);

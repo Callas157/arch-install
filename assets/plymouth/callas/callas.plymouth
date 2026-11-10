@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Callas OS
+Description=Callas OS boot splash
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/callas
+ScriptFile=/usr/share/plymouth/themes/callas/callas.script

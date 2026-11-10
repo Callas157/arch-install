@@ -1,0 +1,59 @@
+# Callas OS GRUB theme
+# Menu intentionally centered. Visual assets live under assets/grub/.
+
+desktop-color: "#050b16"
+
++ image {
+    file = "logo.png"
+    left = 50%-96
+    top = 7%
+    width = 192
+    height = 192
+}
+
++ label {
+    text = "CALLAS OS"
+    left = 0
+    top = 28%
+    width = 100%
+    align = "center"
+    color = "#f4f8ff"
+    font = "Unifont Regular 28"
+}
+
++ boot_menu {
+    left = 27%
+    top = 40%
+    width = 46%
+    height = 32%
+    item_font = "Unifont Regular 20"
+    item_color = "#d8eaff"
+    selected_item_color = "#ffffff"
+    item_height = 44
+    item_padding = 12
+    item_spacing = 10
+    icon_width = 0
+    icon_height = 0
+    scrollbar = false
+}
+
++ label {
+    id = "__timeout__"
+    text = "Inicializando automaticamente em %d segundos..."
+    left = 0
+    top = 78%
+    width = 100%
+    align = "center"
+    color = "#39c9ff"
+    font = "Unifont Regular 16"
+}
+
++ label {
+    text = "↑↓ selecionar     Enter iniciar"
+    left = 0
+    top = 84%
+    width = 100%
+    align = "center"
+    color = "#7e9ab5"
+    font = "Unifont Regular 14"
+}
