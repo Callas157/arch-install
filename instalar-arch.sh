@@ -364,7 +364,7 @@ gravar_data_agenda() {
 }
 
 preparar_agenda() {
-    local inicio modo data
+    local inicio modo data existente
     install -d -m 0700 -- "$agenda_dir"
     if [[ ! -e $agenda_dir/inicio ]]; then
         data=$(date +%F)
@@ -377,6 +377,14 @@ preparar_agenda() {
             gravar_data_agenda "$modo" "$data"
         fi
     done
+
+    # Versões antigas podiam ter o mensal em outro dia. Ao reparar o automático,
+    # normaliza a próxima execução mensal para o dia 10.
+    existente=$(ler_data_agenda sistema)
+    if [[ ${existente:8:2} != 10 ]]; then
+        data=$(proxima_data sistema "$inicio" "$(date +%F)")
+        gravar_data_agenda sistema "$data"
+    fi
 }
 
 executar_agendado() {
@@ -2097,6 +2105,23 @@ sed -i "s/CALLAS_EFI_UUID/$efi_uuid/" /etc/grub.d/42_callas_diagnostico
 sed -i "s/CALLAS_ROOT_UUID/$uuid_raiz/" /etc/grub.d/42_callas_diagnostico
 sed -i "s|CALLAS_NVIDIA_ARGS|$nvidia_args|" /etc/grub.d/42_callas_diagnostico
 chmod 0755 /etc/grub.d/42_callas_diagnostico
+
+# Kernel LTS separado para recuperação caso uma atualização do kernel/driver
+# impeça o sistema principal de iniciar.
+cat > /etc/grub.d/43_callas_recuperacao_lts <<'GRUB_LTS'
+#!/bin/sh
+cat <<'MENU'
+menuentry 'Callas OS (kernel LTS - recuperação)' --class gnu-linux {
+    search --no-floppy --fs-uuid --set=root CALLAS_EFI_UUID
+    linux /vmlinuz-linux-lts root=UUID=CALLAS_ROOT_UUID rw quiet splashCALLAS_NVIDIA_ARGS
+    initrd /initramfs-linux-lts.img
+}
+MENU
+GRUB_LTS
+sed -i "s/CALLAS_EFI_UUID/$efi_uuid/" /etc/grub.d/43_callas_recuperacao_lts
+sed -i "s/CALLAS_ROOT_UUID/$uuid_raiz/" /etc/grub.d/43_callas_recuperacao_lts
+sed -i "s|CALLAS_NVIDIA_ARGS|$nvidia_args|" /etc/grub.d/43_callas_recuperacao_lts
+chmod 0755 /etc/grub.d/43_callas_recuperacao_lts
 
 # Instala a entrada UEFI normal. Alguns firmwares/VMs recusam gravar NVRAM;
 # isso não deve impedir a instalação porque também criamos o caminho fallback.
