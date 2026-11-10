@@ -188,8 +188,6 @@ O **Spotify** instalado é o cliente padrão, sem Spicetify.
 
 ---
 
----
-
 ## Atualizações automáticas
 
 O Callas OS inclui um **Atualizador do sistema** acessível pelo menu do KDE.
@@ -233,25 +231,6 @@ Também é possível executar manualmente pelo Atualizador do sistema:
 
 ---
 
----
-
-## Nekofetch e Fastfetch
-
-O **Fastfetch** é instalado no sistema e o **Nekofetch** é preparado para aparecer automaticamente ao abrir um terminal Bash interativo.
-
-O layout mostra informações como:
-
-- sistema;
-- kernel;
-- desktop;
-- resolução e taxa de atualização;
-- CPU;
-- GPU;
-- driver gráfico;
-- VRAM, quando disponível.
-
----
-
 ## Tratamento de falhas
 
 As etapas essenciais da instalação interrompem o processo quando ocorre um erro grave, incluindo:
@@ -267,31 +246,6 @@ Componentes opcionais podem registrar um aviso e permitir que a instalação pri
 Os avisos ficam disponíveis em:
 
 `/var/log/callas-instalacao-avisos.log`
-
----
-
-## Principais recursos
-
-- Arch Linux
-- KDE Plasma Wayland
-- GRUB UEFI
-- kernel Linux + Linux LTS de recuperação
-- Plymouth
-- NVIDIA, AMD e Intel
-- Steam e Vulkan
-- ProtonPlus
-- GPU Screen Recorder
-- Mission Center
-- Discord
-- Spotify
-- Solaar
-- Xbox Wireless / xone
-- detecção do Rise Mode
-- Paru + AUR
-- Flatpak + Flathub
-- Fastfetch + Nekofetch
-- atualizações automáticas
-- notificação de reinicialização após atualização mensal
 
 ---
 
