@@ -637,7 +637,7 @@ notificar_apps_usuario() {
         notify-send -a 'Atualizador do sistema' -i system-software-update \
         'Aplicativos atualizados' \
         'Os aplicativos foram atualizados com sucesso.' >/dev/null 2>&1 || :
-
+}
 
 atualizar_sistema() {
     local origem=$1
