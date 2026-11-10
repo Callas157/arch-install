@@ -1228,37 +1228,39 @@ print("Sessão vazia configurada para o próximo login no KDE.")
 PY
 CALLAS_KDE_START
 
-cat > "/mnt/usr/local/libexec/callas-limpar-atalho-ixin" <<'CALLAS_IXIN_DESKTOP'
+cat > "/mnt/usr/local/libexec/callas-limpar-atalhos-desktop" <<'CALLAS_DESKTOP_CLEAN'
 #!/usr/bin/env bash
 set -u
 
 desktop=$(xdg-user-dir DESKTOP 2>/dev/null || true)
 [[ $desktop == /* ]] || desktop="$HOME/Desktop"
 
-# O IXin/IXLauncher pode recriar o lançador alguns segundos depois do login.
-# Remove apenas cópias na Área de Trabalho; a entrada do menu em
-# ~/.local/share/applications ou /usr/share/applications é preservada.
+# Alguns aplicativos podem recriar lançadores na Área de Trabalho após o login.
+# Remove somente esses atalhos da Área de Trabalho; as entradas do menu KDE
+# em ~/.local/share/applications ou /usr/share/applications são preservadas.
 for _ in {1..6}; do
     if [[ -d $desktop ]]; then
         find "$desktop" -maxdepth 1 -type f \( \
             -iname '*ixin*.desktop' -o \
-            -iname '*ixlauncher*.desktop' \
+            -iname '*ixlauncher*.desktop' -o \
+            -iname 'steam.desktop' -o \
+            -iname 'com.valvesoftware.Steam.desktop' \
         \) -delete 2>/dev/null || true
     fi
     sleep 10
 done
-CALLAS_IXIN_DESKTOP
-chmod 0755 /mnt/usr/local/libexec/callas-limpar-atalho-ixin
+CALLAS_DESKTOP_CLEAN
+chmod 0755 /mnt/usr/local/libexec/callas-limpar-atalhos-desktop
 
-cat > "/mnt/etc/xdg/autostart/callas-limpar-atalho-ixin.desktop" <<'CALLAS_IXIN_AUTOSTART'
+cat > "/mnt/etc/xdg/autostart/callas-limpar-atalhos-desktop.desktop" <<'CALLAS_DESKTOP_AUTOSTART'
 [Desktop Entry]
 Type=Application
-Name=Limpar atalho do IXin
-Exec=/usr/local/libexec/callas-limpar-atalho-ixin
+Name=Limpar atalhos automáticos da área de trabalho
+Exec=/usr/local/libexec/callas-limpar-atalhos-desktop
 OnlyShowIn=KDE;
 NoDisplay=true
 StartupNotify=false
-CALLAS_IXIN_AUTOSTART
+CALLAS_DESKTOP_AUTOSTART
 
 cat > "/mnt/usr/local/libexec/callas-kde-desligamento-login" <<'CALLAS_KDE_LOGIN'
 #!/usr/bin/env bash
@@ -2309,6 +2311,17 @@ chown -R "$usuario:$usuario" "$home/.local" "$home/.config"
 como_usuario env LANG="$locale" xdg-user-dirs-update || aviso 'Não consegui preparar as pastas do usuário.'
 como_usuario env QT_QPA_PLATFORM=offscreen dbus-run-session -- plasma-apply-lookandfeel --apply org.kde.breezedark.desktop ||
   aviso 'Não consegui aplicar o tema Brisa Escuro.'
+
+# Por padrão o Callas OS não suspende, escurece ou desliga a tela por inatividade.
+# O usuário continua podendo alterar tudo normalmente nas Configurações do Sistema.
+for perfil in AC Battery LowBattery; do
+  como_usuario kwriteconfig6 --file powerdevilrc --group "$perfil" --group Display     --key DimDisplayWhenIdle false ||
+    aviso "Não consegui desativar o escurecimento automático no perfil $perfil."
+  como_usuario kwriteconfig6 --file powerdevilrc --group "$perfil" --group Display     --key TurnOffDisplayWhenIdle false ||
+    aviso "Não consegui desativar o desligamento automático da tela no perfil $perfil."
+  como_usuario kwriteconfig6 --file powerdevilrc --group "$perfil" --group SuspendAndShutdown     --key AutoSuspendAction 0 ||
+    aviso "Não consegui desativar a suspensão automática no perfil $perfil."
+done
 
 # Mantém o efeito de transparência/blur usado pelo painel e menus do Plasma.
 como_usuario kwriteconfig6 --file kwinrc --group Plugins --key blurEnabled true ||
