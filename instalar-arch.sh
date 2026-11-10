@@ -1580,7 +1580,7 @@ ajustar_tema_sddm() {
             fader = 0
             next
         }
-        acao == "aplicar" && fader && /^[[:space:]]*visible:[[:space:]]*config\.type[[:space:]]*==[[:space:]]*[\"'\'' ]image[\"'\'' ]/ {
+        acao == "aplicar" && fader && /^[[:space:]]*visible:[[:space:]]*config\.type[[:space:]]*==[[:space:]]*"image"/ {
             sub(/visible:.*/, "visible: false // Callas KDE: wallpaper nitido")
             print
             fader = 0
