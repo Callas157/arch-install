@@ -1,6 +1,12 @@
 Window.SetBackgroundTopColor(0.01, 0.025, 0.055);
 Window.SetBackgroundBottomColor(0.005, 0.012, 0.030);
 
+background_image = Image("background.jpg");
+background_scaled = background_image.Scale(Window.GetWidth(), Window.GetHeight());
+background = Sprite(background_scaled);
+background.SetX(Window.GetX());
+background.SetY(Window.GetY());
+
 logo_image = Image("logo.png");
 logo = Sprite(logo_image);
 
