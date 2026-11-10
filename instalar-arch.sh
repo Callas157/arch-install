@@ -72,16 +72,55 @@ if (( TEM_WIFI )); then echo "Adaptador Wi-Fi detectado."; fi
 if (( BROADCOM )); then echo "Wi-Fi Broadcom detectado: será instalado o driver broadcom-wl-dkms."; fi
 
 # ---------------- Detecção gráfica ----------------
+# Suporta também máquinas com mais de uma GPU: cada fabricante encontrado
+# acrescenta somente o conjunto de pacotes correspondente.
 GPU_PCI="$(lspci -Dn | awk '$2 ~ /^03[[:xdigit:]][[:xdigit:]]:$/ {print $3}')"
 NVIDIA=0
+AMD_GPU=0
+INTEL_GPU=0
 VM="$(systemd-detect-virt --vm || true)"
 GPU_PACOTES=(mesa)
+
 if grep -q '^10de:' <<<"$GPU_PCI"; then
   NVIDIA=1
   GPU_PACOTES+=(nvidia-open nvidia-utils nvidia-settings egl-wayland)
-  echo "GPU NVIDIA detectada. Instalando nvidia-open."
+  echo "GPU NVIDIA detectada: usando nvidia-open."
+fi
+if grep -q '^1002:' <<<"$GPU_PCI"; then
+  AMD_GPU=1
+  GPU_PACOTES+=(vulkan-radeon)
+  echo "GPU AMD Radeon detectada: usando Mesa + RADV."
+fi
+if grep -q '^8086:' <<<"$GPU_PCI"; then
+  INTEL_GPU=1
+  GPU_PACOTES+=(vulkan-intel)
+  echo "GPU Intel detectada: usando Mesa + ANV."
+fi
+if (( ! NVIDIA && ! AMD_GPU && ! INTEL_GPU )); then
+  echo "GPU sem perfil específico; usando Mesa (ambiente: ${VM:-nativo})."
+fi
+
+# ---------------- Detecção do water cooler Rise Mode ----------------
+# O driver abaixo é específico do dispositivo USB aa88:8666. Se ele não
+# estiver presente, a instalação segue normalmente sem baixar ou compilar nada.
+RISEMODE=0
+RISEMODE_PACOTES=()
+for usbdev in /sys/bus/usb/devices/*; do
+  [[ -r "$usbdev/idVendor" && -r "$usbdev/idProduct" ]] || continue
+  if [[ "$(<"$usbdev/idVendor")" == "aa88" && "$(<"$usbdev/idProduct")" == "8666" ]]; then
+    RISEMODE=1
+    break
+  fi
+done
+if (( ! RISEMODE )) && command -v lsusb >/dev/null 2>&1 &&
+   lsusb 2>/dev/null | grep -qi 'aa88:8666'; then
+  RISEMODE=1
+fi
+if (( RISEMODE )); then
+  echo "Water cooler Rise Mode aa88:8666 detectado: o driver será instalado automaticamente."
+  RISEMODE_PACOTES=(rustup pkgconf hidapi libusb clang)
 else
-  echo "Gráficos via Mesa (ambiente: ${VM:-nativo})."
+  echo "Water cooler Rise Mode aa88:8666 não detectado: integração será ignorada."
 fi
 
 # ---------------- Escolha do disco ----------------
@@ -176,7 +215,7 @@ pacstrap -K /mnt \
   kwallet-pam kwalletmanager \
   pipewire pipewire-alsa pipewire-pulse wireplumber \
   bluez bluez-utils \
-  "${GPU_PACOTES[@]}" plymouth \
+  "${GPU_PACOTES[@]}" "${RISEMODE_PACOTES[@]}" plymouth \
   noto-fonts noto-fonts-emoji ttf-dejavu ttf-liberation \
   flatpak \
   zram-generator
@@ -2103,7 +2142,7 @@ fi
 # ---------------- Configuração dentro do sistema ----------------
 echo ">>> Configurando o sistema"
 arch-chroot /mnt /bin/bash -s -- "$USUARIO" "$FUSO" "$LOCALE" "$TECLADO" \
-  "$HOSTNAME" "$UUID_RAIZ" "$NVIDIA" "$VM" "$BROADCOM" "$GPU_PCI" <<'CALLAS_CHROOT'
+  "$HOSTNAME" "$UUID_RAIZ" "$NVIDIA" "$VM" "$BROADCOM" "$GPU_PCI" "$RISEMODE" "$AMD_GPU" "$INTEL_GPU" <<'CALLAS_CHROOT'
 set -Eeuo pipefail
 usuario=$1
 fuso=$2
@@ -2115,6 +2154,9 @@ nvidia=$7
 vm=$8
 broadcom=$9
 gpu_pci=${10}
+risemode=${11}
+amd_gpu=${12}
+intel_gpu=${13}
 home=/home/$usuario
 libexec=/usr/local/libexec
 avisos=/var/log/callas-instalacao-avisos.log
@@ -2212,10 +2254,10 @@ gpu_multilib=(lib32-mesa)
 if (( nvidia )); then
   gpu_multilib+=(lib32-nvidia-utils)
 fi
-if grep -q '^1002:' <<<"$gpu_pci"; then
+if (( amd_gpu )); then
   gpu_multilib+=(vulkan-radeon lib32-vulkan-radeon)
 fi
-if grep -q '^8086:' <<<"$gpu_pci"; then
+if (( intel_gpu )); then
   gpu_multilib+=(vulkan-intel lib32-vulkan-intel)
 fi
 if [[ $vm != none && -n $vm ]] && grep -q '^1af4:' <<<"$gpu_pci"; then
@@ -2309,6 +2351,51 @@ grub-mkconfig -o /boot/grub/grub.cfg
 }
 
 systemctl --root=/ enable NetworkManager sddm bluetooth fstrim.timer systemd-timesyncd
+
+# Rise Mode Aura Ice Black (USB aa88:8666).
+# Só entra neste bloco quando o dispositivo foi encontrado ainda na ISO.
+if (( risemode )); then
+  echo ">>> Instalando driver do water cooler Rise Mode"
+  risemode_src="$home/.local/src/risemode-driver"
+  rm -rf -- "$risemode_src"
+  install -d -o "$usuario" -g "$usuario" "$home/.local/src"
+
+  if como_usuario rustup default stable &&
+     como_usuario git clone --depth 1 https://github.com/evozniak/risemode-driver.git "$risemode_src" &&
+     como_usuario env PATH="$home/.cargo/bin:/usr/bin:/bin" \
+       bash -c 'cd "$1" && cargo build --release' bash "$risemode_src" &&
+     [[ -x "$risemode_src/target/release/risemode-driver" ]]; then
+
+    install -Dm755 "$risemode_src/target/release/risemode-driver" /usr/local/bin/risemode-driver
+
+    cat > /etc/udev/rules.d/99-risemode.rules <<'RISEMODE_UDEV'
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="aa88", ATTRS{idProduct}=="8666", MODE="0666", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="aa88", ATTRS{idProduct}=="8666", MODE="0666", TAG+="uaccess"
+RISEMODE_UDEV
+
+    cat > /etc/systemd/system/risemode-driver.service <<'RISEMODE_SERVICE'
+[Unit]
+Description=Rise Mode Aura Ice Black - temperatura da CPU no display
+After=multi-user.target systemd-udev-settle.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/risemode-driver
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+RISEMODE_SERVICE
+
+    systemctl enable risemode-driver.service
+    echo "Driver Rise Mode instalado e habilitado para iniciar com o sistema."
+  else
+    aviso 'O water cooler Rise Mode foi detectado, mas o driver não pôde ser compilado. A instalação do Callas OS continuará.'
+    rm -f /usr/local/bin/risemode-driver /etc/udev/rules.d/99-risemode.rules /etc/systemd/system/risemode-driver.service
+    systemctl daemon-reload || :
+  fi
+fi
 
 # Solaar nativo como padrão. Os overrides também deixam pronta a versão Flatpak
 # para quem a instalar no futuro. Somente o usuário da sessão ganha o acesso udev.
