@@ -203,7 +203,7 @@ mount --mkdir -o fmask=0077,dmask=0077 "$EFI" /mnt/boot
 # ---------------- Instalação base ----------------
 echo ">>> Instalando pacotes (isso demora)"
 pacstrap -K /mnt \
-  base linux linux-firmware "$UCODE_PACKAGE" base-devel sudo nano git curl gnupg acl grub efibootmgr libjpeg-turbo \
+  base linux linux-firmware "$UCODE_PACKAGE" base-devel sudo nano git curl gnupg acl grub efibootmgr \
   linux-headers dkms pciutils usbutils \
   networkmanager "${REDE_PACOTES[@]}" \
   plasma-desktop sddm sddm-kcm plasma-nm plasma-pa kscreen powerdevil xorg-xwayland \
@@ -245,8 +245,8 @@ install -m 0644 /mnt/usr/share/plymouth/themes/callas/logo.png \
 # GRUB
 curl -fsSL "$CALLAS_ASSET_BASE/grub/theme.txt" \
   -o /mnt/usr/share/callas-os/grub/theme.txt
-curl -fsSL "$CALLAS_ASSET_BASE/grub/background.jpg" \
-  -o /mnt/usr/share/callas-os/grub/background.jpg
+curl -fsSL "$CALLAS_ASSET_BASE/grub/background.png" \
+  -o /mnt/usr/share/callas-os/grub/background.png
 
 # Plymouth
 curl -fsSL "$CALLAS_ASSET_BASE/plymouth/callas/callas.plymouth" \
@@ -2316,19 +2316,10 @@ fi
 mkinitcpio -P
 test -s /boot/vmlinuz-linux && test -s /boot/initramfs-linux.img
 
-# Tema gráfico Callas OS. O asset original do fundo pode ser JPEG progressivo,
-# formato que costuma falhar no GRUB. Convertemos para JPEG baseline antes do boot.
+# Tema gráfico Callas OS.
 install -d /boot/grub/themes/callas
 install -m 0644 /usr/share/callas-os/grub/theme.txt /boot/grub/themes/callas/theme.txt
-install -m 0644 /usr/share/callas-os/grub/logo.png /boot/grub/themes/callas/logo.png
-if jpegtran -copy none -optimize \
-    -outfile /boot/grub/themes/callas/background.jpg \
-    /usr/share/callas-os/grub/background.jpg; then
-  chmod 0644 /boot/grub/themes/callas/background.jpg
-else
-  echo "ERRO: não consegui converter o background do GRUB para JPEG baseline." >&2
-  exit 1
-fi
+install -m 0644 /usr/share/callas-os/grub/background.png /boot/grub/themes/callas/background.png
 
 # GRUB UEFI: instalação limpa experimental, preservando a partição EFI em /boot.
 # Plymouth permanece integrado ao initramfs; sem atrasos artificiais no carregamento.
