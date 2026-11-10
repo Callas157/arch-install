@@ -29,7 +29,6 @@ desktop-color: "#050b16"
     item_font = "Unifont Regular 20"
     item_color = "#d8eaff"
     selected_item_color = "#ffffff"
-    selected_item_pixmap_style = "select_*.png"
     item_height = 44
     item_padding = 12
     item_spacing = 10
