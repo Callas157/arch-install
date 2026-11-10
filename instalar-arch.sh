@@ -1863,7 +1863,7 @@ install -d /mnt/etc/xdg
 cat > /mnt/etc/xdg/kicker-extra-favoritesrc <<'KICKER_FAVORITES'
 [General]
 IgnoreDefaults=true
-Prepend=systemsettings.desktop;io.github.Callas157.AtualizadorDoSistema.desktop;steam.desktop;org.kde.konsole.desktop;io.github.kolunmi.Bazaar.desktop;com.vysp3r.ProtonPlus.desktop;org.qbittorrent.qBittorrent.desktop;spotify.desktop;solaar.desktop;
+Prepend=systemsettings.desktop;io.github.Callas157.AtualizadorDoSistema.desktop;steam.desktop;org.kde.konsole.desktop;io.github.kolunmi.Bazaar.desktop;com.vysp3r.ProtonPlus.desktop;io.missioncenter.MissionCenter.desktop;org.qbittorrent.qBittorrent.desktop;spotify.desktop;solaar.desktop;
 KICKER_FAVORITES
 
 # O Plasma executa esta configuração uma vez, depois de criar o painel.
@@ -2203,7 +2203,7 @@ if [[ -f /usr/share/applications/solaar.desktop ]]; then
 fi
 
 if flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo; then
-  for app in com.vysp3r.ProtonPlus io.github.kolunmi.Bazaar; do
+  for app in com.vysp3r.ProtonPlus io.github.kolunmi.Bazaar io.missioncenter.MissionCenter; do
     flatpak install --system --noninteractive --assumeyes flathub "$app" || aviso "Falha ao instalar $app."
   done
 else
