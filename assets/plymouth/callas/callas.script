@@ -1,0 +1,31 @@
+Window.SetBackgroundTopColor(0.01, 0.025, 0.055);
+Window.SetBackgroundBottomColor(0.005, 0.012, 0.030);
+
+logo_image = Image("logo.png");
+logo = Sprite(logo_image);
+
+bar_back_image = Image.Text("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", 0.12, 0.22, 0.30);
+bar_back = Sprite(bar_back_image);
+
+status_image = Image.Text("Carregando o sistema...", 0.85, 0.92, 1.0);
+status = Sprite(status_image);
+
+fun position_all() {
+    logo.SetX(Window.GetX() + (Window.GetWidth() - logo_image.GetWidth()) / 2);
+    logo.SetY(Window.GetY() + Window.GetHeight() * 0.28);
+
+    bar_back.SetX(Window.GetX() + (Window.GetWidth() - bar_back_image.GetWidth()) / 2);
+    bar_back.SetY(Window.GetY() + Window.GetHeight() * 0.67);
+
+    status.SetX(Window.GetX() + (Window.GetWidth() - status_image.GetWidth()) / 2);
+    status.SetY(Window.GetY() + Window.GetHeight() * 0.73);
+}
+position_all();
+Plymouth.SetRefreshFunction(position_all);
+
+# Spinner dots animate while boot proceeds. They do not delay system startup.
+dot_frames = 3;
+dot = 0;
+fun refresh_callback() {
+    dot = (dot + 1) % dot_frames;
+}
