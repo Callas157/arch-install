@@ -90,17 +90,15 @@ O instalador:
 - configura **zram** com compressão;
 - adiciona os pacotes de rede necessários conforme o hardware detectado.
 
-## GRUB Callas OS
+## Boot
 
-O sistema usa **GRUB em UEFI** com identidade visual própria do Callas OS.
+O Callas OS usa **GRUB em UEFI** como bootloader.
 
 O instalador:
 
 - instala o GRUB na partição EFI;
 - cria também o caminho UEFI de fallback `EFI/BOOT/BOOTX64.EFI`;
 - usa menu com **3 segundos**;
-- aplica background e identidade visual próprios do Callas OS;
-- mantém o menu funcional desenhado pelo próprio GRUB sobre a arte de fundo;
 - mantém uma entrada de **diagnóstico sem splash**, útil caso seja necessário iniciar com mensagens visíveis;
 - preserva os parâmetros necessários para NVIDIA quando a placa é detectada.
 
@@ -125,18 +123,14 @@ O instalador prepara:
 
 - **Brisa Escuro**;
 - login pelo **SDDM em Wayland**;
-- wallpaper próprio do Callas OS na tela de login;
 - formulário de login concentrado no monitor principal;
 - demais monitores mantendo o wallpaper visível;
 - integração da **Carteira KDE** com o login;
 - sessão vazia ao entrar no Plasma;
-- wallpaper inicial próprio do Callas OS;
 - tempo reduzido de desligamento e reinicialização;
-- ícone oficial do Callas OS no menu;
-- painel do Plasma com **60 px** de altura;
-- efeito de transparência/blur do KWin habilitado;
+- ícone do Callas OS no menu;
 - atalho **Super+Shift+S** para captura retangular pelo Spectacle;
-- painel e atalhos iniciais personalizados.
+- atalhos e comportamento inicial do ambiente KDE.
 
 Na inicialização da sessão:
 
@@ -297,10 +291,9 @@ Os avisos da instalação ficam disponíveis, quando necessário, em:
 O Callas OS automatiza uma instalação limpa do Arch Linux com foco em:
 
 - **KDE Plasma Wayland**
-- **GRUB personalizado**
-- **Plymouth personalizado**
-- **SDDM e identidade visual própria**
-- **KDE Plasma com painel de 60 px**
+- **GRUB em UEFI**
+- **Plymouth**
+- **KDE Plasma Wayland**
 - **NVIDIA, AMD e Intel**
 - **Steam e jogos**
 - **Vulkan e bibliotecas de 32 bits**
