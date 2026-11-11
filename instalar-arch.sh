@@ -2177,7 +2177,7 @@ Default Wallet=kdewallet
 Leave Open=true
 Close When Idle=false
 KWRC
-printf '%s\n' '--password-store=kwallet6' > "$home/.config/brave-flags.conf"
+printf '%s\n' '--password-store=kwallet6' '--lang=pt-BR' > "$home/.config/brave-flags.conf"
 cat > /usr/local/bin/configurar-carteira <<'CARTEIRA'
 #!/usr/bin/bash
 sleep 10
@@ -2538,6 +2538,8 @@ data.setdefault("browser", {})["custom_chrome_frame"]=False
 data["browser"]["show_home_button"]=True
 data["homepage_is_newtabpage"]=True
 data.setdefault("bookmark_bar", {})["show_on_all_tabs"]=True
+data.setdefault("intl", {})["accept_languages"]="pt-BR,pt,en-US,en"
+data["intl"]["selected_languages"]="pt-BR,pt,en-US,en"
 data.setdefault("tab_search", {})["pinned_to_tabstrip"]=True
 data.setdefault("everything_menu", {})["pinned_to_tabstrip"]=True
 actions=data.setdefault("toolbar", {}).setdefault("pinned_actions", [])
