@@ -211,9 +211,9 @@ O Callas OS instala ou prepara os principais aplicativos abaixo:
 | Loja de aplicativos | **Bazaar** |
 | Arquivos | **Dolphin**, **Ark** |
 
-O Brave é preparado pelo projeto com o **Bonjourr** e preferências em **Português do Brasil**.
+O Brave é preparado pelo projeto com as extensões **Bonjourr** e **[SteamDB](https://steamdb.info/extension/)** e com as preferências do navegador em **Português do Brasil**. O idioma do Bonjourr pode precisar de ajuste na própria extensão.
 
-O Discord é instalado sem BetterDiscord e o Spotify sem Spicetify.
+O SteamDB também é disponibilizado em instalações existentes pela opção **5 — Callas OS Update**, usando a política de extensões do Brave. Se já estiver instalado, a mesma extensão é aproveitada, sem duplicação nem redefinição de suas configurações. A instalação é processada pelo Brave ao carregar a política; se necessário, feche e abra o navegador.
 
 ---
 

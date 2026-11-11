@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.11.17"
+VERSAO="2026.11.11.18"
 export PATH=/usr/bin:/bin
 umask 077
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/${CALLAS_RELEASE_REF:-main}"
@@ -90,6 +90,25 @@ flock -x 8
 export CALLAS_UPDATE_LOCK_HELD=1
 python "$CALLAS_RELEASE_DIR/callas-storage.py" --config "$usuario"
 /usr/bin/bash "$CALLAS_RELEASE_DIR/callas-security.sh" "$usuario"
+
+# Browser extensions also apply to installations with the older boot layout.
+# Use the same extension IDs; existing profiles and extension settings stay intact.
+install -d /etc/brave/policies/managed
+cat > /etc/brave/policies/managed/callas-bonjourr.json <<'EOF'
+{
+  "ExtensionSettings": {
+    "dlnejlppicbjfcfcedcflplfjajinajd": {
+      "installation_mode": "normal_installed",
+      "update_url": "https://clients2.google.com/service/update2/crx"
+    },
+    "kdbmhfkmnlmbkgbabkdealhhbfhlmmon": {
+      "installation_mode": "normal_installed",
+      "update_url": "https://clients2.google.com/service/update2/crx"
+    }
+  }
+}
+EOF
+chmod 0644 /etc/brave/policies/managed/callas-bonjourr.json
 
 grub_compativel=0
 if [[ -x /etc/grub.d/09_callas && -f /etc/grub.d/10_linux && ! -x /etc/grub.d/10_linux ]]; then
@@ -259,18 +278,8 @@ lines.append('--lang=pt-BR')
 p.write_text('\n'.join(lines)+'\n')
 FLAGS
 
-# Brave + Bonjourr
+# Brave + Bonjourr + SteamDB
 install -d /etc/brave/policies/managed /etc/brave/policies/recommended /usr/share/callas-os
-cat > /etc/brave/policies/managed/callas-bonjourr.json <<'EOF'
-{
-  "ExtensionSettings": {
-    "dlnejlppicbjfcfcedcflplfjajinajd": {
-      "installation_mode": "normal_installed",
-      "update_url": "https://clients2.google.com/service/update2/crx"
-    }
-  }
-}
-EOF
 
 cat > /etc/brave/policies/recommended/callas-defaults.json <<'EOF'
 {

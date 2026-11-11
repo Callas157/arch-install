@@ -2578,7 +2578,7 @@ fi
 limpar_aur
 trap - EXIT
 
-# ---------------- Brave + Bonjourr ----------------
+# ---------------- Brave + Bonjourr + SteamDB ----------------
 # Bonjourr é pré-instalado pela política do Brave. As preferências abaixo
 # funcionam como padrão do Callas OS e continuam alteráveis pelo usuário.
 install -d /etc/brave/policies/managed /etc/brave/policies/recommended /usr/share/callas-os
@@ -2589,10 +2589,15 @@ cat > /etc/brave/policies/managed/callas-bonjourr.json <<'CALLAS_BRAVE_EXTENSION
     "dlnejlppicbjfcfcedcflplfjajinajd": {
       "installation_mode": "normal_installed",
       "update_url": "https://clients2.google.com/service/update2/crx"
+    },
+    "kdbmhfkmnlmbkgbabkdealhhbfhlmmon": {
+      "installation_mode": "normal_installed",
+      "update_url": "https://clients2.google.com/service/update2/crx"
     }
   }
 }
 CALLAS_BRAVE_EXTENSION
+chmod 0644 /etc/brave/policies/managed/callas-bonjourr.json
 
 cat > /etc/brave/policies/recommended/callas-defaults.json <<'CALLAS_BRAVE_DEFAULTS'
 {
