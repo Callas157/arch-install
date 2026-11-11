@@ -20,12 +20,15 @@ PINNED = frozenset(('nvidia-utils', 'nvidia-open-dkms', 'nvidia-open', 'nvidia-o
                     'lib32-nvidia-utils', 'nvidia-settings', 'libxnvctrl', 'opencl-nvidia', 'lib32-opencl-nvidia'))
 NAME = re.compile(r'[a-zA-Z0-9@_+][a-zA-Z0-9@_.+\-]*\Z')
 
+class RequiresGeneral(ValueError):
+    pass
+
 def name(value):
     if not NAME.fullmatch(value) or value in ('.', '..'):
         raise ValueError('Nome de pacote inválido: ' + repr(value))
     return value
 
-def plan(text):
+def plan(text, apps_only=False):
     result = []
     for line in text.splitlines():
         fields = line.split()
@@ -36,12 +39,17 @@ def plan(text):
         if len(fields) < 4 or fields[1] not in ('TARGET', 'DEP', 'MAKE'):
             raise ValueError('Formato inesperado no plano do Paru: ' + line)
         if fields[0] == 'INSTALL' and len(fields) == 4:
+            if apps_only:
+                raise RequiresGeneral('O aplicativo exige dependências dos repositórios: use Atualizar geral')
             repo, pkg = name(fields[2]), name(fields[3])
             if pkg in PINNED:
                 raise ValueError('Dependência exigiria alterar a NVIDIA preservada: ' + pkg)
             result.append(('INSTALL', fields[1], repo, [pkg]))
         elif fields[0] == 'AUR':
             base, pkgs = name(fields[2]), [name(pkg) for pkg in fields[3:]]
+            if apps_only and any(pkg.startswith(('linux', 'systemd', 'grub', 'pacman', 'glibc', 'mkinitcpio',
+                                                'nvidia', 'lib32-nvidia', 'opencl-nvidia', 'lib32-opencl-nvidia', 'plasma', 'kwin')) for pkg in pkgs):
+                raise RequiresGeneral('Pacote de base preservado; use Atualizar geral')
             if set(pkgs) & PINNED or base in PINNED:
                 raise ValueError('O AUR não pode substituir a NVIDIA preservada')
             result.append(('AUR', fields[1], base, pkgs))
@@ -163,7 +171,7 @@ exit "$code"
             raise ValueError('Compilação não produziu todos os pacotes esperados: ' + ', '.join(expected))
         return archives
 
-def run_update():
+def run_update(apps_only=False):
     foreign = set(command(['/usr/bin/pacman', '-Qmq'], capture=True, empty_ok=True).stdout.split())
     if not foreign:
         print('Nenhum pacote externo/AUR instalado.')
@@ -183,7 +191,7 @@ def run_update():
         if not targets:
             print('AUR atualizado; nenhum pacote sinalizado para recompilação.')
             return
-        actions = plan(builder.run(['/usr/bin/paru', '-Po', '--aur', '--noconfirm', '--color', 'never', *targets], capture=True).stdout)
+        actions = plan(builder.run(['/usr/bin/paru', '-Po', '--aur', '--noconfirm', '--color', 'never', *targets], capture=True).stdout, apps_only=apps_only)
         planned = {pkg for kind, _, _, pkgs in actions if kind == 'AUR' for pkg in pkgs}
         if not set(targets) <= planned:
             raise ValueError('O plano não inclui todos os pacotes pendentes')
@@ -202,14 +210,17 @@ def run_update():
         print('Atualização e recompilações necessárias do AUR concluídas.')
 
 def main():
-    if os.geteuid() != 0 or len(sys.argv) != 1:
+    if os.geteuid() != 0 or sys.argv[1:] not in ([], ['--apps-only']):
         raise SystemExit('Uso interno do Atualizador do sistema.')
     os.umask(0o077)
-    run_update()
+    run_update(apps_only=sys.argv[1:] == ['--apps-only'])
 
 if __name__ == '__main__':
     try:
         main()
+    except RequiresGeneral as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(2)
     except Exception as error:
         print('Falha na etapa do AUR: ' + str(error), file=sys.stderr)
         sys.exit(1)

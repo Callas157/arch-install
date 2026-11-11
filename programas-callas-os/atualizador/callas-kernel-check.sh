@@ -5,16 +5,21 @@ export PATH=/usr/bin:/bin
 umask 077
 stage=$(mktemp -d /var/tmp/callas-kernel.XXXXXXXX)
 trap 'rm -rf -- "$stage"' EXIT
+if ! mountpoint -q /boot; then
+  mensagem='FALHA: /boot não está montado; verificação interrompida. Não reinicie antes de corrigir.'
+  printf '%s\n' "$mensagem" >&2
+  install -d -m 0755 /var/lib/callas-os
+  touch /var/lib/callas-os/kernel-check-failed
+  /usr/local/libexec/callas-logs --record 'Kernel Linux' <<< "$mensagem"
+  if [[ -r /etc/callas-os/log-user ]]; then
+    read -r log_user < /etc/callas-os/log-user
+    /usr/local/libexec/callas-logs --export "$log_user" || :
+  fi
+  exit 1
+fi
 status=0
 {
   printf 'Verificação de kernel/boot: %s\n' "$(date -Is)"
-  if ! mountpoint -q /boot; then
-    printf 'ERRO: a partição /boot não está montada. Não gerar arquivos no local errado.\n'
-    install -d -m 0755 /var/lib/callas-os
-    touch /var/lib/callas-os/kernel-check-failed
-    /usr/local/libexec/callas-logs --record 'Kernel Linux' <<< 'FALHA: /boot não está montado; verificação interrompida.'
-    exit 1
-  fi
   pacman -Q linux linux-lts linux-headers linux-lts-headers || status=1
   if [[ -r /etc/callas-nvidia-version ]]; then
     printf 'NVIDIA preservada na versão: %s\n' "$(< /etc/callas-nvidia-version)"

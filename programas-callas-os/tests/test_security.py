@@ -62,7 +62,7 @@ class LogTests(unittest.TestCase):
             self.assertEqual(first.read_bytes(), b'kernel failure\n')
             self.assertEqual(first.stat().st_mode & 0o777, 0o600)
             for category in logs.CATEGORIES:
-                self.assertTrue((Path(temp) / 'Logs do Callas OS' / category).is_dir())
+                self.assertTrue((Path(temp) / 'Callas OS Logs' / category).is_dir())
             with self.assertRaises(ValueError):
                 logs.write_log('../escape', b'bad')
 
@@ -86,11 +86,11 @@ class ShellTests(unittest.TestCase):
                            env=dict(os.environ, CALLAS_SECURITY_TMP=str(source)), check=True)
             self.assertEqual(sorted(p.name for p in target.iterdir()), ['callas-release.py', 'callas-security.sh'])
 
-    def test_system_agenda_is_weekly(self):
+    def test_system_agenda_is_monthly(self):
         text = (UPDATER / 'put-update.sh').read_text()
         fn = text[text.index('proxima_data() {'):text.index('\nler_data_agenda()')]
         result = subprocess.run(['bash', '-c', fn + '\nproxima_data sistema 2026-11-11'], capture_output=True, text=True, check=True)
-        self.assertEqual(result.stdout.strip(), '2026-11-18')
+        self.assertEqual(result.stdout.strip(), '2026-12-11')
 
     def test_no_passwordless_pacman_and_installer_matches_updater(self):
         installer = (ROOT.parent / 'instalar-arch.sh').read_text()
@@ -112,6 +112,7 @@ class ShellTests(unittest.TestCase):
             fake = bindir / 'pacman'
             fake.write_text('#!/bin/bash\n[[ $1 == -Q ]] && exit 1\nexit 23\n')
             fake.chmod(0o755)
+            mount=bindir/'mountpoint'; mount.write_text('#!/bin/bash\nexit 0\n'); mount.chmod(0o755)
             function = function.replace('/etc/', str(base / 'etc') + '/')
             env = dict(os.environ, PATH=str(bindir) + ':' + os.environ['PATH'])
             result = subprocess.run(['bash', '-c', 'set -Eeuo pipefail\n' + function + '\nseguranca tester\nprintf reached'], env=env, capture_output=True, text=True)

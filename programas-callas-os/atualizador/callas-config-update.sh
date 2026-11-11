@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.11.16"
+VERSAO="2026.11.11.17"
 export PATH=/usr/bin:/bin
 umask 077
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/${CALLAS_RELEASE_REF:-main}"
@@ -9,7 +9,6 @@ ASSET_BASE="$BASE_RAW/assets"
 PROGRAMAS_BASE="$BASE_RAW/programas-callas-os"
 ESTADO_DIR="/var/lib/callas-os"
 VERSAO_ARQ="$ESTADO_DIR/config-version"
-BACKUP_DIR="$ESTADO_DIR/config-backups"
 
 erro(){ printf 'Erro: %s\n' "$*" >&2; exit 1; }
 aviso(){ printf 'Aviso: %s\n' "$*" >&2; }
@@ -77,7 +76,7 @@ trap finalizar EXIT
 
 # Older installed launchers know a shorter file list. The verified launcher
 # staged from this same commit can fetch newly introduced helpers on first use.
-if [[ ! -f $CALLAS_RELEASE_DIR/callas-aur.py ]]; then
+if [[ ! -f $CALLAS_RELEASE_DIR/callas-aur.py || ! -f $CALLAS_RELEASE_DIR/callas-storage.py || ! -f $CALLAS_RELEASE_DIR/callas-maintenance.py || ! -f $CALLAS_RELEASE_DIR/callas-native.py ]]; then
   python - "$CALLAS_RELEASE_DIR" "$CALLAS_RELEASE_REF" <<'EXPAND_STAGE'
 import importlib.util, sys
 spec=importlib.util.spec_from_file_location('callas_release', sys.argv[1]+'/callas-release.py')
@@ -89,6 +88,7 @@ fi
 exec 8>/run/put-update.lock
 flock -x 8
 export CALLAS_UPDATE_LOCK_HELD=1
+python "$CALLAS_RELEASE_DIR/callas-storage.py" --config "$usuario"
 /usr/bin/bash "$CALLAS_RELEASE_DIR/callas-security.sh" "$usuario"
 
 grub_compativel=0
@@ -101,7 +101,7 @@ if (( ! grub_compativel )); then
 fi
 printf '%s\n' 'grub-custom-v2' > /etc/callas-os/grub-layout
 
-install -d -m 0755 "$ESTADO_DIR" "$BACKUP_DIR"
+install -d -m 0755 "$ESTADO_DIR"
 forcar=0
 [[ ${1:-} == --force ]] && forcar=1
 
@@ -119,14 +119,6 @@ if [[ "$atual" == "$VERSAO" && $forcar -eq 0 ]]; then
     *) printf 'Opção inválida. Nenhuma alteração foi feita.\n'; exit 0 ;;
   esac
 fi
-
-stamp=$(date +%Y%m%d-%H%M%S)
-backup=$(mktemp -d "$BACKUP_DIR/$stamp.XXXXXXXX")
-for arq in   "$home/.config/powerdevilrc"   "$home/.config/ksmserverrc"   /etc/xdg/kicker-extra-favoritesrc   /etc/xdg/autostart/callas-limpar-atalhos-desktop.desktop; do
-  [[ -f "$arq" ]] || continue
-  nome=$(printf '%s' "$arq" | sed 's#^/##; s#/#__#g')
-  cp -a -- "$arq" "$backup/$nome"
-done
 
 # Instala o utilitário sem modificar monitores nem posições de janelas via root.
 # Todos os downloads são validados antes de substituir os auxiliares instalados.
@@ -149,19 +141,15 @@ bash -n "$monitor_stage/callas-inicio-kde.sh"
 bash -n "$monitor_stage/callas-kde-desligamento-login.sh"
 install -d /usr/local/libexec
 for nome in callas-inicio-kde callas-kde-desligamento-login; do
-  [[ ! -f /usr/local/libexec/$nome ]] || cp -a "/usr/local/libexec/$nome" "$backup/$nome"
   install -m 0755 "$monitor_stage/$nome.sh" "/usr/local/libexec/$nome"
 done
-[[ ! -f /usr/local/libexec/callas-monitores ]] || cp -a /usr/local/libexec/callas-monitores "$backup/callas-monitores"
 install -m 0755 "$monitor_stage/callas-monitores.py" /usr/local/libexec/callas-monitores
 /usr/local/libexec/callas-monitores --install-system
-[[ ! -f /usr/local/libexec/callas-janelas ]] || cp -a /usr/local/libexec/callas-janelas "$backup/callas-janelas"
 install -m 0755 "$monitor_stage/callas-janelas.py" /usr/local/libexec/callas-janelas
 /usr/local/libexec/callas-janelas --install-system
 # O atualizador já usa System; garante a categoria também em instalações existentes.
 updater_desktop=/usr/local/share/applications/io.github.Callas157.AtualizadorDoSistema.desktop
 if [[ -f $updater_desktop ]]; then
-  cp -a "$updater_desktop" "$backup/atualizador.desktop"
   sed -i 's/^Categories=.*/Categories=System;/' "$updater_desktop"
 fi
 rm -rf -- "$monitor_stage"
@@ -182,8 +170,6 @@ rm -f /boot/grub/themes/callas/terminal_box_c.png
 rm -f /usr/local/libexec/callas-grub-silencioso
 rm -f /etc/pacman.d/hooks/99-callas-grub-silencioso.hook
 
-cp -a /etc/default/grub "$backup/etc__default__grub" 2>/dev/null || true
-cp -a /boot/grub/grub.cfg "$backup/boot__grub__grub.cfg" 2>/dev/null || true
 
 grub_tmp=$(mktemp /boot/grub/.grub.cfg.callas.XXXXXX)
 if grub-mkconfig -o "$grub_tmp" && [[ -s "$grub_tmp" ]] &&
@@ -304,7 +290,6 @@ curl -fsSL --retry 2 "$ASSET_BASE/bonjourr/callas-profile.json"   -o /usr/share/
 brave_pref="$home/.config/BraveSoftware/Brave-Browser/Default/Preferences"
 if ! pgrep -u "$usuario" -f '(^|/)(brave|brave-browser)( |$)' >/dev/null 2>&1; then
   if [[ -f "$brave_pref" ]]; then
-    cp -a "$brave_pref" "$backup/Brave-Preferences" 2>/dev/null || true
     como_usuario python3 - "$brave_pref" <<'EOF'
 import json, os, sys
 path=sys.argv[1]
@@ -465,15 +450,9 @@ como_usuario kbuildsycoca6 --noincremental || aviso 'O menu será atualizado no 
 
 printf '%s\n' "$VERSAO" > "$VERSAO_ARQ"
 
-# Conserva apenas os três backups mais recentes.
-mapfile -t antigos < <(find "$BACKUP_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -r)
-if (( ${#antigos[@]} > 3 )); then
-  for antigo in "${antigos[@]:3}"; do rm -rf -- "$BACKUP_DIR/$antigo"; done
-fi
-
 printf '\nConfigurações do Callas OS atualizadas para %s.\n' "$VERSAO"
-printf 'Backup desta aplicação: %s\n' "$backup"
+printf 'Backups em Documentos/Callas OS Backup (leitura administrativa).\n'
 printf 'Abra Callas OS — Monitores no menu Sistema para escolher sua tela principal.\n'
 printf 'Algumas mudanças do KDE podem aparecer por completo após encerrar e iniciar a sessão.\n'
 
-printf 'Consulte os logs em Documentos/Logs do Callas OS.\n'
+printf 'Consulte os logs em Documentos/Callas OS Logs.\n'

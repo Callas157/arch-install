@@ -7,7 +7,6 @@ atalho_menu=/usr/local/share/applications/io.github.Callas157.AtualizadorDoSiste
 servico_check=put-update-check.service
 timer_check=put-update-check.timer
 agenda_dir=/var/lib/put-update/agenda
-recuperacao_dir=/var/lib/put-update/recuperacao
 lock_atualizador=/run/put-update.lock
 builder=put-aur
 builder_home=/var/lib/put-update/aur
@@ -25,7 +24,12 @@ proxima_data() {
     local modo=$1 base=$2
     case $modo in
         apps) TZ=UTC0 date -d "$base +7 days" +%F ;;
-        sistema) TZ=UTC0 date -d "$base +7 days" +%F ;;
+        sistema) python - "$base" <<'MONTH'
+import calendar, datetime, sys
+d=datetime.date.fromisoformat(sys.argv[1]); y=d.year+(d.month==12); m=d.month%12+1
+print(datetime.date(y,m,min(d.day,calendar.monthrange(y,m)[1])).isoformat())
+MONTH
+        ;;
         *) erro 'Agenda inválida.' ;;
     esac
 }
@@ -74,9 +78,15 @@ executar_agendado() {
         # O próximo ciclo começa no dia em que a atualização realmente terminou.
         proxima=$(proxima_data "$modo" "$hoje")
         gravar_data_agenda "$modo" "$proxima"
-        [[ $modo != sistema ]] || gravar_data_agenda apps "$proxima"
+        [[ $modo != sistema ]] || gravar_data_agenda apps "$(proxima_data apps "$hoje")"
     else
-        return 1
+        local codigo=$?
+        if [[ $modo == apps && $codigo == 2 ]]; then
+            # Expected deferral to the next General update; don't retry hourly.
+            gravar_data_agenda apps "$(proxima_data apps "$hoje")"
+            return 0
+        fi
+        return "$codigo"
     fi
 }
 
@@ -115,7 +125,7 @@ pasta_de_documentos() {
 
 pasta_de_logs() {
     local pasta
-    pasta="$(pasta_de_documentos)/Logs do Callas OS"
+    pasta="$(pasta_de_documentos)/Callas OS Logs"
     umask 077
     mkdir -p -- "$pasta" || return
     printf '%s\n' "$pasta"
@@ -135,6 +145,7 @@ etapa() {
 }
 
 atualizar_arch() {
+    mountpoint -q /boot || { printf 'A partição /boot não está montada; atualização geral interrompida antes do pacman.\n' >&2; return 1; }
     local origem=$1 dbpath tentativa
     local -a dependencias=() confirmacao=(--noconfirm)
     dbpath=$(pacman-conf DBPath) || return
@@ -181,7 +192,7 @@ atualizar_aur() (
     local temporario codigo=0
     temporario=$(mktemp /var/tmp/callas-aur-log.XXXXXXXX)
     trap 'rm -f -- "$temporario"' EXIT
-    /usr/local/libexec/callas-aur 2>&1 | tee "$temporario" || codigo=$?
+    /usr/local/libexec/callas-aur "$@" 2>&1 | tee "$temporario" || codigo=$?
     /usr/local/libexec/callas-logs --record AUR < "$temporario" || codigo=1
     exit "$codigo"
 )
@@ -272,25 +283,7 @@ atualizar_discord_integrado() (
 )
 
 criar_ponto_recuperacao() {
-    local destino antigo
-    install -d -m 0700 -- "$recuperacao_dir"
-    destino="$recuperacao_dir/$(date +%Y%m%d-%H%M%S)"
-    install -d -m 0700 -- "$destino"
-
-    pacman -Q > "$destino/pacotes.txt"
-    pacman -Qqe > "$destino/pacotes-explicitos.txt"
-    tar -C / -czf "$destino/etc.tar.gz" etc
-    tar -C / -czf "$destino/pacman-local.tar.gz" var/lib/pacman/local
-    cp -a /boot/grub/grub.cfg "$destino/grub.cfg" 2>/dev/null || :
-
-    # Mantém somente os três registros mais recentes.
-    mapfile -t antigos < <(find "$recuperacao_dir" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -r)
-    if (( ${#antigos[@]} > 3 )); then
-        for antigo in "${antigos[@]:3}"; do
-            rm -rf -- "$recuperacao_dir/$antigo"
-        done
-    fi
-    printf 'Ponto de recuperação pré-update criado em %s\n' "$destino"
+    /usr/local/libexec/callas-storage --system "$1"
 }
 
 notificar_reinicio_usuario() {
@@ -307,7 +300,7 @@ notificar_reinicio_usuario() {
     if command -v notify-send >/dev/null; then
         acao=$(notify-send -a 'Atualizador do sistema' -i system-reboot -u normal \
             -A reiniciar='Reiniciar agora' -A depois='Mais tarde' \
-            'Atualização completa concluída' \
+            'Atualização geral concluída' \
             'Sistema, AUR e aplicativos atualizados; verificações concluídas. Deseja reiniciar?' || true)
     else
         acao=
@@ -358,7 +351,7 @@ notificar_apps_usuario() {
 
 atualizar_sistema() {
     local origem=$1 usuario=$2 home=$3 falhou=0
-    etapa 'Ponto de recuperação pré-update' criar_ponto_recuperacao || return
+    etapa 'Ponto de recuperação pré-update' criar_ponto_recuperacao "$usuario" || return
     etapa 'Arch e aplicativos dos repositórios' atualizar_arch "$origem" || return
     etapa 'AUR e recompilações necessárias' atualizar_aur || falhou=1
     etapa 'Flatpaks e Discord' atualizar_apps "$usuario" "$home" || falhou=1
@@ -390,6 +383,23 @@ atualizar_apps() {
     return "$falhou"
 }
 
+atualizar_nativos() {
+    mountpoint -q /boot || { printf 'A partição /boot não está montada; manutenção de pacotes interrompida.\n' >&2; return 1; }
+    local usuario=$1 home=$2 falhou=0 adiados=0 codigo
+    etapa 'Backup de configurações' criar_ponto_recuperacao "$usuario" || return
+    /usr/local/libexec/callas-native || {
+        codigo=$?
+        if (( codigo == 2 )); then adiados=1; else falhou=1; fi
+    }
+    etapa 'Aplicativos do AUR sem alterar a base' atualizar_aur --apps-only || {
+        codigo=$?
+        if (( codigo == 2 )); then adiados=1; else falhou=1; fi
+    }
+    etapa 'Discord nativo' como_usuario "$usuario" "$home" "$program" --discord-agendado || falhou=1
+    (( falhou == 0 )) || return 1
+    (( adiados == 0 )) || return 2
+}
+
 registrar_atualizacao() {
     local usuario=$1 modo=$2 origem=$3 home codigo=0 categoria
     case $modo in
@@ -401,7 +411,7 @@ registrar_atualizacao() {
         printf '\n===== Atualização (%s, %s) | %s =====\n' "$modo" "$origem" "$(date -Is)"
         case $modo in
             sistema) atualizar_sistema "$origem" "$usuario" "$home" || codigo=$? ;;
-            apps) atualizar_apps "$usuario" "$home" || codigo=$? ;;
+            apps|nativos) atualizar_nativos "$usuario" "$home" || codigo=$? ;;
             flatpaks) atualizar_flatpaks "$usuario" "$home" || codigo=$? ;;
             discord)
                 etapa 'Discord nativo' como_usuario "$usuario" "$home" \
@@ -415,18 +425,36 @@ registrar_atualizacao() {
             local proxima
             proxima=$(proxima_data sistema "$(date +%F)") || return
             gravar_data_agenda sistema "$proxima" || return
-            gravar_data_agenda apps "$proxima" || return
+            printf '%s\n' "$(date +%F)" > "$agenda_dir/ultima-sistema"
+            gravar_data_agenda apps "$(proxima_data apps "$(date +%F)")" || return
             marcar_reinicio_pendente "$usuario" "$home" ||
                 printf 'Aviso: não consegui mostrar a opção de reiniciar.\n' >&2
-        elif [[ $modo == apps || $modo == flatpaks ]]; then
+        elif [[ $modo == apps || $modo == nativos || $modo == flatpaks ]]; then
+            [[ $modo == flatpaks ]] || gravar_data_agenda apps "$(proxima_data apps "$(date +%F)")" || return
             notificar_apps_usuario "$usuario" "$home" "$modo" || :
         fi
     else
         codigo=$?
-        printf 'Atualização incompleta (código %s). Consulte os logs; reinício não solicitado.\n' "$codigo" >&2
-        notificar_falha_usuario "$usuario" "$home" || :
+        if (( codigo == 2 )); then
+            printf 'Alguns aplicativos aguardam a opção 4 — Atualizar geral. Nenhum kernel foi atualizado pelo modo nativo.\n'
+            notificar_adiamento_usuario "$usuario" "$home" || :
+        else
+            printf 'Atualização incompleta (código %s). Consulte os logs; reinício não solicitado.\n' "$codigo" >&2
+            notificar_falha_usuario "$usuario" "$home" || :
+        fi
         return "$codigo"
     fi
+}
+
+notificar_adiamento_usuario() {
+    local usuario=$1 home=$2 uid runtime
+    uid=$(id -u "$usuario") || return
+    runtime="/run/user/$uid"
+    [[ -S $runtime/bus ]] || return 0
+    runuser -u "$usuario" -- env -i PATH=/usr/bin HOME="$home" USER="$usuario" \
+      XDG_RUNTIME_DIR="$runtime" DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
+      notify-send -a 'Atualizador do sistema' 'Alguns aplicativos aguardam atualização geral' \
+      'A opção 2 preservou kernel e base. Use a opção 4 para concluir as atualizações pendentes.'
 }
 
 notificar_falha_usuario() {
@@ -437,7 +465,7 @@ notificar_falha_usuario() {
     runuser -u "$usuario" -- env -i PATH=/usr/bin HOME="$home" USER="$usuario" \
         XDG_RUNTIME_DIR="$runtime" DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
         notify-send -u critical -a 'Atualizador do sistema' 'Atualização incompleta' \
-        'Uma etapa falhou. Consulte Documentos/Logs do Callas OS antes de reiniciar.'
+        'Uma etapa falhou. Consulte Documentos/Callas OS Logs antes de reiniciar.'
 }
 
 instalar_atalhos() {
@@ -542,14 +570,14 @@ UNIT
     rm -f -- "$sudo_rule"
 
     rm -f -- "$sudo_rule" "$sudo_template" "$paru_conf"
-    # AUR is reviewed interactively by the session user; no privileged builder.
+    # AUR builds use the isolated helper; no passwordless pacman rule is installed.
 
     preparar_agenda
-    if [[ ! -f $agenda_dir/security-weekly-v1 ]]; then
-        hoje=$(date +%F)
-        vencimento=$(ler_data_agenda sistema)
-        [[ $vencimento < $hoje ]] || gravar_data_agenda sistema "$hoje"
-        touch "$agenda_dir/security-weekly-v1"
+    if [[ ! -f $agenda_dir/maintenance-monthly-v2 ]]; then
+        base_agenda=$(ler_data_agenda inicio)
+        [[ ! -r $agenda_dir/ultima-sistema ]] || read -r base_agenda < "$agenda_dir/ultima-sistema"
+        gravar_data_agenda sistema "$(proxima_data sistema "$base_agenda")"
+        touch "$agenda_dir/maintenance-monthly-v2"
     fi
     # O programa pode já ser a origem quando o automático é reconfigurado pelo atalho.
     if [[ $origem != "$program" ]]; then
@@ -579,7 +607,7 @@ REBOOT_DESKTOP
     fi
 
     printf '\nAgendamento automático configurado.\n'
-    printf 'Atualização semanal do sistema vence em: %s.\n' "$(ler_data_agenda sistema)"
+    printf 'Atualização mensal do sistema vence em: %s.\n' "$(ler_data_agenda sistema)"
     printf 'Atualização semanal dos aplicativos vence em: %s.\n' "$(ler_data_agenda apps)"
     printf 'Se o PC estiver desligado no vencimento, a atualização roda no primeiro boot/verificação seguinte.\n'
     como_usuario "$usuario" "$home" "$program" --instalar-atalhos
@@ -597,7 +625,27 @@ perguntar_reinicio() {
 
 atualizar_config_callas() {
     # Root creates/downloads the stage; never sudo-execute a user-owned script.
+    printf 'É necessária autorização administrativa para aplicar as configurações.\n'
     sudo /usr/local/libexec/callas-release
+}
+
+menu_manutencao() {
+    local escolha
+    while true; do
+        printf '\n=== Limpeza e manutenção ===\n'
+        printf '%s\n' '1. Limpeza segura agora' '2. Ver espaço, backups e arquivos de VMs' \
+            '3. Verificar pacotes órfãos' '4. Reparar agendamento automático' '5. Voltar'
+        read -r -p 'Escolha [1-5]: ' escolha || return 0
+        [[ $escolha == 5 || -z $escolha ]] || printf 'É necessária autorização administrativa para esta ação.\n'
+        case $escolha in
+          1) sudo /usr/local/libexec/callas-maintenance --clean "$USER" || printf 'A limpeza registrou uma falha; consulte os logs.\n' ;;
+          2) sudo /usr/local/libexec/callas-maintenance --report "$USER" || printf 'Não consegui concluir o relatório.\n' ;;
+          3) sudo /usr/local/libexec/callas-maintenance --orphans "$USER" || printf 'Não consegui concluir a verificação de órfãos.\n' ;;
+          4) sudo "$program" --instalar || printf 'Falha ao reparar o agendamento.\n' ;;
+          5|"") return 0 ;;
+          *) printf 'Opção inválida.\n' ;;
+        esac
+    done
 }
 
 menu() {
@@ -610,20 +658,19 @@ menu() {
     while true; do
         printf '\n=== Atualizador do sistema ===\n'
         printf '%s\n' \
-            '1. Ativar ou reparar o automático (atualização completa semanal)' \
-            '2. Atualizar Flatpaks' \
+            '1. Limpeza e manutenção' \
+            '2. Atualizar aplicativos nativos' \
             '3. Atualizar Discord' \
-            '4. Atualizar tudo' \
+            '4. Atualizar geral' \
             '5. Callas OS Update' \
             '6. Sair'
         read -r -p 'Escolha [1-6] ou digite reboot: ' opcao || return 0
         case $opcao in
             1)
-                sudo "$program" --instalar ||
-                    printf 'Falha ao configurar o automático. Confira a mensagem acima.\n' >&2
+                menu_manutencao
                 continue
                 ;;
-            2) modo=flatpaks ;;
+            2) modo=nativos ;;
             3) modo=discord ;;
             4) modo=sistema ;;
             5)
@@ -643,13 +690,19 @@ menu() {
         esac
 
         if [[ $origem != "$program" ]] && ! cmp -s -- "$origem" "$program"; then
-            printf 'Escolha a opção 1 para instalar esta versão antes de atualizar.\n'
+            printf 'Este arquivo difere do atualizador instalado. Use a opção 5 — Callas OS Update para migrar a versão instalada.\n'
             continue
         fi
+        printf 'É necessária autorização administrativa para iniciar. Não serão pedidas senhas no meio da atualização.\n'
         if sudo "$program" --manual "$modo"; then
             : # The transaction itself offers reboot after every phase succeeds.
         else
-            printf 'Atualização com falha. Confira a mensagem acima e o log em Documentos.\n' >&2
+            codigo_menu=$?
+            if (( codigo_menu == 2 )); then
+                printf 'Parte dos aplicativos aguarda Atualizar geral; os detalhes estão no log.\n'
+            else
+                printf 'Atualização com falha. Confira a mensagem acima e o log em Documentos.\n' >&2
+            fi
         fi
     done
 }
@@ -682,7 +735,7 @@ case ${1:-} in
     --manual)
         (( EUID == 0 && $# == 2 )) || erro 'Esta opção é usada pelo menu de atualização.'
         [[ -n ${SUDO_USER:-} && $SUDO_USER != root ]] || erro 'Abra o menu com seu usuário normal.'
-        [[ $2 == sistema || $2 == apps || $2 == flatpaks || $2 == discord ]] || erro 'Modo manual inválido.'
+        [[ $2 == sistema || $2 == apps || $2 == nativos || $2 == flatpaks || $2 == discord ]] || erro 'Modo manual inválido.'
         printf 'Preparando a atualização. Se outra estiver em andamento, ela vai terminar primeiro.\n'
         exec flock -x -o "$lock_atualizador" "$program" --registrar "$SUDO_USER" "$2" manual
         ;;

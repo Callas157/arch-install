@@ -138,6 +138,7 @@ etapa() { printf '%s\\n' "$1" >> "$ORDER"; [[ $1 != "$FAIL" ]]; }
                 log, events = Path(temp) / 'log', Path(temp) / 'events'
                 script = '''set -euo pipefail
 program=/unused
+agenda_dir="$TEST_STATE"
 home_do_usuario() { printf /home/test; }
 atualizar_sistema() { printf transaction; return "$FAIL"; }
 como_usuario() { cat > "$LOG"; }
@@ -146,7 +147,7 @@ gravar_data_agenda() { printf 'schedule\\n' >> "$EVENTS"; }
 marcar_reinicio_pendente() { grep -q 'Fim da atualização' "$LOG"; printf 'reboot\\n' >> "$EVENTS"; }
 notificar_falha_usuario() { printf 'failed\\n' >> "$EVENTS"; }
 ''' + function + '\nregistrar_atualizacao user sistema automatico\n'
-                result = subprocess.run(['bash', '-c', script], env=dict(os.environ, LOG=str(log), EVENTS=str(events), FAIL=str(fail)), capture_output=True)
+                result = subprocess.run(['bash', '-c', script], env=dict(os.environ, LOG=str(log), EVENTS=str(events), FAIL=str(fail), TEST_STATE=temp), capture_output=True)
                 self.assertEqual(result.returncode, fail)
                 self.assertIn('transaction', log.read_text())
                 self.assertEqual(events.read_text().splitlines(), ['failed'] if fail else ['schedule', 'schedule', 'reboot'])

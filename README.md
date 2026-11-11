@@ -128,7 +128,7 @@ O instalador detecta automaticamente processadores AMD e Intel e instala o micro
 | **Intel** | Mesa, ANV e Vulkan Intel |
 | **VM / GPU genérica** | Mesa e renderização Vulkan compatível quando necessário |
 
-Em máquinas NVIDIA, a versão **610.57.04** é mantida pelo projeto e não é substituída automaticamente pela atualização semanal do sistema. A troca de versão só deve acontecer quando o Callas OS definir uma nova pilha validada.
+Em máquinas NVIDIA, a versão **610.57.04** é mantida pelo projeto e não é substituída automaticamente pela atualização mensal do sistema. A troca de versão só deve acontecer quando o Callas OS definir uma nova pilha validada.
 
 Após atualizações do sistema, a rotina de manutenção verifica os módulos NVIDIA/DKMS para os kernels instalados antes de considerar a atualização segura para reinicialização.
 
@@ -221,18 +221,18 @@ O Discord é instalado sem BetterDiscord e o Spotify sem Spicetify.
 
 O Callas OS possui um **Atualizador do sistema** integrado ao KDE.
 
-Existem duas rotinas automáticas principais; a completa já inclui a etapa de aplicativos e avança as duas agendas, evitando uma segunda execução seguida:
+Existem duas rotinas automáticas principais; a geral já inclui a etapa de aplicativos e avança as duas agendas, evitando uma segunda execução seguida:
 
 | Rotina | Frequência | O que atualiza |
 | --- | --- | --- |
-| Aplicativos | A cada **7 dias** | Flatpaks e atualização própria do Discord |
-| Atualização completa | A cada **7 dias**, ou pela opção **4** | Arch, AUR, recompilações sinalizadas, Flatpaks, Discord e validação final dos kernels/boot; NVIDIA preservada |
+| Aplicativos nativos | A cada **7 dias** | Pacotes oficiais em transação compatível, AUR sem novas dependências de base e rotina própria do Discord; sem Flatpaks e sem atualizar kernel/boot |
+| Atualização geral | A cada **1 mês**, ou pela opção **4** | Arch, AUR, recompilações sinalizadas, Flatpaks, Discord e validação final dos kernels/boot; NVIDIA preservada |
 
 Não existe um horário ou dia fixo. Os vencimentos são calculados a partir da instalação e da última execução concluída com sucesso.
 
 Se o computador estiver desligado quando uma atualização vencer, ela permanece pendente e será executada numa verificação posterior.
 
-Os registros de cada execução ficam na pasta **Logs do Callas OS**, dentro da pasta Documentos configurada no KDE (inclusive quando ela se chama Documents):
+Os registros de cada execução ficam na pasta **Callas OS Logs**, dentro da pasta Documentos configurada no KDE (inclusive quando ela se chama Documents):
 
 | Subpasta | Conteúdo |
 | --- | --- |
@@ -240,19 +240,21 @@ Os registros de cada execução ficam na pasta **Logs do Callas OS**, dentro da 
 | `Sistema e Pacman` | Atualizações completas e extrato do histórico do pacman |
 | `Kernel Linux` | Kernels padrão/LTS, headers, initramfs, DKMS e GRUB |
 | `Driver NVIDIA` | Versões e verificação dos módulos; a migração não troca o driver |
-| `Aplicativos` | Flatpaks e Discord |
+| `Aplicativos` | Rotina de aplicativos nativos, Discord e Flatpaks da atualização geral |
 | `AUR` | Plano de dependências do Paru, compilação isolada, instalação e recompilações |
 | `Seguranca e Firewall` | Aplicação das proteções e resultado do firewall |
 | `Instalacao` | Saída da instalação nova e avisos disponíveis |
+| `Manutencao` | Limpeza, espaço ocupado, backups e inventário de VMs |
 
-Os arquivos têm data/hora e não sobrescrevem execuções anteriores. Logs antigos em `Logs de Atualizações` são preservados. Logs novos começam a ser produzidos após a migração; não se inventa histórico de kernels ou drivers anteriores.
+Os arquivos têm data/hora. A migração renomeia `Logs do Callas OS` para `Callas OS Logs` e importa a antiga pasta `Logs de Atualizações`, preservando os arquivos. A exportação dos diagnósticos administrativos é idempotente: o mesmo registro não gera outra cópia em cada execução.
 
-Os diagnósticos administrativos também ficam em `/var/log/callas-os`, acessíveis a root, com até 60 registros por categoria. A exportação para Documentos grava como o usuário da sessão, evitando escrita privilegiada em arquivos da pasta pessoal. A exportação copia os cinco registros administrativos mais recentes de cada categoria, podendo repetir um diagnóstico em exportações posteriores. O journal e o log original do pacman continuam nos locais normais do sistema.
+Cada arquivo novo é limitado a 2 MiB; cada árvore de logs, em Documentos e em `/var/log/callas-os`, mantém até 128 MiB no total, 60 arquivos por pasta e 30 dias de histórico. Logs do journal e o histórico original do pacman continuam nos seus locais padrão; não são apagados indiscriminadamente. Os logs de limpeza e os relatórios ficam em `Manutencao`.
 
-Antes das atualizações do sistema, o sistema também guarda dados de recuperação, incluindo informações de pacotes, partes da configuração de `/etc`, banco local do pacman e configuração do GRUB.
+As cópias administrativas de recuperação ficam em **Documentos/Callas OS Backup**, separadas em `Sistema`, `Callas OS Update` e `Seguranca`. O padrão é **1 GB combinado (1.000.000.000 bytes)** de arquivos concluídos, com até três cópias por categoria. A rotação remove primeiro as cópias mais antigas. O limite e a quantidade podem ser ajustados com autorização administrativa em `/etc/callas-os/maintenance.ini`; a opção **1 → 2** mostra o caminho, limite e ocupação.
 
-> [!NOTE]
-> Esses arquivos ajudam em recuperação e diagnóstico, mas **não são snapshots completos do sistema**.
+Os três pools antigos (`/var/lib/put-update/recuperacao`, `/var/lib/callas-os/config-backups` e `/var/lib/callas-os/security-backups`) são importados antes de remover suas cópias antigas. Uma cópia incompleta ou que não pôde ser importada é preservada na origem com aviso. Uma única cópia nova maior que o limite não é mantida; isso fica registrado. Temporários de criação podem ocupar espaço adicional durante a operação; temporários incompletos antigos são limpos posteriormente.
+
+**Privacidade dos backups:** os arquivos podem incluir `/etc` e informações administrativas. As pastas permitem ver nomes e tamanhos, mas os arquivos `.tar.gz` pertencem a root e têm permissão `0600`. Abrir/restaurar exige autorização administrativa. Escritas e rotação usam descritores de diretório e recusam caminhos simbólicos ou pastas com proprietário/permissões inesperados. Não são snapshots completos, não copiam jogos nem discos de VMs e não fazem restauração automática. Os estados locais necessários ao desfazer dos utilitários de monitores/janelas continuam nos locais documentados acima.
 
 ---
 
@@ -308,7 +310,7 @@ A instalação nova continua usando `grub-custom-v2`. Uma migração de seguran�
 - Proteções conservadoras de links/arquivos temporários e ocultação de endereços/mensagens do kernel para usuários comuns; sudo usa terminal dedicado e cache de autenticação de cinco minutos.
 - Caso SSH esteja instalado, o acesso direto como root é desabilitado. Nenhum servidor SSH é habilitado pela migração.
 - Driver opcional do Rise Mode passa a usar conta dedicada, permissões de dispositivo restritas e isolamento do serviço, se esse hardware estiver configurado.
-- Senhas existentes e versão NVIDIA preservadas. A senha de usuário/root continua compartilhada conforme a preferência do projeto. Senhas de quatro dígitos continuam fracas; essas proteções não aumentam sua entropia.
+- Senhas existentes e versão NVIDIA preservadas. A senha de usuário/root continua compartilhada conforme a preferência do projeto. Senhas curtas continuam fracas; essas proteções não aumentam sua entropia.
 
 **Limite de confiança:** GitHub e as contas com permissão de escrita continuam sendo a autoridade da atualização. Commit imutável e verificação de blob não são assinatura independente e não protegem contra uma publicação maliciosa feita por uma conta autorizada comprometida. Uma assinatura independente precisa de uma chave administrada separadamente do repositório. Assinatura independente, proteção da conta/repositório e criptografia de um disco já instalado exigem configuração adicional; não estão sendo anunciadas como concluídas.
 
@@ -316,7 +318,7 @@ A primeira migração de um cliente antigo ainda passa pelo mecanismo de downloa
 
 ### Atualização completa sem perguntas intermediárias
 
-A opção **4. Atualizar tudo** e a rotina semanal executam, em ordem:
+A opção **4. Atualizar geral** e a rotina mensal executam, em ordem:
 
 1. Backup de recuperação e atualização completa do Arch, incluindo os aplicativos oficiais.
 2. Consulta do AUR pelo Paru, resolução de dependências e atualização dos pacotes externos. `rebuild-detector` sinaliza recompilações; pacotes de desenvolvimento com sufixo `-git`, `-svn`, `-hg`, `-bzr`, `-darcs` ou `-cvs` são recompilados nessa rotina para acompanhar suas fontes.
@@ -324,7 +326,36 @@ A opção **4. Atualizar tudo** e a rotina semanal executam, em ordem:
 4. Verificação final dos kernels padrão/LTS, DKMS, initramfs e GRUB.
 5. Depois de salvar o resultado e a agenda, notificação com **Reiniciar agora** ou **Mais tarde**. Não há reinício forçado; uma notificação de um boot anterior é descartada.
 
-A opção **2** atualiza somente os Flatpaks, sem fechar nem atualizar o Discord. A opção **3** atualiza somente o Discord. Aplicativos nativos dos repositórios oficiais e AUR são mantidos na transação completa, junto das dependências do sistema. Uma execução manual pode pedir a senha administrativa no início, mas não solicita revisão/confirmação de cada pacote durante o processo.
+O menu principal mantém seis entradas:
+
+| Opção | Ação |
+| --- | --- |
+| 1 | Limpeza e manutenção |
+| 2 | Atualizar aplicativos nativos |
+| 3 | Atualizar Discord |
+| 4 | Atualizar geral |
+| 5 | Callas OS Update |
+| 6 | Sair |
+
+A opção **2** não executa Flatpak nem atualiza kernel, boot ou componentes centrais. Ela consulta os repositórios em um banco isolado. Só aplica a fase oficial quando toda a transação pendente é compatível com esse escopo; um hook antes da instalação bloqueia mudanças de base caso o repositório mude entre a consulta e a execução. Se houver aplicativos oficiais junto de alterações de base, informa que a opção **4** é necessária. Não promete atualizar todos os aplicativos oficiais mantendo uma base congelada.
+
+Nessa mesma opção, AUR só é compilado/instalado com as dependências já disponíveis; não instala dependências novas dos repositórios nem pacotes de kernel/base. Se alguma receita exigir essas mudanças, ela fica pendente para Atualizar geral. A rotina própria do Discord continua incluída. A opção **3** permite atualizar somente o Discord a qualquer momento, mantendo o comportamento de fechar e reabrir quando necessário.
+
+O automático já é ativado pelo instalador e pela migração: geral mensal, aplicativos nativos semanal. O submenu de manutenção permite reparar o agendamento. A migração mantém um marcador para não reiniciar os prazos a cada reparo; usa a data inicial/última geral concluída como base e trata corretamente meses com menos dias. Uma fase nativa adiada por precisar da geral fica registrada, sem instalar partes incompatíveis nem repetir a tentativa a cada hora.
+
+Uma execução manual informa a necessidade de autorização administrativa no início; o serviço trabalha com essa autorização durante a rotina, sem pedir senhas de pacote no meio. A rotina automática não pede senha. Não foi criada uma regra global para roubar foco de navegadores ou jogos. Ao terminar a geral com sucesso e salvar os logs/agenda, há notificação para reiniciar ou adiar; nunca há reinício forçado.
+
+### Limpeza e manutenção
+
+A opção **1** oferece limpeza segura, relatório de espaço/backups/VMs, revisão de órfãos e reparo do agendamento. Uma manutenção automática diária também roda, aguardando a atualização se ela estiver em execução.
+
+- Cache do Pacman: conserva três versões e exclui a pilha NVIDIA da rotação. Não desinstala aplicativos. A limpeza usa o bloqueio do Pacman, evitando conflito com outra transação.
+- Temporários: segue as regras de idade do `systemd-tmpfiles --clean`, restritas a `/tmp` e `/var/tmp`; não apaga a pasta `.cache` do usuário. Arquivos nesses diretórios temporários continuam sujeitos às regras normais do Linux. Restos conhecidos de compilações interrompidas do atualizador, com mais de sete dias, também são removidos.
+- Logs/backups: aplica os limites documentados e remove os mais antigos.
+- Órfãos: somente revisão manual. Mostra os candidatos e seus detalhes, pede confirmação e consulta novamente antes de remover. Preserva componentes essenciais/aplicativos padrão; não faz remoção recursiva de dependências.
+- VMs: relatório de discos/ISOs e espaço realmente ocupado. Consulta a associação visível do libvirt quando possível, mas não considera ausência nessa consulta como prova de abandono. Não apaga máquinas, snapshots, discos nem ISOs, inclusive do GNOME Boxes.
+
+A limpeza não apaga caches de shaders da Steam, arquivos de jogos, dados do navegador ou perfis pessoais. Não existe reparador genérico que prometa corrigir qualquer defeito do Linux.
 
 **Consequência da automação:** não existe revisão humana dos PKGBUILDs durante a rotina completa. O isolamento limita a compilação, mas não certifica que um pacote é benigno: scripts de instalação de um pacote AUR ainda podem rodar como root. Não se afirma que o automático faz uma auditoria de malware. Checksums e assinaturas de fontes continuam sendo verificados; chaves declaradas pela receita podem ser obtidas automaticamente pelo fingerprint, sem desativar a verificação.
 
@@ -338,7 +369,7 @@ Se `/boot` não estiver montado ou alguma validação falhar, o procedimento reg
 
 ### Validação de segurança
 
-Testes offline: `python -m unittest discover -s programas-callas-os/tests -v`, mais sintaxe dos scripts Bash/Python. Incluem rejeição de download alterado/árvore incompleta, migração de lançadores antigos, agenda semanal, logs privados, plano AUR e saídas de consulta vazias, isolamento da compilação, rejeição de links em artefatos, sequência completa e bloqueio da notificação de sucesso após falhas, além da verificação simulada dos dois kernels.
+Testes offline: `python -m unittest discover -s programas-callas-os/tests -v`, mais sintaxe dos scripts Bash/Python. Incluem rejeição de download alterado/árvore incompleta, migração de lançadores antigos, agendas mensal/semanal, logs privados, plano AUR e saídas de consulta vazias, isolamento da compilação, rejeição de links em artefatos, sequência completa e bloqueio da notificação de sucesso após falhas, além da verificação simulada dos dois kernels.
 
 Antes de considerar validado no hardware, testar numa VM Arch e depois na máquina real:
 
@@ -348,7 +379,18 @@ Antes de considerar validado no hardware, testar numa VM Arch e depois na máqui
 4. Atualizar o sistema; iniciar uma vez pelo kernel padrão e outra pelo LTS. Conferir DKMS, initramfs, GRUB e os logs. Testar uma falha simulada de DKMS antes de confiar na detecção.
 5. Conferir a sequência da atualização completa: Arch, AUR/recompilações, Flatpaks/Discord e validação dos kernels/boot. O aviso para reiniciar só deve aparecer depois de todas as etapas e do log terminarem com sucesso. Simular erro de pacman, AUR e validação; deve aparecer falha, sem sucesso falso nem reinício automático. Confirmar que os aplicativos não são atualizados duas vezes seguidas e que não há pedido redundante de reinício após já reiniciar.
 
-Os testes offline não executam uma instalação real nem simulam o driver gráfico, Secure Boot ou o funcionamento do Overwatch.
+Os testes offline não executam uma instalação real nem simulam o driver gráfico, Secure Boot ou o funcionamento do Overwatch. O ambiente desta revisão não tem uma instalação Arch/VM em execução; a validação real permanece necessária.
+
+Roteiro adicional para a VM antes da máquina principal:
+
+1. Rodar a opção 5 a partir do atualizador antigo; conferir a primeira migração e executar novamente para verificar idempotência.
+2. Conferir `Documentos/Callas OS Logs` e `Documentos/Callas OS Backup`, migração dos pools antigos, limites, permissões e ausência de exportações duplicadas.
+3. Usar **1 → 2** para ver ocupação e limite; executar **1 → 1**. Conferir que VMs, ISOs, aplicativos e shaders permanecem preservados.
+4. Conferir o relatório de órfãos, cancelar a remoção e confirmar que nenhum pacote mudou. Reparar o agendamento e verificar que as datas não são reiniciadas em cada reparo.
+5. Conferir mensal/semanal com `systemctl list-timers` e com as datas em `/var/lib/put-update/agenda`. A primeira migração usa a data inicial como referência; uma agenda já vencida pode executar na próxima verificação.
+6. Testar a opção 2 com somente aplicativos pendentes e com atualização de kernel/base pendente. O segundo cenário deve adiar a fase oficial para a geral e preservar as versões do kernel/boot. Flatpaks não devem ser executados nessa opção.
+7. Testar a geral, reiniciar pelos kernels padrão e LTS e conferir logs/DKMS. Com `/boot` desmontado, a atualização de pacotes deve ser interrompida antes do Pacman.
+8. Só depois avaliar o uso na máquina principal. A NVIDIA continua travada e o Overwatch continua dependente do teste real.
 
 ---
 
