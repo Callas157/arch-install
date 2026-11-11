@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.10.3"
+VERSAO="2026.11.10.4"
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/main"
 ASSET_BASE="$BASE_RAW/assets"
 ESTADO_DIR="/var/lib/callas-os"
@@ -84,6 +84,35 @@ if lspci -Dn 2>/dev/null | grep -qi '10de:'; then
   dkms autoinstall || erro "O DKMS não conseguiu preparar o NVIDIA 610 para os kernels instalados."
   mkinitcpio -P || erro "Falha ao reconstruir o initramfs após a migração NVIDIA."
   rm -rf "$nvidia_dir"
+fi
+
+# GRUB: mantém o wallpaper do Callas OS também no terminal gráfico exibido
+# entre a seleção da entrada e o carregamento do kernel, removendo o bloco preto.
+if [[ -f /etc/default/grub && -d /boot/grub ]]; then
+  install -d /boot/grub/themes/callas
+  if [[ ! -f /boot/grub/themes/callas/background.png ]]; then
+    curl -fsSL --retry 2 "$ASSET_BASE/grub/background.png"       -o /boot/grub/themes/callas/background.png ||
+      erro "Não consegui restaurar o wallpaper do GRUB."
+  fi
+
+  cp -a /etc/default/grub "$backup/etc__default__grub" 2>/dev/null || true
+  cp -a /boot/grub/grub.cfg "$backup/boot__grub__grub.cfg" 2>/dev/null || true
+
+  if grep -q '^GRUB_BACKGROUND=' /etc/default/grub; then
+    sed -i 's#^GRUB_BACKGROUND=.*#GRUB_BACKGROUND="/boot/grub/themes/callas/background.png"#' /etc/default/grub
+  else
+    printf '\n%s\n' 'GRUB_BACKGROUND="/boot/grub/themes/callas/background.png"' >> /etc/default/grub
+  fi
+
+  grub_tmp=$(mktemp /boot/grub/.grub.cfg.callas.XXXXXX)
+  if grub-mkconfig -o "$grub_tmp" && [[ -s "$grub_tmp" ]] &&
+     grep -q 'menuentry ' "$grub_tmp"; then
+    chmod 0600 "$grub_tmp"
+    mv -f "$grub_tmp" /boot/grub/grub.cfg
+  else
+    rm -f "$grub_tmp"
+    erro "Falha ao validar a nova configuração do GRUB; o grub.cfg anterior foi preservado."
+  fi
 fi
 
 # Flatpaks padrão do Callas OS.
