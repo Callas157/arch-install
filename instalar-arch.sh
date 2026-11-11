@@ -83,8 +83,8 @@ GPU_PACOTES=(mesa)
 
 if grep -q '^10de:' <<<"$GPU_PCI"; then
   NVIDIA=1
-  GPU_PACOTES+=(nvidia-open nvidia-open-lts nvidia-utils nvidia-settings egl-wayland)
-  echo "GPU NVIDIA detectada: usando nvidia-open."
+  GPU_PACOTES+=(egl-wayland)
+  echo "GPU NVIDIA detectada: usando NVIDIA 610.57.04 fixado pelo Callas OS."
 fi
 if grep -q '^1002:' <<<"$GPU_PCI"; then
   AMD_GPU=1
@@ -463,7 +463,11 @@ atualizar_arch() {
         pacman -Qq base-devel >/dev/null 2>&1 || dependencias+=(base-devel)
         pacman -Qq git >/dev/null 2>&1 || dependencias+=(git)
     fi
-    pacman -Syu --needed "${confirmacao[@]}" "${dependencias[@]}"
+    if [[ -r /etc/callas-nvidia-version ]]; then
+        pacman -Syu --needed --ignore=nvidia-utils,nvidia-open-dkms,nvidia-open,nvidia-open-lts,lib32-nvidia-utils,nvidia-settings,libxnvctrl,opencl-nvidia,lib32-opencl-nvidia "${confirmacao[@]}" "${dependencias[@]}"
+    else
+        pacman -Syu --needed "${confirmacao[@]}" "${dependencias[@]}"
+    fi
 }
 
 atualizar_aur() (
@@ -2018,6 +2022,45 @@ printf '127.0.0.1 localhost\n::1 localhost\n127.0.1.1 %s.localdomain %s\n' "$hos
 
 sed -i 's/^#ParallelDownloads.*/ParallelDownloads = 10/; s/^#Color/Color/' /etc/pacman.conf
 sed -i '/^#\[multilib\]/,/^#Include/ s/^#//' /etc/pacman.conf
+
+# NVIDIA: o Callas OS fixa a série 610.57.04 por estabilidade em jogos/Vulkan.
+# Usa nvidia-open-dkms para atender os kernels linux e linux-lts com a mesma
+# versão de módulo. A pilha inteira é mantida alinhada.
+if (( nvidia )); then
+  pacman -Syu --needed --noconfirm lib32-libglvnd egl-wayland
+
+  nvidia_dir=/tmp/callas-nvidia-610
+  rm -rf "$nvidia_dir"
+  install -d "$nvidia_dir"
+
+  nvidia_urls=(
+    "https://archive.archlinux.org/packages/n/nvidia-utils/nvidia-utils-610.57.04-1-x86_64.pkg.tar.zst"
+    "https://archive.archlinux.org/packages/n/nvidia-open-dkms/nvidia-open-dkms-610.57.04-1-x86_64.pkg.tar.zst"
+    "https://archive.archlinux.org/packages/l/lib32-nvidia-utils/lib32-nvidia-utils-610.57.04-1-x86_64.pkg.tar.zst"
+    "https://archive.archlinux.org/packages/l/libxnvctrl/libxnvctrl-610.57.04-1-x86_64.pkg.tar.zst"
+    "https://archive.archlinux.org/packages/n/nvidia-settings/nvidia-settings-610.57.04-1-x86_64.pkg.tar.zst"
+  )
+
+  nvidia_pkgs=()
+  for url in "${nvidia_urls[@]}"; do
+    arquivo="$nvidia_dir/${url##*/}"
+    curl -fL --retry 3 --connect-timeout 15 --max-time 300 "$url" -o "$arquivo" ||
+      { echo "ERRO: não foi possível baixar ${url##*/} do Arch Linux Archive." >&2; exit 1; }
+    curl -fL --retry 3 --connect-timeout 15 --max-time 60 "$url.sig" -o "$arquivo.sig" ||
+      { echo "ERRO: assinatura ausente para ${url##*/}." >&2; exit 1; }
+    nvidia_pkgs+=("$arquivo")
+  done
+
+  pacman -U --needed --noconfirm "${nvidia_pkgs[@]}"
+
+  # Evita que pacman/Paru troquem apenas parte da pilha NVIDIA em um update.
+  sed -i '/^# CALLAS_NVIDIA_610_BEGIN$/,/^# CALLAS_NVIDIA_610_END$/d' /etc/pacman.conf
+  sed -i '/^\[options\]$/a # CALLAS_NVIDIA_610_BEGIN\nIgnorePkg = nvidia-utils nvidia-open-dkms nvidia-open nvidia-open-lts lib32-nvidia-utils nvidia-settings libxnvctrl opencl-nvidia lib32-opencl-nvidia\n# CALLAS_NVIDIA_610_END' /etc/pacman.conf
+
+  printf '%s\n' '610.57.04' > /etc/callas-nvidia-version
+  rm -rf "$nvidia_dir"
+fi
+
 useradd -m -U -G wheel -s /bin/bash "$usuario"
 printf '%%wheel ALL=(ALL:ALL) ALL\n' > /etc/sudoers.d/10-wheel
 chmod 0440 /etc/sudoers.d/10-wheel
@@ -2084,9 +2127,7 @@ ZRAM
 # Dependências gráficas do Steam. O driver virtual ou de software evita
 # puxar NVIDIA em uma VM que apresenta apenas VMSVGA, Virtio ou VGA.
 gpu_multilib=(lib32-mesa)
-if (( nvidia )); then
-  gpu_multilib+=(lib32-nvidia-utils)
-fi
+# Em NVIDIA, lib32-nvidia-utils 610.57.04 já foi instalado e fixado acima.
 if (( amd_gpu )); then
   gpu_multilib+=(vulkan-radeon lib32-vulkan-radeon)
 fi
