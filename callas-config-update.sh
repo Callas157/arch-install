@@ -74,7 +74,7 @@ if lspci -Dn 2>/dev/null | grep -qi '10de:'; then
   pacman -Qq nvidia-open-lts >/dev/null 2>&1 && remover+=(nvidia-open-lts)
   (( ${#remover[@]} == 0 )) || pacman -R --noconfirm "${remover[@]}"
 
-  pacman -U --needed --noconfirm "${nvidia_pkgs[@]}" ||
+  pacman -U --noconfirm "${nvidia_pkgs[@]}" ||
     erro "Falha ao instalar a pilha NVIDIA 610.57.04."
 
   sed -i '/^# CALLAS_NVIDIA_610_BEGIN$/,/^# CALLAS_NVIDIA_610_END$/d' /etc/pacman.conf
