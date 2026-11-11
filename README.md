@@ -165,7 +165,15 @@ A escolha altera a prioridade pelo KScreen, move o painel padrão com menu/barra
 
 A Área de Trabalho principal exibe a pasta padrão de atalhos. Nas outras telas, a exibição padrão dessa mesma pasta passa a usar uma pasta vazia dedicada. Isso faz os novos atalhos criados por Steam ou outros launchers **na pasta Área de Trabalho** aparecerem no principal. Arquivos não são apagados; pastas personalizadas de outros desktops e widgets são preservados. A ferramenta não obriga um launcher a criar atalhos se essa opção estiver desativada nele.
 
-A memória de janelas utiliza regras nativas **Lembrar** do KWin para Discord, Spotify e Brave. Deixe as janelas abertas e organizadas antes da primeira configuração; para aplicativos fechados, posição e tamanho serão aprendidos quando forem abertos e movidos/redimensionados. Depois, feche-os normalmente uma vez antes de testar a reinicialização. A maximização é capturada quando o aplicativo está aberto na primeira configuração. Não há regra global de centralizar ou enviar programas ao principal, e executar a ferramenta novamente não substitui posições aprendidas. Para outros aplicativos ou várias janelas equivalentes do mesmo navegador, use **4. Regras de janelas** para definir correspondências específicas.
+### Memória de janelas — patch automático
+
+A memória de janelas é um ajuste independente do configurador de monitores. A opção **5. Callas OS Update** instala `callas-janelas.py` e ativa as regras nativas **Lembrar** do KWin automaticamente na sessão Plasma do usuário. Não é necessário abrir o configurador, escolher uma tela ou ativar uma opção manual de aprendizado. A ativação usa o serviço de usuário `callas-janelas.service`; o script de monitores não instala nem inicializa regras de aprendizado.
+
+Em instalações novas, esse ajuste também é instalado e ativado silenciosamente no login KDE. A rotina pode executar novamente para completar atributos ainda não aprendidos, mas preserva os valores já salvos. Se não houver sessão gráfica ativa durante a atualização, a ativação ocorre no próximo login. A ferramenta de monitores continua sendo aberta manualmente; não foi adicionada uma janela automática no primeiro login.
+
+As regras cobrem Discord, Spotify e Brave. Janelas abertas na primeira ativação têm posição, tamanho, tela e maximização capturados; aplicativos fechados começam a aprender posição/tamanho no uso normal. Atributos adicionais ausentes são completados nas ativações seguintes quando o aplicativo estiver aberto, preservando as coordenadas aprendidas. Depois de mover/redimensionar, feche o aplicativo normalmente para o KWin persistir o estado. Não há regra global de centralizar ou enviar programas ao principal. Outros aplicativos ou várias janelas equivalentes do mesmo navegador podem exigir correspondências específicas em **Configurações do Sistema → Gerenciamento de janelas → Regras de janelas**.
+
+As posições aprendidas ficam no arquivo do KDE `~/.config/kwinrulesrc`; backups das alterações desse patch ficam em `~/.config/callas-os/window-backups/`. O configurador apenas conserva a associação das regras existentes à mesma tela física se a escolha do principal mudar a ordem das saídas.
 
 A sessão KDE permanece vazia ao entrar: Discord e os aplicativos de autostart continuam iniciando; Brave e Spotify não são reabertos por restauração da sessão. Outras entradas de autostart escolhidas pelo usuário são preservadas. O utilitário não restaura processos fechados para recuperar geometria.
 
@@ -178,7 +186,7 @@ Verificações automatizadas: `python -m unittest discover -s tests -v`. Elas co
 Roteiro de aceitação em instalação limpa ou atualizada:
 
 1. Execute a opção 5 do atualizador e confira ambos os utilitários em Sistema/favoritos. Desfixe um favorito e confirme que ele não volta em cada login.
-2. Abra Discord, Spotify e Brave; organize Discord e Brave lado a lado no HDMI. Escolha o DisplayPort como principal na ferramenta, sem mudar a posição física das telas.
+2. Confira que a opção 5 ativou a memória automaticamente, antes de abrir o configurador. Organize Discord e Brave lado a lado no HDMI. Escolha o DisplayPort como principal na ferramenta, sem mudar a posição física das telas.
 3. Confira painel, notificações e um novo atalho de jogo no DisplayPort, com wallpaper no HDMI. Confirme que os programas abertos continuam onde estavam.
 4. Mova/redimensione e feche os aplicativos normalmente uma vez; reabra e confira a geometria. Reinicie: Discord deve iniciar visível no lugar aprendido; Brave e Spotify devem continuar fechados até serem abertos manualmente.
 5. Confira o formulário do SDDM no DisplayPort e wallpaper no HDMI. Teste uma janela maximizada e uma configuração com somente uma tela conectada; reconecte e confira a preferência do KScreen.

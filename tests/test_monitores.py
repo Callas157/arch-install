@@ -17,6 +17,9 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('monitores', ROOT / 'callas-monitores.py')
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
+window_spec = importlib.util.spec_from_file_location('janelas', ROOT / 'callas-janelas.py')
+win = importlib.util.module_from_spec(window_spec)
+window_spec.loader.exec_module(win)
 
 
 class MonitorTests(unittest.TestCase):
@@ -30,6 +33,11 @@ class MonitorTests(unittest.TestCase):
         self.state = patch.object(m, 'STATE', self.base / 'callas-os')
         self.state.start()
         self.addCleanup(self.state.stop)
+        for name, value in [('CONFIG', self.base), ('STATE', self.base / 'callas-os'),
+                            ('bus', lambda: types.SimpleNamespace(get_object=lambda *args: None))]:
+            patcher = patch.object(win, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     def test_disconnected_disabled_and_implicit_enabled(self):
         data = {'outputs': [{'name': 'DP-3', 'connected': True},
@@ -43,7 +51,7 @@ class MonitorTests(unittest.TestCase):
         b = {'id': 2, 'name': 'DP-3', 'priority': 2}
         with patch.object(m, 'outputs', side_effect=[[a, b], [a, b], [a | {'priority': 2}, b | {'priority': 1}]]), \
              patch('builtins.input', return_value='2'), patch.object(m, 'run') as run, \
-             patch.object(m, 'apply_desktop') as desktop, patch.object(m, 'remember_windows'), \
+             patch.object(m, 'apply_desktop') as desktop, \
              patch.object(m.subprocess, 'run') as login:
             m.choose()
         calls = [c.args for c in run.call_args_list]
@@ -73,7 +81,7 @@ class MonitorTests(unittest.TestCase):
         fake = types.SimpleNamespace(Interface=lambda *args: types.SimpleNamespace(reconfigure=lambda: None))
         with patch.dict(sys.modules, {'dbus': fake}), \
              patch.object(m, 'bus', return_value=types.SimpleNamespace(get_object=lambda *args: None)):
-            m.remember_rules([{'app': 'discord', 'role': '', 'x': 1920, 'y': 0, 'width': 960, 'height': 1080, 'maxH': False, 'maxV': False}])
+            win.remember_rules([{'app': 'discord', 'role': '', 'x': 1920, 'y': 0, 'width': 960, 'height': 1080, 'maxH': False, 'maxV': False}])
             cfg = configparser.ConfigParser()
             cfg.read(path)
             self.assertEqual(cfg['custom']['position'], '17,29')
@@ -83,14 +91,14 @@ class MonitorTests(unittest.TestCase):
             self.assertEqual(rule['positionrule'], '4')
             self.assertNotIn('screenrule', rule)
             before = path.read_bytes()
-            m.remember_rules([{'app': 'discord', 'role': '', 'x': 0, 'y': 0, 'width': 400, 'height': 400, 'maxH': False, 'maxV': False}])
+            win.remember_rules([{'app': 'discord', 'role': '', 'x': 0, 'y': 0, 'width': 400, 'height': 400, 'maxH': False, 'maxV': False}])
             self.assertEqual(path.read_bytes(), before)
 
     def test_equivalent_browser_windows_not_collapsed(self):
         w = {'app': 'brave', 'role': '', 'x': 0, 'y': 0, 'width': 900, 'height': 1000, 'maxH': False, 'maxV': False}
         fake = types.SimpleNamespace(Interface=lambda *args: types.SimpleNamespace(reconfigure=lambda: None))
         with patch.dict(sys.modules, {'dbus': fake}), patch.object(m, 'bus', return_value=types.SimpleNamespace(get_object=lambda *args: None)):
-            m.remember_rules([w, w])
+            win.remember_rules([w, w])
         cfg = configparser.ConfigParser()
         cfg.read(self.base / 'kwinrulesrc')
         self.assertFalse(any(cfg[s].get('wmclass') == 'brave' for s in cfg.sections()))
@@ -153,7 +161,7 @@ if(ps[0].screen!==0 || !logs.includes('CALLAS_OK')) throw Error('panel');
         w = {'app': 'spotify', 'role': '', 'x': -1920, 'y': 0, 'width': 1920, 'height': 1080, 'maxH': True, 'maxV': True}
         fake = types.SimpleNamespace(Interface=lambda *args: types.SimpleNamespace(reconfigure=lambda: None))
         with patch.dict(sys.modules, {'dbus': fake}), patch.object(m, 'bus', return_value=types.SimpleNamespace(get_object=lambda *args: None)):
-            m.remember_rules([w])
+            win.remember_rules([w])
         cfg = configparser.ConfigParser()
         cfg.read(self.base / 'kwinrulesrc')
         rule = next(cfg[s] for s in cfg.sections() if cfg[s].get('wmclass') == 'spotify')
@@ -214,13 +222,69 @@ if(ps[0].screen!==0 || !logs.includes('CALLAS_OK')) throw Error('panel');
         w = {'app': 'discord', 'role': '', 'output': 'HDMI-A-1', 'x': 1920, 'y': 0, 'width': 960, 'height': 1080, 'maxH': False, 'maxV': False}
         fake = types.SimpleNamespace(Interface=lambda *args: types.SimpleNamespace(reconfigure=lambda: None))
         with patch.dict(sys.modules, {'dbus': fake}), patch.object(m, 'bus', return_value=types.SimpleNamespace(get_object=lambda *args: None)), \
-             patch.object(m, 'outputs', return_value=[{'name': 'DP-3', 'priority': 1}, {'name': 'HDMI-A-1', 'priority': 2}]):
-            m.remember_rules([w])
+             patch.object(win, 'outputs', return_value=[{'name': 'DP-3', 'priority': 1}, {'name': 'HDMI-A-1', 'priority': 2}]):
+            win.remember_rules([w])
         cfg = configparser.ConfigParser()
         cfg.read(self.base / 'kwinrulesrc')
         rule = next(cfg[s] for s in cfg.sections() if cfg[s].get('wmclass') == 'discord')
         self.assertEqual(rule['screen'], '1')
         self.assertEqual(rule['screenrule'], '4')
+
+    def test_monitor_choice_does_not_activate_window_memory(self):
+        import inspect
+        self.assertNotIn('remember_windows', inspect.getsource(m.choose))
+        self.assertNotIn('loginMode', inspect.getsource(m.choose))
+        self.assertNotIn('Ativar memória', inspect.getsource(m.main))
+        self.assertNotIn('kcm_kwinrules', inspect.getsource(m.main))
+
+    def test_window_patch_installs_invisible_activation_and_user_service(self):
+        written = {}
+        with patch.object(win.os, 'geteuid', return_value=0), \
+             patch.object(win, 'atomic', side_effect=lambda path, text, mode: written.update({str(path): text})):
+            win.install_system()
+        self.assertEqual(len(written), 2)
+        self.assertIn('NoDisplay=true', written['/etc/xdg/autostart/callas-janelas.desktop'])
+        self.assertIn('callas-janelas --activate', written['/etc/systemd/user/callas-janelas.service'])
+        self.assertNotIn('callas-monitores', ''.join(written.values()))
+
+    def test_update_activates_memory_and_install_does_not_open_monitor_tool(self):
+        updater = (ROOT / 'callas-config-update.sh').read_text()
+        installer = (ROOT / 'instalar-arch.sh').read_text()
+        self.assertIn('start callas-janelas.service', updater)
+        self.assertIn('DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_sessao/bus" systemctl --user', updater)
+        self.assertIn('"$libexec/callas-janelas" --install-system', installer)
+        self.assertNotIn('callas-monitores.service', updater)
+        self.assertNotIn('callas-monitores --first', installer)
+
+    def test_automatic_activation_is_serialized_and_never_calls_monitor_setup(self):
+        with patch.object(win.os, 'geteuid', return_value=1000), patch.object(win, 'remember_windows') as remember, \
+             patch.object(m, 'choose') as choose:
+            win.activate()
+            win.activate()
+            self.assertEqual(remember.call_count, 2)
+            choose.assert_not_called()
+        self.assertTrue((win.STATE / 'window-memory.lock').exists())
+
+    def test_closed_app_bootstraps_later_without_overwriting_learned_position(self):
+        fake = types.SimpleNamespace(Interface=lambda *args: types.SimpleNamespace(reconfigure=lambda: None))
+        with patch.dict(sys.modules, {'dbus': fake}):
+            win.remember_rules([])
+            cfg = configparser.ConfigParser()
+            cfg.optionxform = str
+            path = self.base / 'kwinrulesrc'
+            cfg.read(path)
+            rule = next(cfg[s] for s in cfg.sections() if cfg[s].get('wmclass') == 'spotify')
+            rule['position'] = '1920,100'
+            rule['size'] = '960,900'
+            with path.open('w') as stream:
+                cfg.write(stream)
+            win.remember_rules([{'app': 'spotify', 'role': '', 'x': 0, 'y': 0, 'width': 1920, 'height': 1080, 'maxH': True, 'maxV': True}])
+            cfg.read(path)
+            rule = next(cfg[s] for s in cfg.sections() if cfg[s].get('wmclass') == 'spotify')
+            self.assertEqual(rule['position'], '1920,100')
+            self.assertEqual(rule['size'], '960,900')
+            self.assertEqual(rule['maximizehorizrule'], '4')
+            self.assertTrue(list((win.STATE / 'window-backups').glob('*/kwinrulesrc')))
 
 
 if __name__ == '__main__':

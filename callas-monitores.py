@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Callas OS: output priority, Plasma desktop and native KWin Remember rules.
+"""Callas OS: output priority, Plasma desktop and login display.
 Never forces application windows onto the primary output. No display mode changes.
 """
 import argparse
@@ -12,7 +12,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import uuid
 
 APP_ID = 'io.github.Callas157.Monitores.desktop'
 CONFIG = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config')))
@@ -69,134 +68,6 @@ def backup():
     return dest
 
 
-def remember_windows():
-    """Seed native Remember rules from live windows without changing their geometry.
-    Snapshot transport is private to this invocation; KWin owns persistence afterward.
-    """
-    import dbus
-    import dbus.service
-    from dbus.mainloop.glib import DBusGMainLoop
-    from gi.repository import GLib
-    DBusGMainLoop(set_as_default=True)
-    session = dbus.SessionBus(private=True)
-    loop = GLib.MainLoop()
-    received = []
-    service = 'io.github.Callas157.Snapshot.p' + str(os.getpid())
-    owner = dbus.service.BusName(service, session, do_not_queue=True)
-
-    class Receiver(dbus.service.Object):
-        @dbus.service.method('io.github.Callas157.Snapshot', in_signature='s', out_signature='')
-        def accept(self, payload):
-            received.append(json.loads(str(payload)))
-            loop.quit()
-
-    receiver = Receiver(owner, '/Snapshot')
-    js = '''const result = [];
-workspace.windowList().forEach(function(w) {
-    if (!w.normalWindow || w.transient || !w.resourceClass) return;
-    const g = w.frameGeometry;
-    result.push({app: String(w.resourceClass).toLowerCase(), role: String(w.windowRole || ""), output: String(w.output.name),
-        x: Math.round(g.x), y: Math.round(g.y), width: Math.round(g.width), height: Math.round(g.height),
-        maxH: (Number(w.maximizeMode) & 2) !== 0,
-        maxV: (Number(w.maximizeMode) & 1) !== 0});
-});
-callDBus(SERVICE, "/Snapshot", "io.github.Callas157.Snapshot", "accept", JSON.stringify(result));
-'''.replace('SERVICE', json.dumps(service))
-    fd, name = tempfile.mkstemp(prefix='callas-snapshot-', suffix='.js')
-    script_name = 'callas-snapshot-' + str(os.getpid())
-    scripting = dbus.Interface(session.get_object('org.kde.KWin', '/Scripting'), 'org.kde.kwin.Scripting')
-    try:
-        with os.fdopen(fd, 'w') as stream:
-            stream.write(js)
-        number = scripting.loadScript(name, script_name)
-        if number < 0:
-            raise RuntimeError('KWin não carregou a captura das janelas.')
-        script = dbus.Interface(session.get_object('org.kde.KWin', '/Scripting/Script' + str(number)), 'org.kde.kwin.Script')
-        script.run()
-        def timeout():
-            loop.quit()
-            return False
-        timer = GLib.timeout_add_seconds(10, timeout)
-        loop.run()
-        if received:
-            GLib.source_remove(timer)
-        else:
-            raise RuntimeError('KWin não respondeu à captura; regras existentes preservadas.')
-    finally:
-        try:
-            scripting.unloadScript(script_name)
-        finally:
-            Path(name).unlink(missing_ok=True)
-            receiver.remove_from_connection()
-            session.close()
-    remember_rules(received[0])
-
-
-def remember_rules(windows):
-    import dbus
-    path = CONFIG / 'kwinrulesrc'
-    cfg = configparser.ConfigParser(interpolation=None, strict=True)
-    cfg.optionxform = str
-    if path.exists():
-        cfg.read(path)
-    if not cfg.has_section('General'):
-        cfg.add_section('General')
-    ids = [s for s in cfg['General'].get('rules', '').split(',') if s]
-    # Only the requested apps. Separate roles keep dialogs out of the main rule.
-    targets = ('discord', 'spotify', 'brave', 'brave-browser')
-    samples = {}
-    counts = {}
-    for w in windows:
-        if w['app'] in targets:
-            key = (w['app'], w['role'])
-            counts[key] = counts.get(key, 0) + 1
-            samples[key] = w
-    names = [o['name'] for o in sorted(outputs(), key=lambda o: o.get('priority', 100))] if any(w.get('output') for w in samples.values()) else []
-    added = 0
-    for app in targets:
-        entries = [(key, w) for key, w in samples.items() if key[0] == app]
-        if not entries:
-            entries = [((app, ''), None)]
-        for (app, role), sample in entries:
-            marker = 'Callas OS: lembrar ' + app + (' (' + role + ')' if role else '')
-            # Do not overwrite learned values on updates or later invocations.
-            if any(cfg[s].get('Description', '').startswith('Callas OS: lembrar ') and cfg[s].get('wmclass') == app for s in cfg.sections()):
-                continue
-            if counts.get((app, role), 0) > 1:
-                print('Aviso:', app, 'tem várias janelas equivalentes; use Regras de janelas para diferenciá-las.')
-                continue
-            ident = str(uuid.uuid4())
-            cfg[ident] = {'Description': marker, 'wmclass': app, 'wmclassmatch': '1',
-                          'wmclasscomplete': 'false', 'types': '1', 'positionrule': '4', 'sizerule': '4'}
-            rule = cfg[ident]
-            if role:
-                rule['windowrole'] = role
-                rule['windowrolematch'] = '1'
-            if sample:
-                rule['position'] = f"{sample['x']},{sample['y']}"
-                rule['size'] = f"{sample['width']},{sample['height']}"
-                if sample.get('output') in names:
-                    rule['screenrule'] = '4'
-                    rule['screen'] = str(names.index(sample['output']))
-                rule['maximizehorizrule'] = '4'
-                rule['maximizevertrule'] = '4'
-                rule['maximizehoriz'] = str(sample['maxH']).lower()
-                rule['maximizevert'] = str(sample['maxV']).lower()
-            ids.append(ident)
-            added += 1
-    if not added:
-        print('Regras já instaladas; posições aprendidas preservadas.')
-        return
-    cfg['General']['rules'] = ','.join(ids)
-    cfg['General']['count'] = str(len(ids))
-    import io
-    out = io.StringIO()
-    cfg.write(out, space_around_delimiters=False)
-    atomic(path, out.getvalue())
-    dbus.Interface(bus().get_object('org.kde.KWin', '/KWin'), 'org.kde.KWin').reconfigure()
-    print(f'Regras Lembrar: {added} adicionadas. As regras aprendidas foram preservadas.')
-    print('Discord, Spotify e Brave: mova/redimensione suas janelas uma vez e feche normalmente para o KDE aprender.')
-    print('Para guardar também maximização, deixe o aplicativo aberto ao ativar esta opção pela primeira vez.')
 
 
 def remap_rule_screens(old_order, new_order):
@@ -294,8 +165,6 @@ def choose():
     # KScreen saves output geometry asynchronously. The login helper validates its input.
     apply_desktop()
     subprocess.run([str(LIBEXEC / 'callas-kde-desligamento-login'), '--monitor', chosen['name']], check=True)
-    remember_windows()
-    run('kwriteconfig6', '--file', 'ksmserverrc', '--group', 'General', '--key', 'loginMode', 'emptySession')
     print('Principal:', chosen['name'], '— confira o formulário no próximo login.')
     print('Resolução, frequência, escala e disposição física dos monitores foram mantidas.')
 
@@ -315,7 +184,7 @@ def install_system():
     atomic(target, '''[Desktop Entry]
 Type=Application
 Name=Callas OS — Monitores
-Comment=Escolher monitor principal, login, painel e lembrar janelas
+Comment=Escolher monitor principal, login, painel, atalhos e notificações
 Exec=/usr/local/libexec/callas-monitores
 TryExec=/usr/local/libexec/callas-monitores
 Icon=preferences-desktop-display
@@ -361,7 +230,7 @@ def main():
     except Exception as exc:
         print('Aviso: favoritos não puderam ser importados:', exc)
     while True:
-        print('\nCallas OS — Monitores\n1. Escolher monitor principal e configurar KDE/login\n2. Ativar memória de posição/tamanho (Discord, Spotify, Brave)\n3. Abrir configurações de telas do KDE\n4. Abrir Regras de janelas (outros aplicativos)\n0. Sair')
+        print('\nCallas OS — Monitores\n1. Escolher monitor principal e configurar KDE/login\n2. Abrir configurações de telas do KDE\n0. Sair')
         option = input('Escolha: ').strip()
         try:
             if option == '0':
@@ -369,12 +238,7 @@ def main():
             if option == '1':
                 choose()
             elif option == '2':
-                backup()
-                remember_windows()
-            elif option == '3':
                 subprocess.Popen(['systemsettings', 'kcm_kscreen'])
-            elif option == '4':
-                subprocess.Popen(['systemsettings', 'kcm_kwinrules'])
             else:
                 print('Opção inválida.')
         except Exception as exc:

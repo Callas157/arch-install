@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.11.10"
+VERSAO="2026.11.11.11"
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/main"
 ASSET_BASE="$BASE_RAW/assets"
 ESTADO_DIR="/var/lib/callas-os"
@@ -81,13 +81,14 @@ chown -R "$usuario:$grupo" "$backup" 2>/dev/null || true
 # Todos os downloads são validados antes de substituir os auxiliares instalados.
 monitor_stage=$(mktemp -d)
 trap 'rm -rf -- "$monitor_stage"' EXIT
-for nome in callas-monitores.py callas-inicio-kde.sh callas-kde-desligamento-login.sh; do
+for nome in callas-monitores.py callas-janelas.py callas-inicio-kde.sh callas-kde-desligamento-login.sh; do
   curl -fsSL --retry 2 --connect-timeout 10 --max-time 120 "$BASE_RAW/$nome" -o "$monitor_stage/$nome" ||
     erro "Não consegui baixar $nome. Auxiliares anteriores preservados."
 done
-python - "$monitor_stage/callas-monitores.py" <<'CALLAS_MONITOR_CHECK'
+python - "$monitor_stage/callas-monitores.py" "$monitor_stage/callas-janelas.py" <<'CALLAS_MONITOR_CHECK'
 import ast, sys
-ast.parse(open(sys.argv[1], encoding="utf-8").read())
+for path in sys.argv[1:]:
+    ast.parse(open(path, encoding="utf-8").read())
 CALLAS_MONITOR_CHECK
 bash -n "$monitor_stage/callas-inicio-kde.sh"
 bash -n "$monitor_stage/callas-kde-desligamento-login.sh"
@@ -100,6 +101,9 @@ done
 [[ ! -f /usr/local/libexec/callas-monitores ]] || cp -a /usr/local/libexec/callas-monitores "$backup/callas-monitores"
 install -m 0755 "$monitor_stage/callas-monitores.py" /usr/local/libexec/callas-monitores
 /usr/local/libexec/callas-monitores --install-system
+[[ ! -f /usr/local/libexec/callas-janelas ]] || cp -a /usr/local/libexec/callas-janelas "$backup/callas-janelas"
+install -m 0755 "$monitor_stage/callas-janelas.py" /usr/local/libexec/callas-janelas
+/usr/local/libexec/callas-janelas --install-system
 # O atualizador já usa System; garante a categoria também em instalações existentes.
 updater_desktop=/usr/local/share/applications/io.github.Callas157.AtualizadorDoSistema.desktop
 if [[ -f $updater_desktop ]]; then
@@ -508,6 +512,22 @@ if [[ -x /usr/local/libexec/callas-inicio-kde ]]; then
 fi
 if [[ -x /usr/local/libexec/callas-nekofetch ]]; then
   como_usuario /usr/local/libexec/callas-nekofetch || aviso "O Nekofetch não pôde ser atualizado."
+fi
+
+# Patch independente: ativa a memória automaticamente na sessão Plasma existente.
+# O systemd do usuário fornece o ambiente gráfico; sudo/root não grava kwinrulesrc.
+uid_sessao=$(id -u "$usuario")
+runtime_sessao="/run/user/$uid_sessao"
+if [[ -S "$runtime_sessao/bus" ]]; then
+  sessao_systemctl=(runuser -u "$usuario" -- env -i PATH=/usr/bin:/bin HOME="$home"
+    USER="$usuario" LOGNAME="$usuario" LANG=C.UTF-8 XDG_RUNTIME_DIR="$runtime_sessao"
+    DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_sessao/bus" systemctl --user)
+  "${sessao_systemctl[@]}" daemon-reload
+  "${sessao_systemctl[@]}" start callas-janelas.service ||
+    erro 'Não consegui ativar a memória de janelas na sessão. Consulte journalctl --user -u callas-janelas.service.'
+  printf 'Memória de janelas ativada automaticamente. Não depende do configurador de monitores.\n'
+else
+  printf 'Sem sessão gráfica ativa: a memória será ativada automaticamente no próximo login KDE.\n'
 fi
 
 como_usuario kbuildsycoca6 --noincremental || aviso 'O menu será atualizado no próximo login.'

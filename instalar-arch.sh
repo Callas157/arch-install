@@ -154,6 +154,14 @@ python - "$CALLAS_MONITOR_TMP" <<'CALLAS_MONITOR_CHECK'
 import ast, sys
 ast.parse(open(sys.argv[1], encoding="utf-8").read())
 CALLAS_MONITOR_CHECK
+CALLAS_WINDOW_TMP=$(mktemp)
+curl -fsSL --retry 2 --connect-timeout 10 --max-time 120 \
+  "https://raw.githubusercontent.com/Callas157/arch-install/${CALLAS_ASSET_REF}/callas-janelas.py" \
+  -o "$CALLAS_WINDOW_TMP"
+python - "$CALLAS_WINDOW_TMP" <<'CALLAS_WINDOW_CHECK'
+import ast, sys
+ast.parse(open(sys.argv[1], encoding="utf-8").read())
+CALLAS_WINDOW_CHECK
 
 # ---------------- Escolha do disco ----------------
 BOOTPART="$(findmnt -no SOURCE /run/archiso/bootmnt 2>/dev/null || true)"
@@ -259,7 +267,8 @@ UUID_RAIZ="$(blkid -s UUID -o value "$RAIZ")"
 # ---------------- Arquivos integrados ----------------
 install -d /mnt/usr/local/libexec /mnt/usr/share/plymouth/themes/callas
 install -m 0755 "$CALLAS_MONITOR_TMP" /mnt/usr/local/libexec/callas-monitores
-rm -f -- "$CALLAS_MONITOR_TMP"
+install -m 0755 "$CALLAS_WINDOW_TMP" /mnt/usr/local/libexec/callas-janelas
+rm -f -- "$CALLAS_MONITOR_TMP" "$CALLAS_WINDOW_TMP"
 install -d /mnt/usr/share/icons/hicolor/256x256/apps
 # Assets visuais do Callas OS ficam organizados no repositório.
 # Isso reduz bastante o tamanho do instalador e evita duplicar imagens em base64.
@@ -2614,6 +2623,7 @@ como_usuario kwriteconfig6 --file kscreenlockerrc \
 
 # A configuração de sessão vazia é preparada ainda no chroot.
 "$libexec/callas-monitores" --install-system
+"$libexec/callas-janelas" --install-system
 como_usuario "$libexec/callas-inicio-kde" || aviso 'Não consegui aplicar o início de sessão do KDE.'
 
 "$libexec/callas-kde-desligamento-login" --preparar-instalacao ||
