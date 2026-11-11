@@ -5,6 +5,15 @@ desktop-color: "#050b16"
 desktop-image: "background.png"
 desktop-image-scale-method: "stretch"
 
+# Durante o carregamento do kernel, o terminal usa o mesmo wallpaper do menu.
+terminal-box: "terminal_box_*.png"
+terminal-border: "0"
+terminal-left: "0"
+terminal-top: "0"
+terminal-width: "100%"
+terminal-height: "100%"
+terminal-font: "Unifont Regular 16"
+
 
 
 + boot_menu {
