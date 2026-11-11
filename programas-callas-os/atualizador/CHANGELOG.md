@@ -1,14 +1,5 @@
 # Histórico do Callas OS
 
-## 3.2.2 — 2026-11-11
-
-- Move VERSION e este histórico para `programas-callas-os/atualizador/`; orientações ficam em `programas-callas-os/AGENTS.md`.
-- Atualiza o estágio verificado e os links da documentação para os novos caminhos. O nome VERSION dentro do estágio temporário continua igual, preservando os pontos de integração do instalador e da migração.
-- Mantém a ponte histórica de atualização na raiz, necessária para clientes que ainda consultam esse endereço.
-- Lançadores das versões 3.2.0/3.2.1 que já tenham sido instalados podem exigir reiniciar a migração pela ponte: eles buscavam VERSION na raiz antes de baixar o lançador novo. O bootstrap de instalações anteriores permanece disponível.
-
-Validação: 100 testes offline e sintaxe Bash/Python aprovados; instalação e atualização em VM continuam pendentes.
-
 ## 3.2.1 — 2026-11-11
 
 - Instalação limpa pula somente o primeiro início automático de Steam e Discord; abertura manual continua disponível e os próximos logins mantêm o autostart habitual.
@@ -17,6 +8,15 @@ Validação: 100 testes offline e sintaxe Bash/Python aprovados; instalação e 
 - Solaar e demais autostarts continuam como antes. Configurador de monitores permanece manual, nos favoritos.
 
 Validação: 99 testes offline e sintaxe Bash/Python aprovados. Primeiro login em sessão KDE real permanece pendente.
+
+### Organização interna — sem alteração da versão pública
+
+- Move VERSION e este histórico para `programas-callas-os/atualizador/`; orientações ficam em `programas-callas-os/AGENTS.md`.
+- Atualiza o estágio verificado e os links da documentação para os novos caminhos. O nome VERSION dentro do estágio temporário continua igual, preservando os pontos de integração do instalador e da migração.
+- Mantém a ponte histórica de atualização na raiz, necessária para clientes que ainda consultam esse endereço.
+- Lançadores das versões 3.2.0/3.2.1 que já tenham sido instalados podem exigir reiniciar a migração pela ponte: eles buscavam VERSION na raiz antes de baixar o lançador novo. O bootstrap de instalações anteriores permanece disponível.
+
+Validação: 100 testes offline e sintaxe Bash/Python aprovados; instalação e atualização em VM continuam pendentes.
 
 ## 3.2.0 — 2026-11-11
 

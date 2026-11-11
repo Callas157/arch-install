@@ -4,7 +4,7 @@
 
 - Preserve `instalar-arch.sh`, repository paths, existing short links and the root updater compatibility bridge.
 - The public project version has one source: `/programas-callas-os/atualizador/VERSION`. The installed identity is maintained by `callas-version`; do not change Arch's `os-release` to display the project version.
-- When an authorized project change is published, update `atualizador/VERSION` and `atualizador/CHANGELOG.md` together and align the README's current-version references: patch for fixes, minor for new features, major for incompatible structural changes. The initial adoption of this scheme is `3.2.0`.
+- Bump the public version only for changes to delivered functionality: patch for behavioral fixes, minor for new features, major for incompatible structural changes. Repository organization, file moves and documentation-only changes retain the current public version. For a functional release, update `atualizador/VERSION`, `atualizador/CHANGELOG.md` and current-version references in README together. The initial adoption of this scheme is `3.2.0`.
 - Keep the date-based `VERSAO` revision used by legacy updater clients in sync between the root bridge and the full updater. It is an internal migration revision, separate from the public project version.
 - Project identity advances only after the required migration or installation steps succeed. Preserve incomplete/legacy boot state without claiming a completed new release. Ordinary Arch/application updates do not advance the project version.
 - Keep embedded `put-update` and `callas-nekofetch` in the installer identical to their canonical files under `programas-callas-os/atualizador/`.
