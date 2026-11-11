@@ -123,6 +123,27 @@ else
   echo "Water cooler Rise Mode aa88:8666 não detectado: integração será ignorada."
 fi
 
+# ---------------- Pré-verificação NVIDIA ----------------
+# Em máquinas NVIDIA, confirma a disponibilidade da pilha 610 antes de qualquer
+# operação destrutiva no disco.
+if (( NVIDIA )); then
+  NVIDIA_610_URLS=(
+    "https://archive.archlinux.org/packages/n/nvidia-utils/nvidia-utils-610.57.04-1-x86_64.pkg.tar.zst"
+    "https://archive.archlinux.org/packages/n/nvidia-open-dkms/nvidia-open-dkms-610.57.04-1-x86_64.pkg.tar.zst"
+    "https://archive.archlinux.org/packages/l/lib32-nvidia-utils/lib32-nvidia-utils-610.57.04-1-x86_64.pkg.tar.zst"
+    "https://archive.archlinux.org/packages/l/libxnvctrl/libxnvctrl-610.57.04-1-x86_64.pkg.tar.zst"
+    "https://archive.archlinux.org/packages/n/nvidia-settings/nvidia-settings-610.57.04-1-x86_64.pkg.tar.zst"
+  )
+  echo ">>> Verificando NVIDIA 610.57.04 no Arch Linux Archive"
+  for url in "${NVIDIA_610_URLS[@]}"; do
+    curl -fIsSL --retry 2 --connect-timeout 10 --max-time 30 "$url" >/dev/null ||
+      { echo "ERRO: pacote NVIDIA indisponível: ${url##*/}" >&2; exit 1; }
+    curl -fIsSL --retry 2 --connect-timeout 10 --max-time 30 "$url.sig" >/dev/null ||
+      { echo "ERRO: assinatura NVIDIA indisponível: ${url##*/}.sig" >&2; exit 1; }
+  done
+  echo "NVIDIA 610.57.04 disponível e pronta para a instalação."
+fi
+
 # ---------------- Escolha do disco ----------------
 BOOTPART="$(findmnt -no SOURCE /run/archiso/bootmnt 2>/dev/null || true)"
 BOOTDISK=""
@@ -464,7 +485,26 @@ atualizar_arch() {
         pacman -Qq git >/dev/null 2>&1 || dependencias+=(git)
     fi
     if [[ -r /etc/callas-nvidia-version ]]; then
-        pacman -Syu --needed --ignore=nvidia-utils,nvidia-open-dkms,nvidia-open,nvidia-open-lts,lib32-nvidia-utils,nvidia-settings,libxnvctrl,opencl-nvidia,lib32-opencl-nvidia "${confirmacao[@]}" "${dependencias[@]}"
+        pacman -Syu --needed --ignore=nvidia-utils,nvidia-open-dkms,nvidia-open,nvidia-open-lts,lib32-nvidia-utils,nvidia-settings,libxnvctrl,opencl-nvidia,lib32-opencl-nvidia "${confirmacao[@]}" "${dependencias[@]}" || return
+
+        # Antes de considerar a atualização concluída, garante que o NVIDIA
+        # fixado ainda foi compilado para todos os kernels linux/linux-lts.
+        local pkgbase release falhou_modulo=0
+        dkms autoinstall || falhou_modulo=1
+        for pkgbase in /usr/lib/modules/*/pkgbase; do
+            [[ -f $pkgbase ]] || continue
+            case $(<"$pkgbase") in
+                linux|linux-lts) ;;
+                *) continue ;;
+            esac
+            release=${pkgbase%/pkgbase}
+            release=${release##*/}
+            if ! modinfo -k "$release" nvidia >/dev/null 2>&1; then
+                printf 'NVIDIA %s não está disponível para o kernel %s. Não reinicie antes de corrigir.\n'                     "$(< /etc/callas-nvidia-version)" "$release" >&2
+                falhou_modulo=1
+            fi
+        done
+        (( falhou_modulo == 0 )) || return 1
     else
         pacman -Syu --needed "${confirmacao[@]}" "${dependencias[@]}"
     fi
