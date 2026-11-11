@@ -926,6 +926,19 @@ REBOOT_DESKTOP
     fi
 }
 
+perguntar_reinicio() {
+    local resposta
+    printf '\nDeseja reiniciar o sistema agora?\n'
+    printf '1. Sim, reiniciar agora\n'
+    printf '2. Não\n'
+    read -r -p 'Escolha [1-2]: ' resposta || return 0
+    case $resposta in
+        1) systemctl reboot ;;
+        2|"") return 0 ;;
+        *) printf 'Opção inválida. Não vou reiniciar.\n' ;;
+    esac
+}
+
 atualizar_config_callas() {
     local temporario resposta
     temporario=$(mktemp)
@@ -963,7 +976,7 @@ menu() {
             '4. Atualizar só o Discord agora' \
             '5. Atualizar configurações do Callas OS' \
             '6. Sair'
-        read -r -p 'Escolha [1-6]: ' opcao || return 0
+        read -r -p 'Escolha [1-6] ou digite reboot: ' opcao || return 0
         case $opcao in
             1)
                 sudo /usr/bin/bash "$origem" --instalar ||
@@ -974,12 +987,19 @@ menu() {
             3) modo=sistema ;;
             4) modo=discord ;;
             5)
-                atualizar_config_callas ||
+                if atualizar_config_callas; then
+                    perguntar_reinicio
+                else
                     printf 'Falha ao atualizar as configurações do Callas OS.\n' >&2
+                fi
                 continue
                 ;;
             6) return 0 ;;
-            *) printf 'Opção inválida.\n'; continue ;;
+            reboot|REBOOT|Reboot)
+                systemctl reboot
+                return 0
+                ;;
+            *) printf 'Opção inválida. Digite 1-6 ou reboot.\n'; continue ;;
         esac
 
         if [[ $origem != "$program" ]] && ! cmp -s -- "$origem" "$program"; then
