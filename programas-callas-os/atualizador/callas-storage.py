@@ -114,19 +114,38 @@ class Backups:
         self.user, self.limit, self.keep = user, limit, keep
         docs = documents or documents_for(user)
         account = pwd.getpwnam(user)
-        parent = open_directory(docs)
+        docs_fd = open_directory(docs)
         try:
-            if os.fstat(parent).st_uid != account.pw_uid:
+            if os.fstat(docs_fd).st_uid != account.pw_uid:
                 raise ValueError('A pasta Documentos não pertence ao usuário informado')
-            created = False
             try:
-                os.mkdir('Callas OS Backup', 0o755, dir_fd=parent); created = True
-            except FileExistsError: pass
-            self.fd = os.open('Callas OS Backup', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
-            if created: os.fchmod(self.fd, 0o755)
-        finally:
-            os.close(parent)
-        self.path = Path(docs) / 'Callas OS Backup'
+                os.mkdir('Callas OS', 0o700, dir_fd=docs_fd)
+                created_project = True
+            except FileExistsError: created_project = False
+            parent = os.open('Callas OS', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=docs_fd)
+            try:
+                if created_project: os.fchown(parent, account.pw_uid, account.pw_gid)
+                project_info = os.fstat(parent)
+                if project_info.st_uid != account.pw_uid or stat.S_IMODE(project_info.st_mode) & 0o022:
+                    raise ValueError('Pasta Callas OS com dono/permissões inesperados')
+                # Rename the whole old root-owned pool when the new path is absent.
+                if 'Callas OS Backups' not in os.listdir(parent):
+                    for old_name in ('Callas OS Backup', 'Callas OS Backups'):
+                        try: old_info = os.stat(old_name, dir_fd=docs_fd, follow_symlinks=False)
+                        except FileNotFoundError: continue
+                        if not stat.S_ISDIR(old_info.st_mode) or old_info.st_uid != ROOT_UID or old_info.st_mode & 0o022:
+                            raise ValueError('Pasta antiga de backups insegura; origem preservada')
+                        os.rename(old_name, 'Callas OS Backups', src_dir_fd=docs_fd, dst_dir_fd=parent)
+                        break
+                created = False
+                try: os.mkdir('Callas OS Backups', 0o755, dir_fd=parent); created = True
+                except FileExistsError: pass
+                self.fd = os.open('Callas OS Backups', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+                if created: os.fchmod(self.fd, 0o755)
+            finally: os.close(parent)
+        finally: os.close(docs_fd)
+        self.documents = Path(docs)
+        self.path = Path(docs) / 'Callas OS' / 'Callas OS Backups'
         info = os.fstat(self.fd)
         if info.st_uid != ROOT_UID or stat.S_IMODE(info.st_mode) & 0o022:
             self.close()
@@ -189,7 +208,7 @@ class Backups:
             print('Backup antigo removido: ' + category + '/' + name)
         return sum(entry[3] for entry in self.entries())
 
-    def create(self, category, sources, extra=None, mtime=None):
+    def create(self, category, sources, extra=None, mtime=None, legacy=False):
         if category not in self.directories: raise ValueError('Categoria inválida')
         self.rotate()
         now = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
@@ -206,7 +225,11 @@ class Backups:
                         if source.exists() or source.is_symlink():
                             archive.add(source, arcname=str(source).lstrip('/'), recursive=True,
                                         filter=lambda entry: entry if (entry.isfile() or entry.isdir() or entry.issym()) else None)
-                    for label, data in (extra or {}).items():
+                    metadata = dict(extra or {})
+                    state = Path('/etc/callas-os/release.json')
+                    metadata['callas-release.json'] = (b'{"version":null,"status":"legacy-import"}\n' if legacy else
+                        state.read_bytes() if state.is_file() else b'{"version":null,"status":"untracked"}\n')
+                    for label, data in metadata.items():
                         entry = tarfile.TarInfo(label); entry.size = len(data); entry.mode = 0o600
                         archive.addfile(entry, io.BytesIO(data))
                 stream.flush(); os.fsync(stream.fileno())
@@ -222,14 +245,45 @@ class Backups:
             try: os.unlink(stage, dir_fd=fd)
             except FileNotFoundError: pass
 
+    def migrate_document_pools(self):
+        docs = open_directory(self.documents)
+        try:
+            for pool in ('Callas OS Backup', 'Callas OS Backups'):
+                try: source = os.open(pool, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=docs)
+                except FileNotFoundError: continue
+                try:
+                    info = os.fstat(source)
+                    if info.st_uid != ROOT_UID or info.st_mode & 0o022: raise ValueError('Pool antigo inseguro')
+                    for category, destination in self.directories.items():
+                        try: folder = os.open(category, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=source)
+                        except FileNotFoundError: continue
+                        try:
+                            info = os.fstat(folder)
+                            if info.st_uid != ROOT_UID or info.st_mode & 0o022: raise ValueError('Categoria antiga insegura')
+                            for name in os.listdir(folder):
+                                info = os.stat(name, dir_fd=folder, follow_symlinks=False)
+                                if not ARCHIVE.fullmatch(name) or not stat.S_ISREG(info.st_mode) or info.st_uid != ROOT_UID: continue
+                                if name in os.listdir(destination):
+                                    print('Aviso: nome duplicado; cópia antiga preservada: ' + name); continue
+                                os.chmod(name, 0o600, dir_fd=folder, follow_symlinks=False)
+                                os.rename(name, name, src_dir_fd=folder, dst_dir_fd=destination)
+                        finally: os.close(folder)
+                        try: os.rmdir(category, dir_fd=source)
+                        except OSError: pass
+                finally: os.close(source)
+                try: os.rmdir(pool, dir_fd=docs)
+                except OSError: print('Aviso: arquivos não gerenciados foram preservados em ' + str(self.documents / pool))
+        finally: os.close(docs)
+
     def migrate(self):
+        self.migrate_document_pools()
         for base, category in LEGACY.items():
             if not base.is_dir() or base.is_symlink(): continue
             for item in sorted(base.iterdir()):
                 if not SNAPSHOT.fullmatch(item.name) or item.is_symlink() or not item.is_dir(): continue
                 # Import first; old pools are removed only after a complete archive
                 # was written. Oversized/unreadable legacy copies remain with warning.
-                result = self.create(category, [item], mtime=item.stat().st_mtime)
+                result = self.create(category, [item], mtime=item.stat().st_mtime, legacy=True)
                 if result:
                     shutil.rmtree(item)
                     print('Cópia antiga migrada: ' + str(item))
@@ -249,7 +303,7 @@ def snapshot(backups, kind, user):
     if kind == '--security':
         return backups.create('Seguranca', ['/etc/pacman.conf', '/etc/sudoers.d', '/etc/sysctl.d/60-callas-security.conf'])
     if kind == '--config':
-        sources = ['/etc/default/grub', '/boot/grub/grub.cfg', '/etc/xdg/kicker-extra-favoritesrc',
+        sources = ['/etc/callas-os/release.json', '/etc/default/grub', '/boot/grub/grub.cfg', '/etc/xdg/kicker-extra-favoritesrc',
                    '/etc/xdg/autostart/callas-limpar-atalhos-desktop.desktop',
                    home / '.config/powerdevilrc', home / '.config/ksmserverrc',
                    home / '.config/BraveSoftware/Brave-Browser/Default/Preferences']

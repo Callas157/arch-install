@@ -124,11 +124,7 @@ pasta_de_documentos() {
 }
 
 pasta_de_logs() {
-    local pasta
-    pasta="$(pasta_de_documentos)/Callas OS Logs"
-    umask 077
-    mkdir -p -- "$pasta" || return
-    printf '%s\n' "$pasta"
+    /usr/local/libexec/callas-logs --prepare
 }
 
 etapa() {
@@ -465,7 +461,7 @@ notificar_falha_usuario() {
     runuser -u "$usuario" -- env -i PATH=/usr/bin HOME="$home" USER="$usuario" \
         XDG_RUNTIME_DIR="$runtime" DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
         notify-send -u critical -a 'Atualizador do sistema' 'Atualização incompleta' \
-        'Uma etapa falhou. Consulte Documentos/Callas OS Logs antes de reiniciar.'
+        'Uma etapa falhou. Consulte Documentos/Callas OS/Callas OS Logs antes de reiniciar.'
 }
 
 instalar_atalhos() {
@@ -657,6 +653,9 @@ menu() {
     fi
     while true; do
         printf '\n=== Atualizador do sistema ===\n'
+        if [[ -x /usr/local/libexec/callas-version ]]; then
+            /usr/local/libexec/callas-version --label || :
+        fi
         printf '%s\n' \
             '1. Limpeza e manutenção' \
             '2. Atualizar aplicativos nativos' \

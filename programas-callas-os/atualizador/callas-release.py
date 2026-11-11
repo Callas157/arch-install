@@ -18,6 +18,9 @@ import urllib.request
 API = "https://api.github.com/repos/Callas157/arch-install"
 RAW = "https://raw.githubusercontent.com/Callas157/arch-install"
 FILES = (
+    "VERSION",
+    "programas-callas-os/atualizador/callas-version.py",
+    "programas-callas-os/atualizador/callas-nekofetch.sh",
     "programas-callas-os/atualizador/callas-storage.py",
     "programas-callas-os/atualizador/callas-maintenance.py",
     "programas-callas-os/atualizador/callas-native.py",

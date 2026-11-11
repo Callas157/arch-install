@@ -173,10 +173,10 @@ def main():
                     print(f'Limite combinado: {backups.limit} bytes; até {backups.keep} cópias por categoria.')
                     print('Configuração administrativa: /etc/callas-os/maintenance.ini')
                     for _, category, name, size in backups.entries(): print(f'{category}/{name}: {size / 1024**2:.2f} MiB')
-                print('Logs: ' + str(storage().documents_for(user) / 'Callas OS Logs'))
+                print('Logs: ' + str(storage().documents_for(user) / 'Callas OS' / 'Callas OS Logs'))
                 usage = shutil.disk_usage('/')
                 print(f'Partição do sistema: {(usage.total-usage.free)/1024**3:.1f} GiB usados; {usage.free/1024**3:.1f} GiB livres.')
-                paths = ['/var/cache/pacman/pkg', '/var/log/callas-os', str(storage().documents_for(user) / 'Callas OS Logs')]
+                paths = ['/var/cache/pacman/pkg', '/var/log/callas-os', str(storage().documents_for(user) / 'Callas OS' / 'Callas OS Logs')]
                 present = [path for path in paths if Path(path).exists()]
                 if present: run(['/usr/bin/du', '-sh', *present])
                 vm_report(user)

@@ -117,7 +117,7 @@ class LogTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp, patch.object(logs,'documents',return_value=Path(temp)), patch.object(logs.os,'geteuid',return_value=1000):
             old=Path(temp)/'Logs do Callas OS'/'AUR'; old.mkdir(parents=True); (old/'old.log').write_text('previous')
             path=logs.write_log('AUR',b'new')
-            self.assertEqual((Path(temp)/'Callas OS Logs'/'AUR'/'old.log').read_text(),'previous')
+            self.assertEqual((Path(temp)/'Callas OS'/'Callas OS Logs'/'AUR'/'old.log').read_text(),'previous')
             self.assertTrue(path.exists()); self.assertFalse(old.exists())
     def test_same_origin_is_not_exported_twice(self):
         with tempfile.TemporaryDirectory() as temp, patch.object(logs,'documents',return_value=Path(temp)), patch.object(logs.os,'geteuid',return_value=1000):
@@ -128,7 +128,7 @@ class LogTests(unittest.TestCase):
     def test_log_size_and_total_retention_are_bounded(self):
         with tempfile.TemporaryDirectory() as temp, patch.object(logs,'documents',return_value=Path(temp)), patch.object(logs.os,'geteuid',return_value=1000), patch.object(logs,'MAX_FILE',100), patch.object(logs,'MAX_TOTAL',180):
             for i in range(4): logs.write_log('AUR',b'x'*90)
-            base=Path(temp)/'Callas OS Logs'
+            base=Path(temp)/'Callas OS'/'Callas OS Logs'
             self.assertLessEqual(sum(p.stat().st_size for p in base.rglob('*.log')),180)
             logs.write_log('AUR',b'y'*1000)
             self.assertLessEqual(max(p.stat().st_size for p in base.rglob('*.log')),100)

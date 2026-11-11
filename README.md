@@ -2,7 +2,7 @@
   <img src="assets/logo/callas-plasma-icon.png" alt="Callas OS" width="150">
 </p>
 
-<h1 align="center">Callas OS</h1>
+<h1 align="center">Callas OS v3.2.0</h1>
 
 <p align="center">
   Instalador automatizado de <strong>Arch Linux + KDE Plasma Wayland</strong>, em português do Brasil, preparado para jogos, uso diário, gravação, periféricos e manutenção simplificada.
@@ -217,6 +217,16 @@ O SteamDB também é disponibilizado em instalações existentes pela opção **
 
 ---
 
+## Versão do projeto
+
+A versão pública atual é **Callas OS v3.2.0**. O arquivo [`VERSION`](VERSION) é a fonte do número publicado; o [histórico](CHANGELOG.md) descreve os marcos anteriores e a regra para as próximas versões.
+
+Instalador e opção **5 — Callas OS Update** registram a versão instalada em `/etc/callas-os/release.json`. Esse arquivo contém apenas identificação e estado, é legível pelo usuário e só pode ser alterado pelo administrador. A versão avança ao concluir as etapas obrigatórias; uma falha preserva a última versão concluída e registra a tentativa incompleta. Um boot antigo incompatível não recebe uma identificação falsa de migração completa. Instalações anteriores sem registro ficam como versão não identificada até uma migração completa ou instalação nova.
+
+A linha OS do NekoFetch lê esse registro e mostra **`Callas OS v3.2.0 (Arch Linux)`**, com o estilo e a arte atuais. O número novo aparece na próxima execução, sem editar o layout a cada versão. Isso não altera `/etc/os-release` nem faz o NekoFetch aparecer dentro dos programas de manutenção. A atualização migra o layout existente; uma instalação nova prepara o layout pelo utilitário habitual.
+
+Novos logs gravados pelo utilitário incluem contexto de versão/estado. Novos arquivos de backup guardam `callas-release.json`, identificando a versão registrada e, durante uma migração, o destino pretendido. Logs e backups antigos não recebem retroativamente uma versão histórica presumida. Atualizações comuns de pacotes, kernels ou aplicativos não mudam a versão do projeto. A revisão interna por data continua existindo para compatibilidade com clientes antigos.
+
 ## Atualizações do sistema
 
 O Callas OS possui um **Atualizador do sistema** integrado ao KDE.
@@ -232,7 +242,7 @@ Não existe um horário ou dia fixo. Os vencimentos são calculados a partir da 
 
 Se o computador estiver desligado quando uma atualização vencer, ela permanece pendente e será executada numa verificação posterior.
 
-Os registros de cada execução ficam na pasta **Callas OS Logs**, dentro da pasta Documentos configurada no KDE (inclusive quando ela se chama Documents):
+Os registros de cada execução ficam em **Documentos/Callas OS/Callas OS Logs**, usando a pasta Documentos configurada no KDE (inclusive quando ela se chama Documents):
 
 | Subpasta | Conteúdo |
 | --- | --- |
@@ -246,11 +256,11 @@ Os registros de cada execução ficam na pasta **Callas OS Logs**, dentro da pas
 | `Instalacao` | Saída da instalação nova e avisos disponíveis |
 | `Manutencao` | Limpeza, espaço ocupado, backups e inventário de VMs |
 
-Os arquivos têm data/hora. A migração renomeia `Logs do Callas OS` para `Callas OS Logs` e importa a antiga pasta `Logs de Atualizações`, preservando os arquivos. A exportação dos diagnósticos administrativos é idempotente: o mesmo registro não gera outra cópia em cada execução.
+Os arquivos têm data/hora. A migração reúne as antigas pastas de logs de Documentos em `Callas OS/Callas OS Logs`, preservando os arquivos. Havendo duas origens, guarda a segunda em uma subpasta de legado sem sobrescrever registros. A antiga `Callas OS Backup` também é migrada para `Callas OS/Callas OS Backups`; conflitos e arquivos não gerenciados são preservados na origem e informados. A exportação dos diagnósticos administrativos é idempotente: o mesmo registro não gera outra cópia em cada execução.
 
 Cada arquivo novo é limitado a 2 MiB; cada árvore de logs, em Documentos e em `/var/log/callas-os`, mantém até 128 MiB no total, 60 arquivos por pasta e 30 dias de histórico. Logs do journal e o histórico original do pacman continuam nos seus locais padrão; não são apagados indiscriminadamente. Os logs de limpeza e os relatórios ficam em `Manutencao`.
 
-As cópias administrativas de recuperação ficam em **Documentos/Callas OS Backup**, separadas em `Sistema`, `Callas OS Update` e `Seguranca`. O padrão é **1 GB combinado (1.000.000.000 bytes)** de arquivos concluídos, com até três cópias por categoria. A rotação remove primeiro as cópias mais antigas. O limite e a quantidade podem ser ajustados com autorização administrativa em `/etc/callas-os/maintenance.ini`; a opção **1 → 2** mostra o caminho, limite e ocupação.
+As cópias administrativas de recuperação ficam em **Documentos/Callas OS/Callas OS Backups**, separadas em `Sistema`, `Callas OS Update` e `Seguranca`. O padrão é **1 GB combinado (1.000.000.000 bytes)** de arquivos concluídos, com até três cópias por categoria. A rotação remove primeiro as cópias mais antigas. O limite e a quantidade podem ser ajustados com autorização administrativa em `/etc/callas-os/maintenance.ini`; a opção **1 → 2** mostra o caminho, limite e ocupação.
 
 Os três pools antigos (`/var/lib/put-update/recuperacao`, `/var/lib/callas-os/config-backups` e `/var/lib/callas-os/security-backups`) são importados antes de remover suas cópias antigas. Uma cópia incompleta ou que não pôde ser importada é preservada na origem com aviso. Uma única cópia nova maior que o limite não é mantida; isso fica registrado. Temporários de criação podem ocupar espaço adicional durante a operação; temporários incompletos antigos são limpos posteriormente.
 
@@ -262,6 +272,8 @@ Os três pools antigos (`/var/lib/put-update/recuperacao`, `/var/lib/callas-os/c
 
 | Caminho | Conteúdo |
 | --- | --- |
+| `VERSION` | Número público do projeto |
+| `CHANGELOG.md` | Histórico e marcos retrospectivos |
 | `instalar-arch.sh` | Instalador principal, no mesmo endereço de sempre |
 | `assets/` | Recursos visuais e arquivos de temas existentes |
 | `programas-callas-os/monitores/` | Configurador de monitores e auxiliar do login |
@@ -384,7 +396,7 @@ Os testes offline não executam uma instalação real nem simulam o driver gráf
 Roteiro adicional para a VM antes da máquina principal:
 
 1. Rodar a opção 5 a partir do atualizador antigo; conferir a primeira migração e executar novamente para verificar idempotência.
-2. Conferir `Documentos/Callas OS Logs` e `Documentos/Callas OS Backup`, migração dos pools antigos, limites, permissões e ausência de exportações duplicadas.
+2. Conferir `Documentos/Callas OS/Callas OS Logs` e `Documentos/Callas OS/Callas OS Backups`, migração dos pools antigos, limites, permissões e ausência de exportações duplicadas.
 3. Usar **1 → 2** para ver ocupação e limite; executar **1 → 1**. Conferir que VMs, ISOs, aplicativos e shaders permanecem preservados.
 4. Conferir o relatório de órfãos, cancelar a remoção e confirmar que nenhum pacote mudou. Reparar o agendamento e verificar que as datas não são reiniciadas em cada reparo.
 5. Conferir mensal/semanal com `systemctl list-timers` e com as datas em `/var/lib/put-update/agenda`. A primeira migração usa a data inicial como referência; uma agenda já vencida pode executar na próxima verificação.

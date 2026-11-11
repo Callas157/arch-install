@@ -62,7 +62,7 @@ class LogTests(unittest.TestCase):
             self.assertEqual(first.read_bytes(), b'kernel failure\n')
             self.assertEqual(first.stat().st_mode & 0o777, 0o600)
             for category in logs.CATEGORIES:
-                self.assertTrue((Path(temp) / 'Callas OS Logs' / category).is_dir())
+                self.assertTrue((Path(temp) / 'Callas OS' / 'Callas OS Logs' / category).is_dir())
             with self.assertRaises(ValueError):
                 logs.write_log('../escape', b'bad')
 

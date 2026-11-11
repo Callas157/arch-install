@@ -31,14 +31,18 @@ def documents():
 def prepare():
     if os.geteuid() == 0: raise ValueError('A pasta pessoal deve ser preparada pelo próprio usuário')
     docs = documents(); docs.mkdir(parents=True, exist_ok=True)
-    base = docs / 'Callas OS Logs'
-    for name in ('Logs do Callas OS', 'Logs de Atualizações'):
+    project = docs / 'Callas OS'; project.mkdir(mode=0o700, exist_ok=True)
+    if project.is_symlink(): raise ValueError('Pasta Callas OS simbólica; conteúdo preservado')
+    base = project / 'Callas OS Logs'
+    if base.is_symlink(): raise ValueError('Pasta de logs simbólica; conteúdo preservado')
+    for name in ('Callas OS Logs', 'Logs do Callas OS', 'Logs de Atualizações'):
         old = docs / name
         if old.is_dir() and not old.is_symlink():
             if not base.exists(): old.rename(base)
             else:
                 dest = base / ('Legado-' + name)
-                if not dest.exists(): shutil.move(str(old), str(dest))
+                while dest.exists(): dest = base / (dest.name + '-' + str(time.time_ns()))
+                shutil.move(str(old), str(dest))
     base.mkdir(mode=0o700, exist_ok=True)
     for category in CATEGORIES:
         (base / category).mkdir(mode=0o700, exist_ok=True)
@@ -74,6 +78,16 @@ def prune(base):
         if total <= MAX_TOTAL: break
         path.unlink(); total -= size
 
+def identified(data):
+    helper = Path('/usr/local/libexec/callas-version')
+    if not helper.is_file(): return tail(data)
+    result = subprocess.run([str(helper), '--context'], capture_output=True, text=True, check=True)
+    if data.startswith(b'Callas OS | '): return tail(data)
+    header = ('Callas OS | ' + result.stdout.strip() + '\n').encode()
+    header = header[:MAX_FILE]
+    remaining = MAX_FILE - len(header)
+    return header + (tail(data)[-remaining:] if remaining else b'')
+
 def write_log(category, data, origin=None):
     if os.geteuid() == 0 or category not in CATEGORIES:
         raise ValueError('Categoria ou usuário inválido')
@@ -87,7 +101,9 @@ def write_log(category, data, origin=None):
     try: fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     except FileExistsError:
         return path  # Same root diagnostic was already exported. Never overwrite it.
-    with os.fdopen(fd, 'wb') as stream: stream.write(tail(data))
+    # Imported diagnostics retain their original context, including old logs
+    # that predate project versioning. Do not label old events as today's OS.
+    with os.fdopen(fd, 'wb') as stream: stream.write(tail(data) if origin is not None else identified(data))
     prune(base)
     return path
 
@@ -98,7 +114,7 @@ def root_log(category, data):
     base.mkdir(mode=0o700, parents=True, exist_ok=True)
     filename = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S_%f.log')
     fd = os.open(base / filename, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, 'wb') as stream: stream.write(tail(data))
+    with os.fdopen(fd, 'wb') as stream: stream.write(identified(data))
     prune(ROOT)
 
 def user_command(user, *args, **kwargs):

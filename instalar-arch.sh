@@ -518,11 +518,7 @@ pasta_de_documentos() {
 }
 
 pasta_de_logs() {
-    local pasta
-    pasta="$(pasta_de_documentos)/Callas OS Logs"
-    umask 077
-    mkdir -p -- "$pasta" || return
-    printf '%s\n' "$pasta"
+    /usr/local/libexec/callas-logs --prepare
 }
 
 etapa() {
@@ -859,7 +855,7 @@ notificar_falha_usuario() {
     runuser -u "$usuario" -- env -i PATH=/usr/bin HOME="$home" USER="$usuario" \
         XDG_RUNTIME_DIR="$runtime" DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
         notify-send -u critical -a 'Atualizador do sistema' 'Atualização incompleta' \
-        'Uma etapa falhou. Consulte Documentos/Callas OS Logs antes de reiniciar.'
+        'Uma etapa falhou. Consulte Documentos/Callas OS/Callas OS Logs antes de reiniciar.'
 }
 
 instalar_atalhos() {
@@ -1051,6 +1047,9 @@ menu() {
     fi
     while true; do
         printf '\n=== Atualizador do sistema ===\n'
+        if [[ -x /usr/local/libexec/callas-version ]]; then
+            /usr/local/libexec/callas-version --label || :
+        fi
         printf '%s\n' \
             '1. Limpeza e manutenção' \
             '2. Atualizar aplicativos nativos' \
@@ -2028,7 +2027,7 @@ def inserir(ancora, tipo, nome, icone, cor, formato, **opcoes):
             return
     for indice, modulo in enumerate(modulos):
         if isinstance(modulo, dict) and (
-            modulo.get("type") == ancora or ancora in modulo.get("key", "").split()
+            modulo.get("type") == ancora or (ancora == "os" and modulo.get("text") == "/usr/local/libexec/callas-version --label") or ancora in modulo.get("key", "").split()
         ):
             modulos.insert(indice + 1, {
                 "key": f"  {chr(icone)} {nome:9}",
@@ -2055,6 +2054,7 @@ if not destino.exists() or destino.read_text(encoding="utf-8") != novo:
     temporario.write_text(novo, encoding="utf-8")
     temporario.replace(destino)
 PY_LAYOUT
+/usr/local/libexec/callas-version --configure-neko
 
 bashrc="$HOME/.bashrc"
 path_line='export PATH="$HOME/.local/bin:$PATH"'
@@ -2693,9 +2693,11 @@ como_usuario "$libexec/callas-inicio-kde" || aviso 'Não consegui aplicar o iní
   aviso 'O ajuste de desligamento ou do tema de login precisa ser conferido.'
 export CALLAS_RELEASE_DIR=/usr/local/share/callas-os/security-stage
 export CALLAS_RELEASE_REF=$(< "$CALLAS_RELEASE_DIR/commit")
+python "$CALLAS_RELEASE_DIR/callas-version.py" --begin "$CALLAS_RELEASE_DIR/VERSION" "$CALLAS_RELEASE_REF"
 SUDO_USER="$usuario" bash "$CALLAS_RELEASE_DIR/callas-security.sh" "$usuario" --installation
+como_usuario "$libexec/callas-nekofetch"
+"$libexec/callas-version" --complete "$CALLAS_RELEASE_DIR/VERSION" "$CALLAS_RELEASE_REF"
 rm -rf -- "$CALLAS_RELEASE_DIR"
-como_usuario "$libexec/callas-nekofetch" || aviso 'Não consegui configurar o Nekofetch.'
 
 CALLAS_CHROOT
 

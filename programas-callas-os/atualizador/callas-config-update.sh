@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.11.18"
+VERSAO="2026.11.11.19"
 export PATH=/usr/bin:/bin
 umask 077
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/${CALLAS_RELEASE_REF:-main}"
@@ -63,6 +63,9 @@ finalizar() {
   local codigo=$?
   trap - EXIT
   exec 1>&3 2>&4
+  if [[ ${migration_active:-0} == 1 && ${migration_closed:-0} != 1 ]]; then
+    python "$CALLAS_RELEASE_DIR/callas-version.py" --fail "$CALLAS_RELEASE_DIR/VERSION" "$CALLAS_RELEASE_REF" || :
+  fi
   wait "$logpid" || :
   if [[ -x /usr/local/libexec/callas-logs ]]; then
     /usr/local/libexec/callas-logs --record 'Callas OS Update' < "$logstage/update.log" || :
@@ -76,7 +79,7 @@ trap finalizar EXIT
 
 # Older installed launchers know a shorter file list. The verified launcher
 # staged from this same commit can fetch newly introduced helpers on first use.
-if [[ ! -f $CALLAS_RELEASE_DIR/callas-aur.py || ! -f $CALLAS_RELEASE_DIR/callas-storage.py || ! -f $CALLAS_RELEASE_DIR/callas-maintenance.py || ! -f $CALLAS_RELEASE_DIR/callas-native.py ]]; then
+if [[ ! -f $CALLAS_RELEASE_DIR/VERSION || ! -f $CALLAS_RELEASE_DIR/callas-version.py || ! -f $CALLAS_RELEASE_DIR/callas-nekofetch.sh || ! -f $CALLAS_RELEASE_DIR/callas-aur.py || ! -f $CALLAS_RELEASE_DIR/callas-storage.py || ! -f $CALLAS_RELEASE_DIR/callas-maintenance.py || ! -f $CALLAS_RELEASE_DIR/callas-native.py ]]; then
   python - "$CALLAS_RELEASE_DIR" "$CALLAS_RELEASE_REF" <<'EXPAND_STAGE'
 import importlib.util, sys
 spec=importlib.util.spec_from_file_location('callas_release', sys.argv[1]+'/callas-release.py')
@@ -88,6 +91,8 @@ fi
 exec 8>/run/put-update.lock
 flock -x 8
 export CALLAS_UPDATE_LOCK_HELD=1
+python "$CALLAS_RELEASE_DIR/callas-version.py" --begin "$CALLAS_RELEASE_DIR/VERSION" "$CALLAS_RELEASE_REF"
+migration_active=1
 python "$CALLAS_RELEASE_DIR/callas-storage.py" --config "$usuario"
 /usr/bin/bash "$CALLAS_RELEASE_DIR/callas-security.sh" "$usuario"
 
@@ -115,7 +120,11 @@ if [[ -x /etc/grub.d/09_callas && -f /etc/grub.d/10_linux && ! -x /etc/grub.d/10
   grub_compativel=1
 fi
 if (( ! grub_compativel )); then
+  como_usuario /usr/local/libexec/callas-version --configure-neko
+  /usr/local/libexec/callas-version --blocked "$CALLAS_RELEASE_DIR/VERSION" "$CALLAS_RELEASE_REF"
+  migration_closed=1
   printf 'Segurança e atualizador migrados. Personalizações de boot antigas foram preservadas.\n'
+  printf 'A versão completa do projeto não foi avançada: arquitetura de boot anterior.\n'
   exit 0
 fi
 printf '%s\n' 'grub-custom-v2' > /etc/callas-os/grub-layout
@@ -126,8 +135,9 @@ forcar=0
 
 atual=0
 [[ -r "$VERSAO_ARQ" ]] && atual=$(<"$VERSAO_ARQ")
-if [[ "$atual" == "$VERSAO" && $forcar -eq 0 ]]; then
-  printf 'Configurações do Callas OS já estão na versão %s.\n' "$VERSAO"
+if [[ "$atual" == "$VERSAO" && $forcar -eq 0 ]] && python "$CALLAS_RELEASE_DIR/callas-version.py" --is-installed "$CALLAS_RELEASE_DIR/VERSION"; then
+  printf 'Configurações já aplicadas: '
+  /usr/local/libexec/callas-version --label
   printf '\nDeseja reaplicar esta mesma versão à força?\n'
   printf '1. Sim, reaplicar agora\n'
   printf '2. Não\n'
@@ -436,7 +446,11 @@ if [[ -x /usr/local/libexec/callas-inicio-kde ]]; then
   como_usuario /usr/local/libexec/callas-inicio-kde || aviso "Alguns ajustes de sessão KDE não puderam ser reaplicados."
 fi
 if [[ -x /usr/local/libexec/callas-nekofetch ]]; then
-  como_usuario /usr/local/libexec/callas-nekofetch || aviso "O Nekofetch não pôde ser atualizado."
+  if [[ -f $home/.config/nekofetch/layout.jsonc ]]; then
+    como_usuario /usr/local/libexec/callas-version --configure-neko
+  else
+    como_usuario /usr/local/libexec/callas-nekofetch
+  fi
 fi
 
 # Patch independente: ativa a memória automaticamente na sessão Plasma existente.
@@ -458,10 +472,13 @@ fi
 como_usuario kbuildsycoca6 --noincremental || aviso 'O menu será atualizado no próximo login.'
 
 printf '%s\n' "$VERSAO" > "$VERSAO_ARQ"
+/usr/local/libexec/callas-version --complete "$CALLAS_RELEASE_DIR/VERSION" "$CALLAS_RELEASE_REF"
+migration_closed=1
 
-printf '\nConfigurações do Callas OS atualizadas para %s.\n' "$VERSAO"
-printf 'Backups em Documentos/Callas OS Backup (leitura administrativa).\n'
+printf '\nConfigurações atualizadas: '
+/usr/local/libexec/callas-version --label
+printf 'Backups em Documentos/Callas OS/Callas OS Backups (leitura administrativa).\n'
 printf 'Abra Callas OS — Monitores no menu Sistema para escolher sua tela principal.\n'
 printf 'Algumas mudanças do KDE podem aparecer por completo após encerrar e iniciar a sessão.\n'
 
-printf 'Consulte os logs em Documentos/Callas OS Logs.\n'
+printf 'Consulte os logs em Documentos/Callas OS/Callas OS Logs.\n'
