@@ -2051,7 +2051,7 @@ if (( nvidia )); then
     nvidia_pkgs+=("$arquivo")
   done
 
-  pacman -U --needed --noconfirm "${nvidia_pkgs[@]}"
+  pacman -U --noconfirm "${nvidia_pkgs[@]}"
 
   # Evita que pacman/Paru troquem apenas parte da pilha NVIDIA em um update.
   sed -i '/^# CALLAS_NVIDIA_610_BEGIN$/,/^# CALLAS_NVIDIA_610_END$/d' /etc/pacman.conf
@@ -2137,7 +2137,7 @@ fi
 if [[ $vm != none && -n $vm ]] && grep -q '^1af4:' <<<"$gpu_pci"; then
   gpu_multilib+=(vulkan-virtio lib32-vulkan-virtio)
 fi
-if (( ${#gpu_multilib[@]} == 1 )); then
+if (( ! nvidia && ! amd_gpu && ! intel_gpu )); then
   gpu_multilib+=(vulkan-swrast lib32-vulkan-swrast)
 fi
 pacman -Syu --needed --noconfirm "${gpu_multilib[@]}" vulkan-icd-loader lib32-vulkan-icd-loader steam discord shotcut
