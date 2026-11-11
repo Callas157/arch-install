@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.10.12"
+VERSAO="2026.11.10.13"
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/main"
 ASSET_BASE="$BASE_RAW/assets"
 ESTADO_DIR="/var/lib/callas-os"
@@ -105,63 +105,31 @@ if lspci -Dn 2>/dev/null | grep -qi '10de:'; then
   printf '%s\n' '610.57.04' > /etc/callas-nvidia-version
 fi
 
-# GRUB: boot normal silencioso.
-# O /etc/grub.d/10_linux usa quiet_boot para decidir se gera as linhas
-# "Loading Linux..." e "Loading initial ramdisk...". Ao fixar quiet_boot=1,
-# a entrada normal deixa de abrir o terminal preto durante essa transição.
-install -d /usr/local/libexec /etc/pacman.d/hooks /boot/grub/themes/callas
+# GRUB: usa o mesmo wallpaper no terminal transitório de carregamento.
+install -d /boot/grub/themes/callas
 
-cat > /usr/local/libexec/callas-grub-silencioso <<'EOF'
-#!/usr/bin/env bash
-set -Eeuo pipefail
-arquivo=/etc/grub.d/10_linux
-
-[[ -f "$arquivo" ]] || exit 0
-
-# Aceita tanto quiet_boot=0 quanto quiet_boot="0".
-if grep -Eq '^quiet_boot="?0"?$' "$arquivo"; then
-  sed -Ei 's/^quiet_boot="?0"?$/quiet_boot=1/' "$arquivo"
-fi
-
-# Só regenera quando o script realmente oferece a variável quiet_boot.
-grep -q '^quiet_boot=' "$arquivo" || exit 0
-
-tmp=$(mktemp /boot/grub/.grub.cfg.callas.XXXXXX)
-trap 'rm -f "$tmp"' EXIT
-grub-mkconfig -o "$tmp"
-[[ -s "$tmp" ]] && grep -q 'menuentry ' "$tmp"
-chmod 0600 "$tmp"
-mv -f "$tmp" /boot/grub/grub.cfg
-trap - EXIT
-EOF
-chmod 0755 /usr/local/libexec/callas-grub-silencioso
-
-cat > /etc/pacman.d/hooks/99-callas-grub-silencioso.hook <<'EOF'
-[Trigger]
-Operation = Install
-Operation = Upgrade
-Type = Package
-Target = grub
-
-[Action]
-Description = Reaplicando boot silencioso do Callas OS...
-When = PostTransaction
-Exec = /usr/local/libexec/callas-grub-silencioso
-EOF
-
-# Atualiza os assets visuais do GRUB.
 curl -fsSL --retry 2 "$ASSET_BASE/grub/theme.txt"   -o /boot/grub/themes/callas/theme.txt ||
   erro "Não consegui atualizar o tema do GRUB."
-if [[ ! -f /boot/grub/themes/callas/background.png ]]; then
-  curl -fsSL --retry 2 "$ASSET_BASE/grub/background.png"     -o /boot/grub/themes/callas/background.png ||
-    erro "Não consegui restaurar o wallpaper do GRUB."
-fi
+curl -fsSL --retry 2 "$ASSET_BASE/grub/background.png"   -o /boot/grub/themes/callas/background.png ||
+  erro "Não consegui atualizar o wallpaper do GRUB."
+
+# O GRUB procura terminal_box_c.png para preencher o centro do terminal.
+# Usamos exatamente o mesmo wallpaper; como o terminal ocupa 100% da tela,
+# visualmente ele continua a imagem do menu em vez de desenhar um bloco preto.
+cp -f /boot/grub/themes/callas/background.png   /boot/grub/themes/callas/terminal_box_c.png
 
 cp -a /etc/default/grub "$backup/etc__default__grub" 2>/dev/null || true
 cp -a /boot/grub/grub.cfg "$backup/boot__grub__grub.cfg" 2>/dev/null || true
 
-/usr/local/libexec/callas-grub-silencioso ||
-  erro "Falha ao aplicar o boot silencioso do GRUB."
+grub_tmp=$(mktemp /boot/grub/.grub.cfg.callas.XXXXXX)
+if grub-mkconfig -o "$grub_tmp" && [[ -s "$grub_tmp" ]] &&
+   grep -q 'menuentry ' "$grub_tmp"; then
+  chmod 0600 "$grub_tmp"
+  mv -f "$grub_tmp" /boot/grub/grub.cfg
+else
+  rm -f "$grub_tmp"
+  erro "Falha ao validar a nova configuração do GRUB; o grub.cfg anterior foi preservado."
+fi
 
 # Flatpaks padrão do Callas OS.
 if command -v flatpak >/dev/null; then
