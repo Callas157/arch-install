@@ -1982,8 +1982,9 @@ if (fileExists("/usr/share/applications/brave-browser.desktop")) {
 }
 
 panels().forEach(function (panel) {
-    // Altura padrão do painel Callas OS.
+    // Altura e transparência padrão do painel Callas OS.
     panel.height = 60;
+    panel.opacity = "translucent";
 
     panel.widgets("org.kde.plasma.icontasks").forEach(function (tasks) {
         tasks.currentConfigGroup = ["General"];
