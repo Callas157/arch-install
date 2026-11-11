@@ -298,7 +298,10 @@ install -m 0755 "$CALLAS_SECURITY_TMP/callas-monitores.py" /mnt/usr/local/libexe
 install -m 0755 "$CALLAS_SECURITY_TMP/callas-janelas.py" /mnt/usr/local/libexec/callas-janelas
 rm -f -- "$CALLAS_MONITOR_TMP" "$CALLAS_WINDOW_TMP"
 install -d -m 0700 /mnt/usr/local/share/callas-os/security-stage
-install -m 0600 "$CALLAS_SECURITY_TMP/"* /mnt/usr/local/share/callas-os/security-stage/
+for security_file in "$CALLAS_SECURITY_TMP/"*; do
+  [[ -f $security_file ]] || continue
+  install -m 0600 "$security_file" /mnt/usr/local/share/callas-os/security-stage/
+done
 printf '%s\n' "$CALLAS_ASSET_REF" > /mnt/usr/local/share/callas-os/security-stage/commit
 rm -rf -- "$CALLAS_SECURITY_TMP"
 install -d /mnt/usr/share/icons/hicolor/256x256/apps
