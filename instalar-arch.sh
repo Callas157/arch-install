@@ -277,6 +277,12 @@ curl -fsSL "$CALLAS_ASSET_BASE/plymouth/callas/callas.script" \
 curl -fsSL "$CALLAS_ASSET_BASE/plymouth/callas/background.jpg" \
   -o /mnt/usr/share/plymouth/themes/callas/background.jpg
 
+# A barra gráfica usa os PNGs oficiais do tema script do Plymouth.
+install -m 0644 /mnt/usr/share/plymouth/themes/script/progress_box.png \
+  /mnt/usr/share/plymouth/themes/callas/progress_box.png
+install -m 0644 /mnt/usr/share/plymouth/themes/script/progress_bar.png \
+  /mnt/usr/share/plymouth/themes/callas/progress_bar.png
+
 # Login e tela de bloqueio
 curl -fsSL "$CALLAS_ASSET_BASE/login/background.png" \
   -o /mnt/usr/share/callas-os/login/background.png
