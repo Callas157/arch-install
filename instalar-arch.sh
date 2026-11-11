@@ -2221,6 +2221,9 @@ GRUB_TERMINAL_OUTPUT=gfxterm
 GRUB_GFXMODE=auto
 GRUB_GFXPAYLOAD_LINUX=keep
 GRUB_THEME="/boot/grub/themes/callas/theme.txt"
+# Mantém o mesmo wallpaper também no terminal gráfico usado pelo GRUB
+# durante "Loading Linux" / "Loading initial ramdisk", evitando o bloco preto.
+GRUB_BACKGROUND="/boot/grub/themes/callas/background.png"
 GRUB_DISABLE_OS_PROBER=true
 GRUB_DEFAULTS
 
