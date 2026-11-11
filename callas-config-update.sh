@@ -42,48 +42,56 @@ done
 chown -R "$usuario:$grupo" "$backup" 2>/dev/null || true
 
 # NVIDIA 610.57.04
-# Migra instalações NVIDIA existentes para a versão fixada pelo Callas OS e
-# impede que uma atualização mensal troque apenas parte da pilha.
+# Só faz a migração pesada quando a pilha ainda não estiver correta.
 if lspci -Dn 2>/dev/null | grep -qi '10de:'; then
-  nvidia_dir=/tmp/callas-nvidia-610
-  rm -rf "$nvidia_dir"
-  install -d "$nvidia_dir"
-
-  nvidia_urls=(
-    "https://archive.archlinux.org/packages/n/nvidia-utils/nvidia-utils-610.57.04-1-x86_64.pkg.tar.zst"
-    "https://archive.archlinux.org/packages/n/nvidia-open-dkms/nvidia-open-dkms-610.57.04-1-x86_64.pkg.tar.zst"
-    "https://archive.archlinux.org/packages/l/lib32-nvidia-utils/lib32-nvidia-utils-610.57.04-1-x86_64.pkg.tar.zst"
-    "https://archive.archlinux.org/packages/l/libxnvctrl/libxnvctrl-610.57.04-1-x86_64.pkg.tar.zst"
-    "https://archive.archlinux.org/packages/n/nvidia-settings/nvidia-settings-610.57.04-1-x86_64.pkg.tar.zst"
-  )
-
-  nvidia_pkgs=()
-  for url in "${nvidia_urls[@]}"; do
-    arquivo="$nvidia_dir/${url##*/}"
-    curl -fL --retry 3 --connect-timeout 15 --max-time 300 "$url" -o "$arquivo" ||
-      erro "Não foi possível baixar ${url##*/} do Arch Linux Archive."
-    curl -fL --retry 3 --connect-timeout 15 --max-time 60 "$url.sig" -o "$arquivo.sig" ||
-      erro "Assinatura ausente para ${url##*/}."
-    nvidia_pkgs+=("$arquivo")
+  nvidia_ok=1
+  for pkg in nvidia-utils nvidia-open-dkms lib32-nvidia-utils nvidia-settings libxnvctrl; do
+    versao_pkg=$(pacman -Q "$pkg" 2>/dev/null | awk '{print $2}') || versao_pkg=
+    [[ $versao_pkg == 610.57.04-* ]] || nvidia_ok=0
   done
 
-  # Os pacotes por-kernel entram em conflito com o DKMS. Remove somente esses
-  # wrappers; nvidia-utils é substituído em seguida pelo pacote 610.
-  remover=()
-  pacman -Qq nvidia-open >/dev/null 2>&1 && remover+=(nvidia-open)
-  pacman -Qq nvidia-open-lts >/dev/null 2>&1 && remover+=(nvidia-open-lts)
-  (( ${#remover[@]} == 0 )) || pacman -R --noconfirm "${remover[@]}"
+  if (( ! nvidia_ok )); then
+    nvidia_dir=/tmp/callas-nvidia-610
+    rm -rf "$nvidia_dir"
+    install -d "$nvidia_dir"
 
-  pacman -U --noconfirm "${nvidia_pkgs[@]}" ||
-    erro "Falha ao instalar a pilha NVIDIA 610.57.04."
+    nvidia_urls=(
+      "https://archive.archlinux.org/packages/n/nvidia-utils/nvidia-utils-610.57.04-1-x86_64.pkg.tar.zst"
+      "https://archive.archlinux.org/packages/n/nvidia-open-dkms/nvidia-open-dkms-610.57.04-1-x86_64.pkg.tar.zst"
+      "https://archive.archlinux.org/packages/l/lib32-nvidia-utils/lib32-nvidia-utils-610.57.04-1-x86_64.pkg.tar.zst"
+      "https://archive.archlinux.org/packages/l/libxnvctrl/libxnvctrl-610.57.04-1-x86_64.pkg.tar.zst"
+      "https://archive.archlinux.org/packages/n/nvidia-settings/nvidia-settings-610.57.04-1-x86_64.pkg.tar.zst"
+    )
 
+    nvidia_pkgs=()
+    for url in "${nvidia_urls[@]}"; do
+      arquivo="$nvidia_dir/${url##*/}"
+      curl -fL --retry 3 --connect-timeout 15 --max-time 300 "$url" -o "$arquivo" ||
+        erro "Não foi possível baixar ${url##*/} do Arch Linux Archive."
+      curl -fL --retry 3 --connect-timeout 15 --max-time 60 "$url.sig" -o "$arquivo.sig" ||
+        erro "Assinatura ausente para ${url##*/}."
+      nvidia_pkgs+=("$arquivo")
+    done
+
+    remover=()
+    pacman -Qq nvidia-open >/dev/null 2>&1 && remover+=(nvidia-open)
+    pacman -Qq nvidia-open-lts >/dev/null 2>&1 && remover+=(nvidia-open-lts)
+    (( ${#remover[@]} == 0 )) || pacman -R --noconfirm "${remover[@]}"
+
+    pacman -U --noconfirm "${nvidia_pkgs[@]}" ||
+      erro "Falha ao instalar a pilha NVIDIA 610.57.04."
+
+    dkms autoinstall || erro "O DKMS não conseguiu preparar o NVIDIA 610 para os kernels instalados."
+    mkinitcpio -P || erro "Falha ao reconstruir o initramfs após a migração NVIDIA."
+    rm -rf "$nvidia_dir"
+  else
+    printf 'NVIDIA 610.57.04 já está instalada; pulando reinstalação do driver.\n'
+  fi
+
+  # Garante a trava mesmo quando o driver já estava correto.
   sed -i '/^# CALLAS_NVIDIA_610_BEGIN$/,/^# CALLAS_NVIDIA_610_END$/d' /etc/pacman.conf
   sed -i '/^\[options\]$/a # CALLAS_NVIDIA_610_BEGIN\nIgnorePkg = nvidia-utils nvidia-open-dkms nvidia-open nvidia-open-lts lib32-nvidia-utils nvidia-settings libxnvctrl opencl-nvidia lib32-opencl-nvidia\n# CALLAS_NVIDIA_610_END' /etc/pacman.conf
   printf '%s\n' '610.57.04' > /etc/callas-nvidia-version
-
-  dkms autoinstall || erro "O DKMS não conseguiu preparar o NVIDIA 610 para os kernels instalados."
-  mkinitcpio -P || erro "Falha ao reconstruir o initramfs após a migração NVIDIA."
-  rm -rf "$nvidia_dir"
 fi
 
 # GRUB: mantém o wallpaper do Callas OS também no terminal gráfico exibido
