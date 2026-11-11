@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.10.5"
+VERSAO="2026.11.10.6"
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/main"
 ASSET_BASE="$BASE_RAW/assets"
 ESTADO_DIR="/var/lib/callas-os"
@@ -98,8 +98,12 @@ fi
 # entre a seleção da entrada e o carregamento do kernel, removendo o bloco preto.
 if [[ -f /etc/default/grub && -d /boot/grub ]]; then
   install -d /boot/grub/themes/callas
+  curl -fsSL --retry 2 "$ASSET_BASE/grub/theme.txt" \
+    -o /boot/grub/themes/callas/theme.txt ||
+    erro "Não consegui atualizar o tema do GRUB."
   if [[ ! -f /boot/grub/themes/callas/background.png ]]; then
-    curl -fsSL --retry 2 "$ASSET_BASE/grub/background.png"       -o /boot/grub/themes/callas/background.png ||
+    curl -fsSL --retry 2 "$ASSET_BASE/grub/background.png" \
+      -o /boot/grub/themes/callas/background.png ||
       erro "Não consegui restaurar o wallpaper do GRUB."
   fi
 
