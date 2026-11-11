@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.10.4"
+VERSAO="2026.11.10.5"
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/main"
 ASSET_BASE="$BASE_RAW/assets"
 ESTADO_DIR="/var/lib/callas-os"
@@ -124,6 +124,22 @@ if command -v flatpak >/dev/null; then
   done
 fi
 
+
+# KDE Plasma: painel translúcido + blur.
+# A migração em /usr/share/plasma/.../updates é executada uma vez pelo Plasma
+# no próximo login, usando a API oficial de scripting do painel.
+plasma_updates=/usr/share/plasma/shells/org.kde.plasma.desktop/contents/updates
+install -d "$plasma_updates"
+cat > "$plasma_updates/callas-panel-translucent-v2.js" <<'EOF'
+panels().forEach(function (panel) {
+    panel.opacity = "translucent";
+});
+EOF
+
+if command -v kwriteconfig6 >/dev/null; then
+  como_usuario kwriteconfig6 --file kwinrc --group Plugins --key blurEnabled true ||
+    aviso "Não consegui garantir o efeito de blur do KWin."
+fi
 
 # Brave + Bonjourr
 install -d /etc/brave/policies/managed /etc/brave/policies/recommended /usr/share/callas-os
