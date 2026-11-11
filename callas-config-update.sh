@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.10.8"
+VERSAO="2026.11.10.9"
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/main"
 ASSET_BASE="$BASE_RAW/assets"
 ESTADO_DIR="/var/lib/callas-os"
@@ -24,11 +24,22 @@ como_usuario() {
 }
 
 install -d -m 0755 "$ESTADO_DIR" "$BACKUP_DIR"
+forcar=0
+[[ ${1:-} == --force ]] && forcar=1
+
 atual=0
 [[ -r "$VERSAO_ARQ" ]] && atual=$(<"$VERSAO_ARQ")
-if [[ "$atual" == "$VERSAO" ]]; then
+if [[ "$atual" == "$VERSAO" && $forcar -eq 0 ]]; then
   printf 'Configurações do Callas OS já estão na versão %s.\n' "$VERSAO"
-  exit 0
+  printf '\nDeseja reaplicar esta mesma versão à força?\n'
+  printf '1. Sim, reaplicar agora\n'
+  printf '2. Não\n'
+  read -r -p 'Escolha [1-2]: ' resposta_reaplicar || exit 0
+  case $resposta_reaplicar in
+    1) forcar=1 ;;
+    2|"") exit 0 ;;
+    *) printf 'Opção inválida. Nenhuma alteração foi feita.\n'; exit 0 ;;
+  esac
 fi
 
 stamp=$(date +%Y%m%d-%H%M%S)
