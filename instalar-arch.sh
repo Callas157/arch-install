@@ -932,46 +932,42 @@ perguntar_reinicio() {
 }
 
 atualizar_config_callas() {
-    local temporario resposta
+    local temporario versao_remota versao_local resposta_forcar
     temporario=$(mktemp)
     trap 'rm -f -- "$temporario"' RETURN
 
-    printf '\nATENÇÃO: esta opção reaplica padrões e migrações do Callas OS.\n'
-    printf 'Ela pode alterar preferências do KDE, favoritos, atalhos, wallpapers, autostart e aplicativos opcionais.\n'
-    printf 'Não mexe em partições, sistema de arquivos ou bootloader.\n\n'
-    read -r -p 'Continuar com a atualização das configurações? [s/N]: ' resposta
-    [[ $resposta =~ ^[sS]$ ]] || { printf 'Operação cancelada.\n'; return 0; }
+    # Bloqueia instalações antigas antes de pedir senha.
+    if [[ ! -x /etc/grub.d/09_callas || ! -f /etc/grub.d/10_linux || -x /etc/grub.d/10_linux ]]; then
+        printf '\nCallas Config Update indisponível nesta instalação.\n'
+        printf 'A estrutura do sistema é antiga e requer instalação limpa para receber novas configurações do Callas OS.\n'
+        return 0
+    fi
 
-    printf 'Baixando a versão mais recente das configurações do Callas OS...\n'
-    curl -fsSL --retry 2 --connect-timeout 10 --max-time 120         "$config_update_url" -o "$temporario" ||
+    printf '\nVerificando Callas Config Update...\n'
+    curl -fsSL --retry 2 --connect-timeout 10 --max-time 120 \
+        "$config_update_url" -o "$temporario" ||
         { printf 'Falha ao baixar o atualizador de configurações.\n' >&2; return 1; }
 
     bash -n "$temporario" ||
         { printf 'O arquivo baixado falhou na validação de sintaxe.\n' >&2; return 1; }
 
-    # Se a máquina já estiver exatamente na mesma versão do Callas Config,
-    # oferece uma reaplicação forçada. Isso é útil para reparar tema do GRUB,
-    # KDE e outras configurações sem precisar inventar uma nova versão.
-    local versao_remota versao_local resposta_forcar
     versao_remota=$(sed -n 's/^VERSAO="\\([^"]*\\)".*/\\1/p' "$temporario" | head -n1)
     versao_local=
     [[ -r /var/lib/callas-os/config-version ]] &&
         read -r versao_local < /var/lib/callas-os/config-version || :
 
     if [[ -n $versao_remota && $versao_local == "$versao_remota" ]]; then
-        printf '\nConfigurações do Callas OS já estão na versão %s.\n' "$versao_remota"
-        printf 'Deseja reaplicar esta mesma versão à força?\n'
-        printf '1. Sim, reaplicar agora\n'
-        printf '2. Não\n'
-        read -r -p 'Escolha [1-2]: ' resposta_forcar || return 0
-        case $resposta_forcar in
-            1) sudo /usr/bin/bash "$temporario" --force ;;
-            2|"") printf 'Nenhuma alteração foi feita.\n'; return 0 ;;
-            *) printf 'Opção inválida. Nenhuma alteração foi feita.\n'; return 0 ;;
-        esac
-    else
-        sudo /usr/bin/bash "$temporario"
+        printf 'Callas OS já está na versão de configuração %s.\n' "$versao_remota"
+        read -r -p 'Deseja reaplicar esta mesma versão à força? [s/N]: ' resposta_forcar || return 0
+        [[ $resposta_forcar =~ ^[sS]$ ]] || { printf 'Nenhuma alteração foi feita.\n'; return 0; }
+        sudo /usr/bin/bash "$temporario" --force
+        return
     fi
+
+    if [[ -n $versao_remota ]]; then
+        printf 'Atualização disponível: %s -> %s\n' "${versao_local:-não instalada}" "$versao_remota"
+    fi
+    sudo /usr/bin/bash "$temporario"
 }
 
 menu() {
