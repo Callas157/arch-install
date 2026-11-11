@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.11.7"
+VERSAO="2026.11.11.8"
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/main"
 ASSET_BASE="$BASE_RAW/assets"
 ESTADO_DIR="/var/lib/callas-os"
@@ -214,6 +214,11 @@ new = r'''atualizar_config_callas() {
 path.write_text(text[:start] + new + text[end:])
 PY
   chmod 0755 "$put_update"
+fi
+
+# Atualiza também o nome exibido no menu.
+if [[ -f "$put_update" ]]; then
+  sed -i "s/5\. Atualizar configurações do Callas OS/5. Callas Update/g" "$put_update"
 fi
 
 # Plymouth do Callas OS.
