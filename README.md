@@ -10,19 +10,31 @@
 
 ---
 
-## Sobre o projeto
+## O que é o Callas OS
 
-O **Callas OS** parte da **ISO oficial do Arch Linux** e automatiza uma instalação limpa do sistema.
+O **Callas OS** é um projeto de instalação e configuração automatizada baseado no **Arch Linux**. Ele parte da ISO oficial do Arch, prepara o disco escolhido, instala o sistema, configura o KDE Plasma em Wayland, instala os aplicativos definidos pelo projeto e aplica a identidade visual e os ajustes do Callas OS.
 
-O instalador detecta o hardware disponível, prepara os drivers compatíveis, instala o KDE Plasma em Wayland, configura o boot com GRUB, instala os aplicativos escolhidos para o sistema e aplica os ajustes necessários para o primeiro uso.
+Ele não é uma ISO independente: a instalação começa pela **ISO oficial do Arch Linux** e o script deste repositório monta o sistema automaticamente.
 
-> [!CAUTION]
-> **A instalação apaga todas as partições e todos os dados do disco escolhido.**
-> Faça backup dos arquivos importantes e confira com atenção o disco selecionado antes de confirmar.
+O projeto está em desenvolvimento contínuo. Configurações, aplicativos, drivers, boot, aparência e rotinas de manutenção podem mudar conforme o Callas OS evolui.
+
+> [!IMPORTANT]
+> **Uma instalação do Callas OS pode deixar de receber novas atualizações de configuração do projeto.**
+>
+> Algumas mudanças podem ser grandes demais para serem aplicadas com segurança em uma instalação antiga — por exemplo, alterações profundas no GRUB, EFI, estrutura de boot ou outras partes críticas do sistema.
+>
+> Quando isso acontecer, o **Callas Config Update bloqueará a atualização naquela máquina por segurança**. O sistema continuará podendo receber as atualizações normais do **Arch Linux**, dos aplicativos e dos Flatpaks, mas as novas configurações do **Callas OS** só serão suportadas após uma **instalação limpa com a versão mais recente do instalador**.
+
+---
 
 ## Instalação
 
-Inicie o computador pela **ISO oficial do Arch Linux**, em modo **UEFI**, com acesso à internet.
+> [!CAUTION]
+> **O instalador apaga todas as partições e todos os dados do disco escolhido.**
+>
+> Faça backup antes de começar e confira com atenção o modelo e o tamanho do disco selecionado.
+
+Inicie o computador pela **ISO oficial do Arch Linux**, em modo **UEFI**, com conexão à internet. De preferência, utilize cabo de rede durante a instalação.
 
 No terminal da ISO, como `root`, execute:
 
@@ -30,239 +42,276 @@ No terminal da ISO, como `root`, execute:
 bash <(curl -sL bit.ly/archcallas157)
 ```
 
-Se o link curto estiver indisponível, use diretamente o GitHub:
+Se o link curto estiver indisponível, use o endereço direto do GitHub:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/Callas157/arch-install/main/instalar-arch.sh)
 ```
 
-Em máquina virtual, habilite **EFI/UEFI** antes de iniciar a ISO.
+Em máquinas virtuais, habilite **EFI/UEFI** antes de iniciar a ISO.
 
-Durante a instalação, o script solicita:
-
-1. **Disco de destino**
-2. **Nome do usuário**
-3. **Senha do usuário e do root**
-
-Quando aparecer **Instalação concluída**, remova a mídia de instalação e reinicie o computador.
+O instalador solicitará o disco de destino, usuário e senhas necessárias. Quando a instalação terminar, remova a mídia de instalação e reinicie o computador.
 
 ---
 
-## Boot e recuperação
+## Visual do sistema
 
-O Callas OS utiliza **GRUB em UEFI** como bootloader.
+### GRUB
 
 <p align="center">
   <img src="assets/grub/background.png" alt="GRUB do Callas OS" width="850">
 </p>
 
-A configuração inclui:
+O Callas OS utiliza um GRUB personalizado em instalações novas, com entradas próprias do projeto:
 
-- menu de boot com contagem de **3 segundos**;
-- entrada principal usando o kernel Arch `linux`;
-- kernel **Linux LTS** instalado como alternativa;
-- entrada direta **Callas OS (kernel LTS - recuperação)**;
-- entrada de diagnóstico sem Plymouth;
-- caminho UEFI de fallback `EFI/BOOT/BOOTX64.EFI`.
+- **Callas OS Linux**
+- **Callas OS (kernel LTS - recuperação)**
+- **Callas OS (diagnóstico sem splash)**
 
-O kernel normal permanece como padrão. Se uma atualização de kernel, NVIDIA ou DKMS impedir o boot normal, o usuário pode selecionar manualmente o **kernel LTS** no GRUB e iniciar o sistema por ele para fazer os reparos necessários.
+O menu usa contagem regressiva de **3 segundos** e mantém uma entrada de recuperação com kernel LTS para situações em que o kernel principal ou algum módulo DKMS apresente problema.
 
-Antes das atualizações mensais do sistema, o atualizador também guarda informações de recuperação, incluindo lista de pacotes, configuração de `/etc`, banco local do pacman e configuração do GRUB.
-
-> [!NOTE]
-> O sistema usa **ext4**. O recurso de recuperação não é um snapshot completo ou rollback automático do sistema.
-
----
-
-## Hardware
-
-### Processadores
-
-O instalador detecta automaticamente processadores **AMD** e **Intel** e instala o microcódigo correspondente:
-
-- `amd-ucode`
-- `intel-ucode`
-
-### Placas de vídeo
-
-| Hardware | Configuração |
-| --- | --- |
-| **NVIDIA** | `nvidia-open-dkms` **610.57.04** fixado, utilitários NVIDIA 610, Vulkan e bibliotecas de 32 bits; o mesmo módulo DKMS atende os kernels `linux` e `linux-lts` |
-| **AMD Radeon** | Mesa, RADV e Vulkan Radeon |
-| **Intel** | Mesa, ANV e Vulkan Intel |
-| **VM / GPU genérica** | Mesa com renderização Vulkan virtual ou por software quando necessário |
-
-Máquinas com mais de uma GPU também podem receber os componentes correspondentes a cada fabricante detectado.
-
-Em máquinas NVIDIA, a pilha **610.57.04** é mantida pelo Callas OS e não é substituída automaticamente pela rotina mensal. A troca para outra versão é feita apenas quando o projeto definir uma nova versão validada.
-
-### Rede e dispositivos
-
-O instalador prepara automaticamente:
-
-- **NetworkManager**
-- Wi-Fi quando detectado
-- suporte adicional para determinados adaptadores Broadcom
-- **Bluetooth**
-- regras e componentes necessários aos periféricos configurados pelo projeto
-
-### Rise Mode
-
-O dispositivo USB **Rise Mode Aura Ice Black `aa88:8666`** é detectado automaticamente.
-
-Quando encontrado, o instalador prepara as dependências, compila o driver compatível e configura seu serviço. Se o dispositivo não existir naquela máquina, essa etapa é simplesmente ignorada.
-
----
-
-## Sistema base
-
-A instalação utiliza:
-
-- tabela de partição **GPT**;
-- partição EFI de **1 GiB** em FAT32;
-- sistema principal em **ext4**;
-- kernel `linux`;
-- kernel de recuperação `linux-lts`;
-- **zram**;
-- **TRIM periódico**;
-- sincronização automática de horário;
-- fuso **America/Sao_Paulo**;
-- idioma **Português do Brasil**;
-- teclado **EUA Internacional**;
-- pastas pessoais em português;
-- `sudo` para o grupo `wheel`.
-
----
-
-## KDE Plasma
-
-O ambiente gráfico é o **KDE Plasma em Wayland**, com tema escuro e uma sessão inicial preparada pelo instalador.
+### Tela de login
 
 <p align="center">
   <img src="assets/login/background.png" alt="Tela de login do Callas OS" width="850">
 </p>
 
-Entre os ajustes aplicados estão:
+O KDE Plasma utiliza SDDM em Wayland. Em configurações com múltiplos monitores, o login é concentrado no monitor principal enquanto o monitor secundário permanece ativo exibindo o fundo.
 
-- **Brisa Escuro**;
-- suspensão automática, escurecimento e desligamento da tela por inatividade desativados por padrão; essas opções continuam disponíveis nas configurações de energia do KDE;
-- SDDM em Wayland;
-- login concentrado no monitor principal em configurações com múltiplas telas;
-- integração da **Carteira KDE** com o login;
-- sessão vazia ao entrar no Plasma;
-- atalho **Super + Shift + S** para captura retangular pelo Spectacle;
-- redução do tempo de desligamento e reinicialização;
+### Desktop
+
+<p align="center">
+  <img src="assets/wallpapers/callas-wallpaper-14-mountains-moon.jpg" alt="Wallpaper do Callas OS" width="850">
+</p>
+
+O sistema inclui a coleção de wallpapers do projeto e aplica o visual preparado pelo Callas OS no primeiro login.
+
+### Plymouth
+
+<p align="center">
+  <img src="assets/plymouth/callas/background.jpg" alt="Tela de carregamento do Callas OS" width="850">
+</p>
+
+O Plymouth é integrado ao initramfs para manter uma transição visual durante a inicialização normal.
+
+---
+
+## Base do sistema
+
+A instalação prepara, entre outros componentes:
+
+- **Arch Linux** em sistema de arquivos `ext4`;
+- tabela de partição **GPT**;
+- partição EFI em FAT32;
+- kernel principal `linux`;
+- kernel de recuperação `linux-lts`;
+- KDE Plasma em **Wayland**;
+- **NetworkManager**;
+- Bluetooth;
+- zram;
+- TRIM periódico;
+- sincronização automática de horário;
+- idioma **Português do Brasil**;
+- fuso horário **America/Sao_Paulo**;
+- teclado **EUA Internacional**;
+- pastas pessoais em português;
+- sudo para o grupo `wheel`.
+
+O instalador detecta automaticamente processadores AMD e Intel e instala o microcódigo correspondente.
+
+---
+
+## Placas de vídeo
+
+| Hardware | Configuração |
+| --- | --- |
+| **NVIDIA** | `nvidia-open-dkms` **610.57.04**, utilitários NVIDIA 610, Vulkan e bibliotecas de 32 bits |
+| **AMD Radeon** | Mesa, RADV e Vulkan Radeon |
+| **Intel** | Mesa, ANV e Vulkan Intel |
+| **VM / GPU genérica** | Mesa e renderização Vulkan compatível quando necessário |
+
+Em máquinas NVIDIA, a versão **610.57.04** é mantida pelo projeto e não é substituída automaticamente pela atualização mensal do sistema. A troca de versão só deve acontecer quando o Callas OS definir uma nova pilha validada.
+
+Após atualizações do sistema, a rotina de manutenção verifica os módulos NVIDIA/DKMS para os kernels instalados antes de considerar a atualização segura para reinicialização.
+
+---
+
+## KDE Plasma
+
+Entre os padrões aplicados pelo Callas OS estão:
+
+- tema **Brisa Escuro**;
+- painel configurado pelo projeto;
+- transparência e blur do Plasma;
+- sessão vazia ao entrar no sistema;
 - Steam iniciando silenciosamente;
 - Discord iniciando minimizado;
 - Solaar disponível na bandeja;
-- Digital Vibrance configurado quando suportado.
+- Digital Vibrance quando compatível;
+- atalho **Super + Shift + S** para captura retangular;
+- integração da Carteira KDE com o login;
+- suspensão automática, escurecimento e desligamento da tela por inatividade desativados por padrão;
+- redução do tempo de desligamento e reinicialização.
 
-O wallpaper inicial do desktop também é instalado junto da coleção de wallpapers do projeto.
-
-<p align="center">
-  <img src="assets/wallpapers/callas-wallpaper-14-mountains-moon.jpg" alt="Wallpaper padrão do Callas OS" width="850">
-</p>
+Esses ajustes continuam disponíveis para alteração manual pelo usuário nas configurações do KDE.
 
 ---
 
 ## Aplicativos
 
-O Callas OS instala ou prepara, entre outros:
+O Callas OS instala ou prepara os principais aplicativos abaixo:
 
 | Categoria | Aplicativos |
 | --- | --- |
-| **Navegação** | Brave **[Nativo — AUR]** |
-| **Comunicação** | Discord **[Nativo — Repo Arch]** |
-| **Jogos** | Steam **[Nativo — Repo Arch]**, ProtonPlus **[Flatpak]** |
-| **Gravação** | GPU Screen Recorder **[Nativo — AUR]** |
-| **Vídeo** | Shotcut **[Nativo — Repo Arch]** |
-| **Downloads** | qBittorrent **[Nativo — Repo Arch]** |
-| **Música** | Spotify **[Nativo — AUR]** |
-| **Periféricos** | Solaar **[Nativo — Repo Arch]** |
-| **Sistema** | Mission Center **[Flatpak]**, Fastfetch **[Nativo — Repo Arch]**, Nekofetch **[Nativo — uv/Python]** |
-| **Loja de aplicativos** | Bazaar **[Flatpak]** |
-| **Arquivos** | Dolphin **[Nativo — Repo Arch]**, Ark **[Nativo — Repo Arch]** |
+| Navegação | **Brave** |
+| Comunicação | **Discord** |
+| Jogos | **Steam**, **ProtonPlus** |
+| Gravação | **GPU Screen Recorder** |
+| Vídeo | **Shotcut** |
+| Downloads | **qBittorrent** |
+| Música | **Spotify** |
+| Periféricos | **Solaar** |
+| Sistema | **Mission Center**, **Fastfetch**, **Nekofetch** |
+| Loja de aplicativos | **Bazaar** |
+| Arquivos | **Dolphin**, **Ark** |
 
-O **Mission Center** é instalado pelo Flathub e funciona como o gerenciador gráfico de processos e desempenho do sistema.
+O Brave é preparado pelo projeto com o **Bonjourr** e preferências em **Português do Brasil**.
 
-O **Discord** instalado é o cliente padrão, sem BetterDiscord.
-
-O **Spotify** instalado é o cliente padrão, sem Spicetify.
+O Discord é instalado sem BetterDiscord e o Spotify sem Spicetify.
 
 ---
 
-## Atualizações automáticas
+## Atualizações do sistema
 
-O Callas OS inclui um **Atualizador do sistema** acessível pelo menu do KDE.
+O Callas OS possui um **Atualizador do sistema** integrado ao KDE.
 
-Existem duas rotinas automáticas:
+Existem duas rotinas automáticas principais:
 
-| Rotina | Frequência | Conteúdo |
+| Rotina | Frequência | O que atualiza |
 | --- | --- | --- |
-| **Aplicativos** | A cada **7 dias** | Flatpaks + atualização própria do Discord |
-| **Sistema** | A cada **1 mês** | Atualização completa do Arch via pacman + pacotes AUR via Paru, incluindo os aplicativos nativos instalados por esses meios |
+| Aplicativos | A cada **7 dias** | Flatpaks e atualização própria do Discord |
+| Sistema | A cada **1 mês** | Arch Linux via `pacman -Syu` e pacotes AUR via Paru |
 
-Não existe horário fixo nem um dia fixo do mês.
+Não existe um horário ou dia fixo. Os vencimentos são calculados a partir da instalação e da última execução concluída com sucesso.
 
-Os vencimentos são calculados a partir da instalação e, depois disso, a partir da última atualização concluída com sucesso.
-
-A agenda é verificada:
-
-- pouco depois do boot;
-- periodicamente enquanto o computador permanece ligado.
-
-Se o computador estiver desligado no dia em que uma atualização vencer, ela continua pendente. No primeiro boot ou verificação seguinte, a atualização roda automaticamente.
-
-Os aplicativos nativos instalados pelos repositórios do Arch ou pelo AUR acompanham a atualização mensal completa do sistema. Eles não são atualizados isoladamente na rotina semanal, porque o Arch Linux não dá suporte a atualizações parciais do sistema.
-
-Em sistemas NVIDIA configurados pelo Callas OS, os pacotes do driver 610 são excluídos dessa atualização mensal para evitar que o `pacman` troque automaticamente para uma série mais nova sem validação prévia do projeto.
-
-Quando a atualização semanal termina com sucesso, o KDE mostra uma notificação informando que os aplicativos foram atualizados.
-
-Quando a atualização mensal termina com sucesso, o KDE apresenta uma notificação oferecendo:
-
-- **Reiniciar agora**
-- **Mais tarde**
+Se o computador estiver desligado quando uma atualização vencer, ela permanece pendente e será executada numa verificação posterior.
 
 Os registros ficam em:
 
 `Documentos/Logs de Atualizações/atualizacoes.log`
 
-Também é possível executar manualmente pelo Atualizador do sistema:
+Antes das atualizações mensais, o sistema também guarda dados de recuperação, incluindo informações de pacotes, partes da configuração de `/etc`, banco local do pacman e configuração do GRUB.
 
-- atualização dos aplicativos;
-- atualização completa do Arch/AUR;
-- atualização do Discord;
-- atualização das configurações do Callas OS.
-
-### Atualizar configurações do Callas OS
-
-Essa opção baixa a versão mais recente do script de migrações do projeto e aplica apenas mudanças consideradas seguras para uma instalação já existente, como ajustes do KDE, favoritos, atalhos, autostart, wallpapers, Flatpaks e scripts auxiliares.
-
-> [!WARNING]
-> Essa atualização pode reaplicar padrões do Callas OS e alterar preferências que o usuário tenha personalizado manualmente, como comportamento do KDE, atalhos, favoritos ou wallpapers. Antes de aplicar, o atualizador mostra um aviso e pede confirmação.
-
-O processo cria um backup das configurações que serão alteradas e registra a versão aplicada em `/var/lib/callas-os/config-version`.
-
-Mudanças críticas, como particionamento, sistema de arquivos, troca de bootloader ou alterações de EFI, **não são aplicadas por esse mecanismo**. Essas mudanças exigem tratamento específico ou uma instalação limpa.
+> [!NOTE]
+> Esses arquivos ajudam em recuperação e diagnóstico, mas **não são snapshots completos do sistema**.
 
 ---
 
-## Tratamento de falhas
+## Callas Config Update
 
-As etapas essenciais da instalação interrompem o processo quando ocorre um erro grave, incluindo:
+Além das atualizações normais do Arch Linux e dos aplicativos, existe a opção de atualizar as **configurações do Callas OS**.
+
+O arquivo responsável por isso é:
+
+`callas-config-update.sh`
+
+Essa rotina pode distribuir mudanças consideradas seguras para sistemas já instalados, por exemplo:
+
+- ajustes do KDE;
+- atalhos;
+- autostart;
+- wallpapers;
+- configurações do Brave;
+- Flatpaks;
+- scripts auxiliares;
+- integrações e pequenos refinamentos do Callas OS.
+
+O atualizador mantém controle da versão aplicada e cria backups das configurações afetadas antes das migrações.
+
+### Compatibilidade
+
+O **Callas Config Update não é uma promessa de atualização eterna entre todas as versões do projeto**.
+
+Antes de executar uma migração, o script pode verificar se aquela instalação ainda possui a estrutura esperada pelo Callas OS atual. Se a máquina estiver usando uma arquitetura antiga e incompatível — como uma geração anterior do GRUB — o processo é **interrompido antes de aplicar alterações**.
+
+Atualmente, instalações novas utilizam a arquitetura de GRUB personalizada do Callas OS, identificada internamente como:
+
+`grub-custom-v2`
+
+Instalações antigas que não atendam aos requisitos atuais podem receber uma mensagem informando que o **Callas Config Update foi bloqueado por segurança**.
+
+> [!WARNING]
+> Se uma mudança estrutural do Callas OS exigir instalação limpa, **isso não significa que o Arch Linux deixou de funcionar ou de receber atualizações**.
+>
+> O usuário ainda poderá atualizar o Arch Linux, aplicativos nativos, AUR e Flatpaks normalmente. O bloqueio se aplica somente às **novas migrações de configuração do Callas OS** que não possam ser realizadas de forma segura naquela instalação.
+
+Quando o projeto exigir uma nova instalação limpa, a recomendação é fazer backup dos arquivos pessoais e instalar novamente usando o comando mais recente deste README.
+
+---
+
+## Boot e recuperação
+
+As instalações atuais utilizam entradas próprias do Callas OS em vez da geração automática padrão do `10_linux`.
+
+Isso permite ao projeto controlar diretamente as entradas de boot e manter separadas as opções normal, LTS e diagnóstico.
+
+Também é instalado o caminho UEFI de fallback:
+
+`EFI/BOOT/BOOTX64.EFI`
+
+Se o kernel principal não iniciar após alguma atualização, utilize no GRUB:
+
+**Callas OS (kernel LTS - recuperação)**
+
+Para diagnóstico com mensagens visíveis e sem Plymouth, utilize:
+
+**Callas OS (diagnóstico sem splash)**
+
+Mudanças profundas nessa estrutura de boot não são distribuídas automaticamente para instalações antigas quando houver risco de deixar a máquina sem inicialização.
+
+---
+
+## Hardware e periféricos
+
+O instalador também prepara suporte para rede, Bluetooth e periféricos definidos pelo projeto.
+
+Quando o dispositivo **Rise Mode Aura Ice Black `aa88:8666`** é detectado, o instalador compila e configura automaticamente o driver correspondente. Se o hardware não estiver presente, essa etapa é ignorada.
+
+O suporte a determinados adaptadores de rede e outros componentes também é aplicado de forma condicional conforme o hardware detectado.
+
+---
+
+## Falhas durante a instalação
+
+Etapas críticas interrompem a instalação quando ocorre um erro que possa comprometer o sistema, incluindo:
 
 - particionamento;
 - criação dos sistemas de arquivos;
 - instalação do sistema base;
-- configuração do boot;
-- geração do GRUB.
+- geração do initramfs;
+- instalação do bootloader;
+- validação do GRUB.
 
-Componentes opcionais podem registrar um aviso e permitir que a instalação principal continue.
+Componentes opcionais podem apenas gerar um aviso e permitir que a instalação principal continue.
 
-Os avisos ficam disponíveis em:
+Os avisos ficam registrados em:
 
 `/var/log/callas-instalacao-avisos.log`
+
+---
+
+## Aviso sobre o desenvolvimento do projeto
+
+O Callas OS é um projeto em evolução. Uma configuração que funciona hoje pode ser substituída no futuro por uma abordagem diferente, mais segura ou mais adequada ao Arch Linux atual.
+
+Por isso:
+
+- mantenha backup dos seus arquivos importantes;
+- leia os avisos mostrados pelo atualizador;
+- não force uma migração bloqueada por incompatibilidade;
+- quando o projeto indicar instalação limpa, trate isso como uma mudança de geração do Callas OS e não como uma atualização comum.
+
+A prioridade do projeto é **não aplicar automaticamente uma mudança crítica em uma instalação antiga quando não houver segurança suficiente para fazê-la**.
 
 ---
 
