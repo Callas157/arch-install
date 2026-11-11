@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.11.1"
+VERSAO="2026.11.11.2"
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/main"
 ASSET_BASE="$BASE_RAW/assets"
 ESTADO_DIR="/var/lib/callas-os"
@@ -18,6 +18,31 @@ home=$(getent passwd "$usuario" | cut -d: -f6)
 grupo=$(id -gn "$usuario")
 [[ -d "$home" ]] || erro "Pasta pessoal de $usuario não encontrada."
 [[ -f /etc/arch-release ]] || erro "Este atualizador foi preparado para Arch Linux."
+
+# Compatibilidade de arquitetura do GRUB.
+# O Callas Config atual só é suportado em instalações que já usam as entradas
+# próprias do Callas OS. Instalações antigas, geradas pelo 10_linux padrão,
+# são bloqueadas antes de qualquer alteração.
+grub_compativel=0
+if [[ -x /etc/grub.d/09_callas && -f /etc/grub.d/10_linux && ! -x /etc/grub.d/10_linux ]]; then
+  grub_compativel=1
+fi
+
+if (( ! grub_compativel )); then
+  cat >&2 <<'EOF'
+ERRO: esta instalação do Callas OS usa uma arquitetura antiga do GRUB.
+
+O Callas Config Update atual não será executado nesta máquina por segurança.
+Nenhuma configuração foi alterada.
+
+Para usar as atualizações atuais, faça uma instalação limpa com a versão
+mais recente do instalar-arch.sh, que cria o GRUB personalizado do Callas OS.
+EOF
+  exit 42
+fi
+
+install -d -m 0755 /etc/callas-os
+printf '%s\n' 'grub-custom-v2' > /etc/callas-os/grub-layout
 
 como_usuario() {
   runuser -u "$usuario" -- env -i PATH=/usr/bin:/bin HOME="$home" USER="$usuario" LOGNAME="$usuario" LANG=C.UTF-8 "$@"
