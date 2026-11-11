@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.10.9"
+VERSAO="2026.11.10.10"
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/main"
 ASSET_BASE="$BASE_RAW/assets"
 ESTADO_DIR="/var/lib/callas-os"
@@ -409,3 +409,10 @@ fi
 printf '\nConfigurações do Callas OS atualizadas para %s.\n' "$VERSAO"
 printf 'Backup desta aplicação: %s\n' "$backup"
 printf 'Algumas mudanças do KDE podem aparecer por completo após encerrar e iniciar a sessão.\n'
+
+printf '\n'
+read -r -p 'Deseja reiniciar o sistema agora? [Y/N]: ' resposta_reboot || resposta_reboot=N
+case $resposta_reboot in
+  Y|y|S|s) systemctl reboot ;;
+  *) printf 'Reinicialização adiada.\n' ;;
+esac
