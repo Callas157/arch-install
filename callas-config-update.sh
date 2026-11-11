@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.11.6"
+VERSAO="2026.11.11.7"
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/main"
 ASSET_BASE="$BASE_RAW/assets"
 ESTADO_DIR="/var/lib/callas-os"
@@ -230,6 +230,16 @@ curl -fsSL --retry 2 "$ASSET_BASE/plymouth/callas/callas.script" \
 curl -fsSL --retry 2 "$ASSET_BASE/plymouth/callas/background.jpg" \
   -o "$plymouth_dir/background.jpg" ||
   erro "Não consegui atualizar a arte do Plymouth."
+
+# Usa os assets PNG oficiais do tema script instalado pelo pacote Plymouth.
+[[ -f /usr/share/plymouth/themes/script/progress_box.png ]] ||
+  erro "progress_box.png do Plymouth não foi encontrado."
+[[ -f /usr/share/plymouth/themes/script/progress_bar.png ]] ||
+  erro "progress_bar.png do Plymouth não foi encontrado."
+install -m 0644 /usr/share/plymouth/themes/script/progress_box.png \
+  "$plymouth_dir/progress_box.png"
+install -m 0644 /usr/share/plymouth/themes/script/progress_bar.png \
+  "$plymouth_dir/progress_bar.png"
 
 cat > /etc/plymouth/plymouthd.conf <<'PLYMOUTH_CONF'
 [Daemon]
