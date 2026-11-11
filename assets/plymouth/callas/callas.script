@@ -1,55 +1,75 @@
-Window.SetBackgroundTopColor(0.01, 0.025, 0.055);
-Window.SetBackgroundBottomColor(0.005, 0.012, 0.030);
+# Callas OS Plymouth
+# Tema baseado apenas em recursos PNG e no plugin script do Plymouth.
 
-background_image = Image("background.jpg");
-background_scaled = background_image.Scale(Window.GetWidth(), Window.GetHeight());
-background = Sprite(background_scaled);
-background.SetX(Window.GetX());
-background.SetY(Window.GetY());
+Window.SetBackgroundTopColor(0.004, 0.015, 0.035);
+Window.SetBackgroundBottomColor(0.010, 0.060, 0.120);
 
-logo_image = Image("logo.png");
-logo = Sprite(logo_image);
+logo.image = Image("logo.png");
+logo.sprite = Sprite(logo.image);
 
-status_image = Image.Text("Callas OS", 0.90, 0.96, 1.00);
-status = Sprite(status_image);
+title.image = Image.Text("Callas OS", 0.92, 0.97, 1.00);
+title.sprite = Sprite(title.image);
 
-bar_image = Image.Text("[--------------------]", 0.15, 0.70, 1.00);
-bar = Sprite(bar_image);
+dots.image = Image.Text("•   •   •", 0.05, 0.78, 1.00);
+dots.sprite = Sprite(dots.image);
+
+subtitle.image = Image.Text("Carregando o sistema...", 0.76, 0.86, 0.94);
+subtitle.sprite = Sprite(subtitle.image);
+
+progress_box.image = Image("progress_box.png");
+progress_box.sprite = Sprite(progress_box.image);
+
+progress_bar.original_image = Image("progress_bar.png");
+progress_bar.image = progress_bar.original_image.Scale(1, progress_bar.original_image.GetHeight());
+progress_bar.sprite = Sprite(progress_bar.image);
+
+percent.image = Image.Text("0%", 0.92, 0.97, 1.00);
+percent.sprite = Sprite(percent.image);
 
 fun position_all() {
-    logo.SetX(Window.GetX() + (Window.GetWidth() - logo_image.GetWidth()) / 2);
-    logo.SetY(Window.GetY() + Window.GetHeight() * 0.28);
+    center_x = Window.GetX() + Window.GetWidth() / 2;
 
-    status.SetX(Window.GetX() + (Window.GetWidth() - status_image.GetWidth()) / 2);
-    status.SetY(Window.GetY() + Window.GetHeight() * 0.60);
+    logo.sprite.SetX(center_x - logo.image.GetWidth() / 2);
+    logo.sprite.SetY(Window.GetY() + Window.GetHeight() * 0.23);
 
-    bar.SetX(Window.GetX() + (Window.GetWidth() - bar_image.GetWidth()) / 2);
-    bar.SetY(Window.GetY() + Window.GetHeight() * 0.68);
+    title.sprite.SetX(center_x - title.image.GetWidth() / 2);
+    title.sprite.SetY(Window.GetY() + Window.GetHeight() * 0.56);
+
+    dots.sprite.SetX(center_x - dots.image.GetWidth() / 2);
+    dots.sprite.SetY(Window.GetY() + Window.GetHeight() * 0.62);
+
+    progress_box.x = center_x - progress_box.image.GetWidth() / 2;
+    progress_box.y = Window.GetY() + Window.GetHeight() * 0.70;
+    progress_box.sprite.SetPosition(progress_box.x, progress_box.y, 0);
+
+    progress_bar.x = center_x - progress_bar.original_image.GetWidth() / 2;
+    progress_bar.y = progress_box.y +
+        (progress_box.image.GetHeight() - progress_bar.original_image.GetHeight()) / 2;
+    progress_bar.sprite.SetPosition(progress_bar.x, progress_bar.y, 1);
+
+    subtitle.sprite.SetX(center_x - subtitle.image.GetWidth() / 2);
+    subtitle.sprite.SetY(Window.GetY() + Window.GetHeight() * 0.76);
+
+    percent.sprite.SetX(center_x - percent.image.GetWidth() / 2);
+    percent.sprite.SetY(Window.GetY() + Window.GetHeight() * 0.81);
 }
 
 fun progress_callback(duration, progress) {
-    if (progress < 0.10) {
-        bar_image = Image.Text("[==------------------]", 0.15, 0.70, 1.00);
-    } else if (progress < 0.20) {
-        bar_image = Image.Text("[====----------------]", 0.15, 0.70, 1.00);
-    } else if (progress < 0.30) {
-        bar_image = Image.Text("[======--------------]", 0.15, 0.70, 1.00);
-    } else if (progress < 0.40) {
-        bar_image = Image.Text("[========------------]", 0.15, 0.70, 1.00);
-    } else if (progress < 0.50) {
-        bar_image = Image.Text("[==========----------]", 0.15, 0.70, 1.00);
-    } else if (progress < 0.60) {
-        bar_image = Image.Text("[============--------]", 0.15, 0.70, 1.00);
-    } else if (progress < 0.70) {
-        bar_image = Image.Text("[==============------]", 0.15, 0.70, 1.00);
-    } else if (progress < 0.80) {
-        bar_image = Image.Text("[================----]", 0.15, 0.70, 1.00);
-    } else if (progress < 0.90) {
-        bar_image = Image.Text("[==================--]", 0.15, 0.70, 1.00);
-    } else {
-        bar_image = Image.Text("[====================]", 0.15, 0.70, 1.00);
+    width = Math.Int(progress_bar.original_image.GetWidth() * progress);
+    if (width < 1) {
+        width = 1;
     }
-    bar.SetImage(bar_image);
+
+    progress_bar.image = progress_bar.original_image.Scale(
+        width,
+        progress_bar.original_image.GetHeight()
+    );
+    progress_bar.sprite.SetImage(progress_bar.image);
+
+    value = Math.Int(progress * 100);
+    percent.image = Image.Text(value + "%", 0.92, 0.97, 1.00);
+    percent.sprite.SetImage(percent.image);
+
     position_all();
 }
 
