@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.11.3"
+VERSAO="2026.11.11.4"
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/main"
 ASSET_BASE="$BASE_RAW/assets"
 ESTADO_DIR="/var/lib/callas-os"
@@ -420,6 +420,9 @@ printf 'Algumas mudanças do KDE podem aparecer por completo após encerrar e in
 printf '\n'
 read -r -p 'Deseja reiniciar o sistema agora? [Y/N]: ' resposta_reboot || resposta_reboot=N
 case $resposta_reboot in
-  Y|y|S|s) systemctl reboot ;;
+  Y|y|S|s)
+    printf 'Reiniciando agora...\n'
+    exec systemctl --quiet reboot --check-inhibitors=no --no-wall
+    ;;
   *) printf 'Reinicialização adiada.\n' ;;
 esac
