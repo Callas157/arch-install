@@ -2,7 +2,7 @@
 # Compatibilidade: instalações antigas ainda consultam este endereço.
 # O atualizador completo fica em programas-callas-os/atualizador/.
 set -Eeuo pipefail
-VERSAO="2026.11.11.14"
+VERSAO="2026.11.11.15"
 url="https://raw.githubusercontent.com/Callas157/arch-install/main/programas-callas-os/atualizador/callas-config-update.sh"
 temporario=$(mktemp)
 trap 'rm -f -- "$temporario"' EXIT

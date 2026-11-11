@@ -340,7 +340,11 @@ marcar_reinicio_pendente() {
 }
 
 notificar_apps_usuario() {
-    local usuario=$1 home=$2 uid runtime
+    local usuario=$1 home=$2 uid runtime titulo='Aplicativos atualizados' mensagem='Os aplicativos foram atualizados com sucesso.'
+    if [[ ${3:-apps} == flatpaks ]]; then
+        titulo='Flatpaks atualizados'
+        mensagem='Os Flatpaks foram atualizados com sucesso.'
+    fi
     uid=$(id -u "$usuario") || return 1
     runtime="/run/user/$uid"
     [[ -S "$runtime/bus" ]] || return 0
@@ -348,8 +352,8 @@ notificar_apps_usuario() {
         HOME="$home" USER="$usuario" LOGNAME="$usuario" \
         XDG_RUNTIME_DIR="$runtime" DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
         notify-send -a 'Atualizador do sistema' -i system-software-update \
-        'Aplicativos atualizados' \
-        'Os aplicativos foram atualizados com sucesso.' >/dev/null 2>&1 || :
+        "$titulo" \
+        "$mensagem" >/dev/null 2>&1 || :
 }
 
 atualizar_sistema() {
@@ -363,7 +367,7 @@ atualizar_sistema() {
     return "$falhou"
 }
 
-atualizar_apps() {
+atualizar_flatpaks() {
     local usuario=$1 home=$2 falhou=0
 
     if [[ -x /usr/bin/flatpak ]]; then
@@ -375,6 +379,12 @@ atualizar_apps() {
         printf 'Flatpak ausente.\n'
     fi
 
+    return "$falhou"
+}
+
+atualizar_apps() {
+    local usuario=$1 home=$2 falhou=0
+    atualizar_flatpaks "$usuario" "$home" || falhou=1
     etapa 'Discord nativo' como_usuario "$usuario" "$home" "$program" --discord-agendado ||
         falhou=1
     return "$falhou"
@@ -392,6 +402,7 @@ registrar_atualizacao() {
         case $modo in
             sistema) atualizar_sistema "$origem" "$usuario" "$home" || codigo=$? ;;
             apps) atualizar_apps "$usuario" "$home" || codigo=$? ;;
+            flatpaks) atualizar_flatpaks "$usuario" "$home" || codigo=$? ;;
             discord)
                 etapa 'Discord nativo' como_usuario "$usuario" "$home" \
                     "$program" --discord-sessao || codigo=$?
@@ -407,8 +418,8 @@ registrar_atualizacao() {
             gravar_data_agenda apps "$proxima" || return
             marcar_reinicio_pendente "$usuario" "$home" ||
                 printf 'Aviso: não consegui mostrar a opção de reiniciar.\n' >&2
-        elif [[ $modo == apps ]]; then
-            notificar_apps_usuario "$usuario" "$home" || :
+        elif [[ $modo == apps || $modo == flatpaks ]]; then
+            notificar_apps_usuario "$usuario" "$home" "$modo" || :
         fi
     else
         codigo=$?
@@ -600,7 +611,7 @@ menu() {
         printf '\n=== Atualizador do sistema ===\n'
         printf '%s\n' \
             '1. Ativar ou reparar o automático (atualização completa semanal)' \
-            '2. Atualizar só os aplicativos agora (Flatpak e Discord)' \
+            '2. Atualizar somente os Flatpaks' \
             '3. Atualizar tudo agora (Arch, AUR, Flatpak e Discord)' \
             '4. Atualizar só o Discord agora' \
             '5. Callas OS Update' \
@@ -612,7 +623,7 @@ menu() {
                     printf 'Falha ao configurar o automático. Confira a mensagem acima.\n' >&2
                 continue
                 ;;
-            2) modo=apps ;;
+            2) modo=flatpaks ;;
             3) modo=sistema ;;
             4) modo=discord ;;
             5)
@@ -671,7 +682,7 @@ case ${1:-} in
     --manual)
         (( EUID == 0 && $# == 2 )) || erro 'Esta opção é usada pelo menu de atualização.'
         [[ -n ${SUDO_USER:-} && $SUDO_USER != root ]] || erro 'Abra o menu com seu usuário normal.'
-        [[ $2 == sistema || $2 == apps || $2 == discord ]] || erro 'Modo manual inválido.'
+        [[ $2 == sistema || $2 == apps || $2 == flatpaks || $2 == discord ]] || erro 'Modo manual inválido.'
         printf 'Preparando a atualização. Se outra estiver em andamento, ela vai terminar primeiro.\n'
         exec flock -x -o "$lock_atualizador" "$program" --registrar "$SUDO_USER" "$2" manual
         ;;

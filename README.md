@@ -324,7 +324,7 @@ A opção **3. Atualizar tudo agora** e a rotina semanal executam, em ordem:
 4. Verificação final dos kernels padrão/LTS, DKMS, initramfs e GRUB.
 5. Depois de salvar o resultado e a agenda, notificação com **Reiniciar agora** ou **Mais tarde**. Não há reinício forçado; uma notificação de um boot anterior é descartada.
 
-A opção **2** continua restrita a Flatpaks/Discord, e a **4** continua atualizando somente o Discord. Aplicativos nativos dos repositórios oficiais e AUR são mantidos na transação completa, junto das dependências do sistema. Uma execução manual pode pedir a senha administrativa no início, mas não solicita revisão/confirmação de cada pacote durante o processo.
+A opção **2** atualiza somente os Flatpaks, sem fechar nem atualizar o Discord. A opção **4** atualiza somente o Discord. Aplicativos nativos dos repositórios oficiais e AUR são mantidos na transação completa, junto das dependências do sistema. Uma execução manual pode pedir a senha administrativa no início, mas não solicita revisão/confirmação de cada pacote durante o processo.
 
 **Consequência da automação:** não existe revisão humana dos PKGBUILDs durante a rotina completa. O isolamento limita a compilação, mas não certifica que um pacote é benigno: scripts de instalação de um pacote AUR ainda podem rodar como root. Não se afirma que o automático faz uma auditoria de malware. Checksums e assinaturas de fontes continuam sendo verificados; chaves declaradas pela receita podem ser obtidas automaticamente pelo fingerprint, sem desativar a verificação.
 
