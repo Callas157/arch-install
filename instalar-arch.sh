@@ -927,16 +927,8 @@ REBOOT_DESKTOP
 }
 
 perguntar_reinicio() {
-    local resposta
-    printf '\nDeseja reiniciar o sistema agora?\n'
-    printf '1. Sim, reiniciar agora\n'
-    printf '2. Não\n'
-    read -r -p 'Escolha [1-2]: ' resposta || return 0
-    case $resposta in
-        1) systemctl reboot ;;
-        2|"") return 0 ;;
-        *) printf 'Opção inválida. Não vou reiniciar.\n' ;;
-    esac
+    # O callas-config-update.sh pergunta Y/N imediatamente ao concluir.
+    return 0
 }
 
 atualizar_config_callas() {
