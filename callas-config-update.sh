@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.11.5"
+VERSAO="2026.11.11.6"
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/main"
 ASSET_BASE="$BASE_RAW/assets"
 ESTADO_DIR="/var/lib/callas-os"
@@ -156,6 +156,64 @@ if grub-mkconfig -o "$grub_tmp" && [[ -s "$grub_tmp" ]] &&
 else
   rm -f "$grub_tmp"
   erro "Falha ao validar a configuração do GRUB; o grub.cfg anterior foi preservado."
+fi
+
+# Simplifica a opção 5 do Atualizador do Sistema já instalado.
+put_update=/usr/local/libexec/put-update
+if [[ -f "$put_update" ]]; then
+  python - "$put_update" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+start = text.find("atualizar_config_callas() {")
+end = text.find("\nmenu() {", start)
+if start < 0 or end < 0:
+    raise SystemExit("não encontrei a função atualizar_config_callas no put-update")
+
+new = r'''atualizar_config_callas() {
+    local temporario versao_remota versao_local resposta_forcar
+    temporario=$(mktemp)
+    trap 'rm -f -- "$temporario"' RETURN
+
+    # Bloqueia instalações antigas antes de pedir senha.
+    if [[ ! -x /etc/grub.d/09_callas || ! -f /etc/grub.d/10_linux || -x /etc/grub.d/10_linux ]]; then
+        printf '\nCallas Config Update indisponível nesta instalação.\n'
+        printf 'A estrutura do sistema é antiga e requer instalação limpa para receber novas configurações do Callas OS.\n'
+        return 0
+    fi
+
+    printf '\nVerificando Callas Config Update...\n'
+    curl -fsSL --retry 2 --connect-timeout 10 --max-time 120 \
+        "$config_update_url" -o "$temporario" ||
+        { printf 'Falha ao baixar o atualizador de configurações.\n' >&2; return 1; }
+
+    bash -n "$temporario" ||
+        { printf 'O arquivo baixado falhou na validação de sintaxe.\n' >&2; return 1; }
+
+    versao_remota=$(sed -n 's/^VERSAO="\\([^"]*\\)".*/\\1/p' "$temporario" | head -n1)
+    versao_local=
+    [[ -r /var/lib/callas-os/config-version ]] &&
+        read -r versao_local < /var/lib/callas-os/config-version || :
+
+    if [[ -n $versao_remota && $versao_local == "$versao_remota" ]]; then
+        printf 'Callas OS já está na versão de configuração %s.\n' "$versao_remota"
+        read -r -p 'Deseja reaplicar esta mesma versão à força? [s/N]: ' resposta_forcar || return 0
+        [[ $resposta_forcar =~ ^[sS]$ ]] || { printf 'Nenhuma alteração foi feita.\n'; return 0; }
+        sudo /usr/bin/bash "$temporario" --force
+        return
+    fi
+
+    if [[ -n $versao_remota ]]; then
+        printf 'Atualização disponível: %s -> %s\n' "${versao_local:-não instalada}" "$versao_remota"
+    fi
+    sudo /usr/bin/bash "$temporario"
+}
+'''
+path.write_text(text[:start] + new + text[end:])
+PY
+  chmod 0755 "$put_update"
 fi
 
 # Plymouth do Callas OS.
