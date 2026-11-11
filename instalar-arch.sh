@@ -990,7 +990,7 @@ menu() {
             '2. Atualizar só os aplicativos agora (Flatpak e Discord)' \
             '3. Atualizar só o sistema agora (Arch, pacman e AUR)' \
             '4. Atualizar só o Discord agora' \
-            '5. Atualizar configurações do Callas OS' \
+            '5. Callas Update' \
             '6. Sair'
         read -r -p 'Escolha [1-6] ou digite reboot: ' opcao || return 0
         case $opcao in
