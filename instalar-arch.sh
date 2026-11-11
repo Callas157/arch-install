@@ -144,6 +144,17 @@ if (( NVIDIA )); then
   echo "NVIDIA 610.57.04 disponível e pronta para a instalação."
 fi
 
+# Valida a ferramenta adicional antes de apagar o disco.
+command -v python >/dev/null || { echo "ERRO: Python ausente na ISO. Instale com pacman -Sy python antes de continuar."; exit 1; }
+CALLAS_MONITOR_TMP=$(mktemp)
+curl -fsSL --retry 2 --connect-timeout 10 --max-time 120 \
+  "https://raw.githubusercontent.com/Callas157/arch-install/${CALLAS_ASSET_REF}/callas-monitores.py" \
+  -o "$CALLAS_MONITOR_TMP"
+python - "$CALLAS_MONITOR_TMP" <<'CALLAS_MONITOR_CHECK'
+import ast, sys
+ast.parse(open(sys.argv[1], encoding="utf-8").read())
+CALLAS_MONITOR_CHECK
+
 # ---------------- Escolha do disco ----------------
 BOOTPART="$(findmnt -no SOURCE /run/archiso/bootmnt 2>/dev/null || true)"
 BOOTDISK=""
@@ -230,7 +241,7 @@ pacstrap -K /mnt \
   plasma-desktop sddm sddm-kcm plasma-nm plasma-pa kscreen powerdevil xorg-xwayland \
   konsole dolphin kate ark gwenview okular spectacle kdeplasma-addons \
   unrar unarchiver zip unzip libarchive 7zip lrzip lzop arj cpio \
-  uv fastfetch chafa python ttf-jetbrains-mono-nerd \
+  uv fastfetch chafa python python-dbus python-gobject ttf-jetbrains-mono-nerd \
   solaar libappindicator qbittorrent \
   xdg-desktop-portal-kde xdg-user-dirs \
   kwallet-pam kwalletmanager \
@@ -247,6 +258,8 @@ UUID_RAIZ="$(blkid -s UUID -o value "$RAIZ")"
 
 # ---------------- Arquivos integrados ----------------
 install -d /mnt/usr/local/libexec /mnt/usr/share/plymouth/themes/callas
+install -m 0755 "$CALLAS_MONITOR_TMP" /mnt/usr/local/libexec/callas-monitores
+rm -f -- "$CALLAS_MONITOR_TMP"
 install -d /mnt/usr/share/icons/hicolor/256x256/apps
 # Assets visuais do Callas OS ficam organizados no repositório.
 # Isso reduz bastante o tamanho do instalador e evita duplicar imagens em base64.
@@ -1225,7 +1238,7 @@ discord = shutil.which("discord")
 if not discord:
     discord = next((p for p in ("/opt/Discord/Discord", "/opt/discord/Discord") if os.access(p, os.X_OK)), None)
 if discord:
-    planos["discord"] = ("callas-discord.desktop", desktop("Discord", launcher(discord, "--start-minimized"), "discord"))
+    planos["discord"] = ("callas-discord.desktop", desktop("Discord", launcher(discord), "discord"))
     perfil = config / "discord"
     if not perfil.exists():
         perfil.mkdir(mode=0o700)
@@ -1235,7 +1248,7 @@ if discord:
             ajustes = json.loads(arquivo.read_text(encoding="utf-8")) if arquivo.exists() else {}
             if not isinstance(ajustes, dict):
                 raise ValueError("settings.json não contém um objeto")
-            novos = dict(ajustes, OPEN_ON_STARTUP=False, MINIMIZE_TO_TRAY=True)
+            novos = dict(ajustes, OPEN_ON_STARTUP=False)
             if novos != ajustes:
                 gravar(arquivo, json.dumps(novos, indent=2, ensure_ascii=False) + "\n", 0o600)
         except (OSError, ValueError) as erro:
@@ -1310,13 +1323,7 @@ for nome, (_, campos) in entradas.items():
         continue
     app = tipos[nome]
     # Preserva scripts auxiliares do KDE, como os ajustes de monitor e de cores.
-    script_kde = campos.get("X-KDE-AutostartScript", "").lower() == "true"
-    script_shell = bool(re.search(r"\.sh(?:[\s\"']|$)", campos.get("Exec", "")))
-    outro_app_do_usuario = (
-        nome in locais and not app and campos.get("Type") == "Application"
-        and not script_kde and not script_shell
-    )
-    if app == "extra" or app in planos or outro_app_do_usuario:
+    if app == "extra" or app in planos:
         if campos.get("Hidden", "").lower() == "true":
             continue
         gravar(auto / nome, "[Desktop Entry]\nType=Application\nHidden=true\n")
@@ -1685,7 +1692,8 @@ gravar_login() {
 
 modo_sistema() (
     local acao=$1 principal=${2:-} usuario_login=plasmalogin destino modo compositor
-    local resultado=0
+    local resultado=0 somente_monitor=0
+    if [[ $acao == monitor ]]; then somente_monitor=1; acao=aplicar; fi
     local estado=/var/lib/callas-kde-desligamento-login
     local auxiliar=/usr/local/lib/callas-kde/ajustar-contagem
     local hook=/etc/pacman.d/hooks/99-callas-kde-contagem.hook
@@ -1725,6 +1733,7 @@ modo_sistema() (
     cat > "$novo"
     remover_xsetup
 
+    if (( ! somente_monitor )); then
     ajustar_contagem aplicar || resultado=1
     install -d -m 0755 /usr/local/lib/callas-kde /etc/pacman.d/hooks
     {
@@ -1751,6 +1760,8 @@ HOOK
     rm -f -- "$estado/auxiliar" "$estado/hook"
     if (( resultado == 0 )); then
         printf 'Contagem do KDE ajustada para 5 segundos.\n'
+    fi
+
     fi
 
     if [[ $acao == instalar ]]; then
@@ -1884,15 +1895,17 @@ fi
 
 if [[ ${1:-} == --sistema && $EUID == 0 && $# -ge 2 ]]; then
     case $2 in
-        aplicar)
+        aplicar|monitor)
             [[ $# == 3 && $3 =~ ^[[:alnum:]]+(-[[:alnum:]]+)+$ ]] || erro 'saída inválida.'
-            modo_sistema aplicar "$3"
+            modo_sistema "$2" "$3"
             exit
             ;;
         desfazer) modo_sistema desfazer; exit ;;
     esac
 fi
 [[ $EUID != 0 ]] || erro 'rode com bash no Konsole, como seu usuário. O script pede sudo quando precisar.'
+acao_usuario=aplicar
+if [[ ${1:-} == --monitor ]]; then acao_usuario=monitor; shift; fi
 [[ $# -le 1 ]] || erro 'use bash callas-kde-desligamento-login.sh [DP-3|--desfazer].'
 [[ -f /etc/arch-release ]] || erro 'este script é para Arch Linux.'
 script=$(realpath -- "${BASH_SOURCE[0]}")
@@ -1911,7 +1924,7 @@ if [[ -x /usr/bin/python3 ]]; then
 fi
 printf 'Monitor escolhido para o login: %s\n' "$principal"
 sudo -v
-sudo /usr/bin/bash -- "$script" --sistema aplicar "$principal" < "$novo_login"
+sudo /usr/bin/bash -- "$script" --sistema "$acao_usuario" "$principal" < "$novo_login"
 CALLAS_KDE_LOGIN
 cat > "/mnt/usr/local/libexec/callas-nekofetch" <<'CALLAS_NEKO'
 #!/usr/bin/bash
@@ -2004,7 +2017,7 @@ install -d /mnt/etc/xdg
 cat > /mnt/etc/xdg/kicker-extra-favoritesrc <<'KICKER_FAVORITES'
 [General]
 IgnoreDefaults=true
-Prepend=systemsettings.desktop;io.github.Callas157.AtualizadorDoSistema.desktop;steam.desktop;org.kde.konsole.desktop;io.github.kolunmi.Bazaar.desktop;com.vysp3r.ProtonPlus.desktop;io.missioncenter.MissionCenter.desktop;org.qbittorrent.qBittorrent.desktop;spotify.desktop;solaar.desktop;
+Prepend=io.github.Callas157.Monitores.desktop;systemsettings.desktop;io.github.Callas157.AtualizadorDoSistema.desktop;steam.desktop;org.kde.konsole.desktop;io.github.kolunmi.Bazaar.desktop;com.vysp3r.ProtonPlus.desktop;io.missioncenter.MissionCenter.desktop;org.qbittorrent.qBittorrent.desktop;spotify.desktop;solaar.desktop;
 KICKER_FAVORITES
 
 # O Plasma executa esta configuração uma vez, depois de criar o painel.
@@ -2600,6 +2613,7 @@ como_usuario kwriteconfig6 --file kscreenlockerrc \
   aviso 'Não consegui definir o wallpaper da tela de bloqueio.'
 
 # A configuração de sessão vazia é preparada ainda no chroot.
+"$libexec/callas-monitores" --install-system
 como_usuario "$libexec/callas-inicio-kde" || aviso 'Não consegui aplicar o início de sessão do KDE.'
 
 "$libexec/callas-kde-desligamento-login" --preparar-instalacao ||
@@ -2621,3 +2635,4 @@ if [[ -s /mnt/var/log/callas-instalacao-avisos.log ]]; then
 fi
 echo " Remova o pendrive e digite: reboot"
 echo "=========================================================="
+

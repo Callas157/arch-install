@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.11.9"
+VERSAO="2026.11.11.10"
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/main"
 ASSET_BASE="$BASE_RAW/assets"
 ESTADO_DIR="/var/lib/callas-os"
@@ -76,6 +76,38 @@ for arq in   "$home/.config/powerdevilrc"   "$home/.config/ksmserverrc"   /etc/x
   cp -a -- "$arq" "$backup/$nome"
 done
 chown -R "$usuario:$grupo" "$backup" 2>/dev/null || true
+
+# Instala o utilitário sem modificar monitores nem posições de janelas via root.
+# Todos os downloads são validados antes de substituir os auxiliares instalados.
+monitor_stage=$(mktemp -d)
+trap 'rm -rf -- "$monitor_stage"' EXIT
+for nome in callas-monitores.py callas-inicio-kde.sh callas-kde-desligamento-login.sh; do
+  curl -fsSL --retry 2 --connect-timeout 10 --max-time 120 "$BASE_RAW/$nome" -o "$monitor_stage/$nome" ||
+    erro "Não consegui baixar $nome. Auxiliares anteriores preservados."
+done
+python - "$monitor_stage/callas-monitores.py" <<'CALLAS_MONITOR_CHECK'
+import ast, sys
+ast.parse(open(sys.argv[1], encoding="utf-8").read())
+CALLAS_MONITOR_CHECK
+bash -n "$monitor_stage/callas-inicio-kde.sh"
+bash -n "$monitor_stage/callas-kde-desligamento-login.sh"
+pacman -S --needed --noconfirm python-dbus python-gobject kscreen
+install -d /usr/local/libexec
+for nome in callas-inicio-kde callas-kde-desligamento-login; do
+  [[ ! -f /usr/local/libexec/$nome ]] || cp -a "/usr/local/libexec/$nome" "$backup/$nome"
+  install -m 0755 "$monitor_stage/$nome.sh" "/usr/local/libexec/$nome"
+done
+[[ ! -f /usr/local/libexec/callas-monitores ]] || cp -a /usr/local/libexec/callas-monitores "$backup/callas-monitores"
+install -m 0755 "$monitor_stage/callas-monitores.py" /usr/local/libexec/callas-monitores
+/usr/local/libexec/callas-monitores --install-system
+# O atualizador já usa System; garante a categoria também em instalações existentes.
+updater_desktop=/usr/local/share/applications/io.github.Callas157.AtualizadorDoSistema.desktop
+if [[ -f $updater_desktop ]]; then
+  cp -a "$updater_desktop" "$backup/atualizador.desktop"
+  sed -i 's/^Categories=.*/Categories=System;/' "$updater_desktop"
+fi
+rm -rf -- "$monitor_stage"
+trap - EXIT
 
 # NVIDIA 610.57.04
 # Só faz a migração pesada quando a pilha ainda não estiver correta.
@@ -433,7 +465,7 @@ install -d /etc/xdg
 cat > /etc/xdg/kicker-extra-favoritesrc <<'EOF'
 [General]
 IgnoreDefaults=true
-Prepend=systemsettings.desktop;io.github.Callas157.AtualizadorDoSistema.desktop;steam.desktop;org.kde.konsole.desktop;io.github.kolunmi.Bazaar.desktop;com.vysp3r.ProtonPlus.desktop;io.missioncenter.MissionCenter.desktop;org.qbittorrent.qBittorrent.desktop;spotify.desktop;solaar.desktop;
+Prepend=io.github.Callas157.Monitores.desktop;systemsettings.desktop;io.github.Callas157.AtualizadorDoSistema.desktop;steam.desktop;org.kde.konsole.desktop;io.github.kolunmi.Bazaar.desktop;com.vysp3r.ProtonPlus.desktop;io.missioncenter.MissionCenter.desktop;org.qbittorrent.qBittorrent.desktop;spotify.desktop;solaar.desktop;
 EOF
 
 # Energia: sem suspensão, escurecimento ou desligamento automático de tela.
@@ -478,6 +510,8 @@ if [[ -x /usr/local/libexec/callas-nekofetch ]]; then
   como_usuario /usr/local/libexec/callas-nekofetch || aviso "O Nekofetch não pôde ser atualizado."
 fi
 
+como_usuario kbuildsycoca6 --noincremental || aviso 'O menu será atualizado no próximo login.'
+
 printf '%s\n' "$VERSAO" > "$VERSAO_ARQ"
 
 # Conserva apenas os três backups mais recentes.
@@ -488,6 +522,7 @@ fi
 
 printf '\nConfigurações do Callas OS atualizadas para %s.\n' "$VERSAO"
 printf 'Backup desta aplicação: %s\n' "$backup"
+printf 'Abra Callas OS — Monitores no menu Sistema para escolher sua tela principal.\n'
 printf 'Algumas mudanças do KDE podem aparecer por completo após encerrar e iniciar a sessão.\n'
 
 printf '\n'
@@ -499,3 +534,4 @@ case $resposta_reboot in
     ;;
   *) printf 'Reinicialização adiada.\n' ;;
 esac
+

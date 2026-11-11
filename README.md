@@ -145,7 +145,7 @@ Entre os padrões aplicados pelo Callas OS estão:
 - transparência e blur do Plasma;
 - sessão vazia ao entrar no sistema;
 - Steam iniciando silenciosamente;
-- Discord iniciando minimizado;
+- Discord iniciando visível, sem forçar minimização;
 - Solaar disponível na bandeja;
 - Digital Vibrance quando compatível;
 - atalho **Super + Shift + S** para captura retangular;
@@ -154,6 +154,36 @@ Entre os padrões aplicados pelo Callas OS estão:
 - redução do tempo de desligamento e reinicialização.
 
 Esses ajustes continuam disponíveis para alteração manual pelo usuário nas configurações do KDE.
+
+### Callas OS — Monitores
+
+O instalador inclui **Callas OS — Monitores** no menu **Sistema**. Em uma instalação existente compatível, abra **Atualizador do sistema → 5. Callas OS Update** para receber a ferramenta. Os dois utilitários ficam em Sistema; os favoritos são adicionados uma vez na sessão KDE, inclusive em perfis existentes, e podem ser removidos manualmente depois.
+
+Após o primeiro login, abra a ferramenta e escolha **1. Escolher monitor principal**. Ela lista as saídas ativas, como `DP-3` e `HDMI-A-1`, e pede sua escolha; não presume que HDMI, DisplayPort ou a primeira saída detectada seja a desejada. O primeiro login anterior à escolha ainda pode aparecer em outra tela.
+
+A escolha altera a prioridade pelo KScreen, move o painel padrão com menu/barra de tarefas para o principal e mantém os dois monitores ativos. Resolução, frequência, escala e posições físicas das telas são preservadas. O SDDM recebe a seleção para o próximo login: formulário no escolhido e wallpaper no outro. Não é necessário reiniciar o gerenciador de login durante a configuração.
+
+A Área de Trabalho principal exibe a pasta padrão de atalhos. Nas outras telas, a exibição padrão dessa mesma pasta passa a usar uma pasta vazia dedicada. Isso faz os novos atalhos criados por Steam ou outros launchers **na pasta Área de Trabalho** aparecerem no principal. Arquivos não são apagados; pastas personalizadas de outros desktops e widgets são preservados. A ferramenta não obriga um launcher a criar atalhos se essa opção estiver desativada nele.
+
+A memória de janelas utiliza regras nativas **Lembrar** do KWin para Discord, Spotify e Brave. Deixe as janelas abertas e organizadas antes da primeira configuração; para aplicativos fechados, posição e tamanho serão aprendidos quando forem abertos e movidos/redimensionados. Depois, feche-os normalmente uma vez antes de testar a reinicialização. A maximização é capturada quando o aplicativo está aberto na primeira configuração. Não há regra global de centralizar ou enviar programas ao principal, e executar a ferramenta novamente não substitui posições aprendidas. Para outros aplicativos ou várias janelas equivalentes do mesmo navegador, use **4. Regras de janelas** para definir correspondências específicas.
+
+A sessão KDE permanece vazia ao entrar: Discord e os aplicativos de autostart continuam iniciando; Brave e Spotify não são reabertos por restauração da sessão. Outras entradas de autostart escolhidas pelo usuário são preservadas. O utilitário não restaura processos fechados para recuperar geometria.
+
+Backups locais das configurações alteradas ficam em `~/.config/callas-os/monitor-backups/`. Se uma etapa falhar, o terminal informa a falha; etapas já confirmadas podem ter sido aplicadas. A seleção do login requer sudo. O utilitário é destinado a **Plasma Wayland**, com SDDM/KWin conforme o instalador atual.
+
+### Validação de monitores
+
+Verificações automatizadas: `python -m unittest discover -s tests -v`. Elas cobrem seleção, cancelamento, desconexão durante a escolha, prioridades sem alteração de modos, preservação de regras, favoritos e scripts do Plasma. Também é necessário validar em uma sessão gráfica real; os testes automatizados não simulam a GPU, os painéis físicos ou o greeter.
+
+Roteiro de aceitação em instalação limpa ou atualizada:
+
+1. Execute a opção 5 do atualizador e confira ambos os utilitários em Sistema/favoritos. Desfixe um favorito e confirme que ele não volta em cada login.
+2. Abra Discord, Spotify e Brave; organize Discord e Brave lado a lado no HDMI. Escolha o DisplayPort como principal na ferramenta, sem mudar a posição física das telas.
+3. Confira painel, notificações e um novo atalho de jogo no DisplayPort, com wallpaper no HDMI. Confirme que os programas abertos continuam onde estavam.
+4. Mova/redimensione e feche os aplicativos normalmente uma vez; reabra e confira a geometria. Reinicie: Discord deve iniciar visível no lugar aprendido; Brave e Spotify devem continuar fechados até serem abertos manualmente.
+5. Confira o formulário do SDDM no DisplayPort e wallpaper no HDMI. Teste uma janela maximizada e uma configuração com somente uma tela conectada; reconecte e confira a preferência do KScreen.
+
+**Limite de validação:** mudanças de escala/disposição física, desconexões e múltiplas janelas indistinguíveis podem exigir ajustes nas Regras de janelas. Não se promete ausência de bugs sem os testes no hardware real.
 
 ---
 
@@ -207,7 +237,7 @@ Antes das atualizações mensais, o sistema também guarda dados de recuperaçã
 
 ---
 
-## Callas Config Update
+## Callas OS Update
 
 Além das atualizações normais do Arch Linux e dos aplicativos, existe a opção de atualizar as **configurações do Callas OS**.
 
@@ -319,3 +349,4 @@ A prioridade do projeto é **não aplicar automaticamente uma mudança crítica 
   <strong>Callas OS</strong><br>
   Arch Linux preparado para instalar, iniciar e usar.
 </p>
+
