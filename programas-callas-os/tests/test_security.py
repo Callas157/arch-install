@@ -72,6 +72,20 @@ class LogTests(unittest.TestCase):
                 logs.write_log('AUR', b'bad')
 
 class ShellTests(unittest.TestCase):
+    def test_installer_stage_ignores_python_cache_directories(self):
+        installer = (ROOT.parent / 'instalar-arch.sh').read_text()
+        copy = installer[installer.index('for security_file in '):]
+        copy = copy[:copy.index('\ndone') + len('\ndone')]
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp); source = base / 'source'; target = base / 'target'
+            source.mkdir(); target.mkdir(); (source / '__pycache__').mkdir()
+            (source / 'callas-release.py').write_text('# staged\n')
+            (source / 'callas-security.sh').write_text('# staged\n')
+            copy = copy.replace('/mnt/usr/local/share/callas-os/security-stage/', str(target) + '/')
+            subprocess.run(['bash', '-c', 'set -euo pipefail\n' + copy],
+                           env=dict(os.environ, CALLAS_SECURITY_TMP=str(source)), check=True)
+            self.assertEqual(sorted(p.name for p in target.iterdir()), ['callas-release.py', 'callas-security.sh'])
+
     def test_system_agenda_is_weekly(self):
         text = (UPDATER / 'put-update.sh').read_text()
         fn = text[text.index('proxima_data() {'):text.index('\nler_data_agenda()')]
