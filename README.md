@@ -2,7 +2,7 @@
   <img src="assets/logo/callas-plasma-icon.png" alt="Callas OS" width="150">
 </p>
 
-<h1 align="center">Callas OS v3.2.1</h1>
+<h1 align="center">Callas OS v3.2.2</h1>
 
 <p align="center">
   Instalador automatizado de <strong>Arch Linux + KDE Plasma Wayland</strong>, em português do Brasil, preparado para jogos, uso diário, gravação, periféricos e manutenção simplificada.
@@ -227,11 +227,11 @@ O SteamDB também é disponibilizado em instalações existentes pela opção **
 
 ## Versão do projeto
 
-A versão pública atual é **Callas OS v3.2.1**. O arquivo [`VERSION`](VERSION) é a fonte do número publicado; o [histórico](CHANGELOG.md) descreve os marcos anteriores e a regra para as próximas versões.
+A versão pública atual é **Callas OS v3.2.2**. O arquivo [`VERSION`](programas-callas-os/atualizador/VERSION) é a fonte do número publicado; o [histórico](programas-callas-os/atualizador/CHANGELOG.md) descreve os marcos anteriores e a regra para as próximas versões.
 
 Instalador e opção **5 — Callas OS Update** registram a versão instalada em `/etc/callas-os/release.json`. Esse arquivo contém apenas identificação e estado, é legível pelo usuário e só pode ser alterado pelo administrador. A versão avança ao concluir as etapas obrigatórias; uma falha preserva a última versão concluída e registra a tentativa incompleta. Um boot antigo incompatível não recebe uma identificação falsa de migração completa. Instalações anteriores sem registro ficam como versão não identificada até uma migração completa ou instalação nova.
 
-A linha OS do NekoFetch lê esse registro e mostra **`Callas OS v3.2.1 (Arch Linux)`**, com o estilo e a arte atuais. O número novo aparece na próxima execução, sem editar o layout a cada versão. Isso não altera `/etc/os-release` nem faz o NekoFetch aparecer dentro dos programas de manutenção. A atualização migra o layout existente; uma instalação nova prepara o layout pelo utilitário habitual.
+A linha OS do NekoFetch lê esse registro e mostra **`Callas OS v3.2.2 (Arch Linux)`**, com o estilo e a arte atuais. O número novo aparece na próxima execução, sem editar o layout a cada versão. Isso não altera `/etc/os-release` nem faz o NekoFetch aparecer dentro dos programas de manutenção. A atualização migra o layout existente; uma instalação nova prepara o layout pelo utilitário habitual.
 
 Novos logs gravados pelo utilitário incluem contexto de versão/estado. Novos arquivos de backup guardam `callas-release.json`, identificando a versão registrada e, durante uma migração, o destino pretendido. Logs e backups antigos não recebem retroativamente uma versão histórica presumida. Atualizações comuns de pacotes, kernels ou aplicativos não mudam a versão do projeto. A revisão interna por data continua existindo para compatibilidade com clientes antigos.
 
@@ -280,8 +280,8 @@ Os três pools antigos (`/var/lib/put-update/recuperacao`, `/var/lib/callas-os/c
 
 | Caminho | Conteúdo |
 | --- | --- |
-| `VERSION` | Número público do projeto |
-| `CHANGELOG.md` | Histórico e marcos retrospectivos |
+| `programas-callas-os/atualizador/VERSION` | Número público do projeto |
+| `programas-callas-os/atualizador/CHANGELOG.md` | Histórico e marcos retrospectivos |
 | `instalar-arch.sh` | Instalador principal, no mesmo endereço de sempre |
 | `assets/` | Recursos visuais e arquivos de temas existentes |
 | `programas-callas-os/monitores/` | Configurador de monitores e auxiliar do login |
@@ -291,7 +291,11 @@ Os três pools antigos (`/var/lib/put-update/recuperacao`, `/var/lib/callas-os/c
 | `programas-callas-os/tests/` | Testes dos programas |
 | `callas-config-update.sh` na raiz | Ponte de compatibilidade para atualizadores antigos |
 
+A raiz mantém somente `assets/`, `programas-callas-os/`, `instalar-arch.sh`, este README e a ponte histórica `callas-config-update.sh`. Código, testes, histórico e metadados novos ficam dentro de `programas-callas-os/`; artes ficam em `assets/`.
+
 A ponte da raiz baixa e confere a sintaxe do atualizador no caminho novo. Ao atualizar, o programa instalado passa a consultar diretamente esse caminho. A ponte permanece para instalações que ainda não receberam a migração; removê-la quebraria o endereço usado por essas máquinas. Não há mudança nos links do instalador nem nos caminhos dos recursos visuais.
+
+Lançadores já instalados especificamente pelas versões 3.2.0/3.2.1 buscavam `VERSION` na raiz. Com a reorganização, esses lançadores antigos podem parar com erro `VERSION` antes da migração: nesse caso, é necessário iniciar a atualização pela ponte histórica acima para receber o lançador atual. Instalações anteriores a esse esquema de versão continuam pelo bootstrap/ponte existente. Não é necessário reinstalar o sistema por essa mudança.
 
 ## Callas OS Update
 

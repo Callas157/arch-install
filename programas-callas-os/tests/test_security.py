@@ -39,6 +39,8 @@ class ReleaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as stage, patch.object(release, 'request', request):
             release.stage_files(stage, ref)
             self.assertTrue((Path(stage) / 'callas-security.sh').exists())
+            self.assertEqual((Path(stage) / 'VERSION').read_bytes(), (UPDATER / 'VERSION').read_bytes())
+            self.assertIn('/programas-callas-os/atualizador/VERSION', next(url for url in seen if url.endswith('/VERSION')))
             self.assertTrue(all('/' + ref in url for url in seen))
             data[release.FILES[0]] += b'\n# tampered'
             with self.assertRaisesRegex(ValueError, 'blob'):
