@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.10.14"
+VERSAO="2026.11.11.1"
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/main"
 ASSET_BASE="$BASE_RAW/assets"
 ESTADO_DIR="/var/lib/callas-os"
@@ -159,6 +159,21 @@ if command -v kwriteconfig6 >/dev/null; then
     aviso "Não consegui garantir o efeito de blur do KWin."
 fi
 
+# Brave em Português do Brasil. O Bonjourr usa navigator.language no
+# primeiro carregamento para escolher o idioma padrão.
+install -d -o "$usuario" -g "$grupo" "$home/.config"
+brave_flags="$home/.config/brave-flags.conf"
+touch "$brave_flags"
+chown "$usuario:$grupo" "$brave_flags"
+grep -Fxq -- '--password-store=kwallet6' "$brave_flags" ||
+  printf '%s\n' '--password-store=kwallet6' >> "$brave_flags"
+if grep -Eq '^--lang=' "$brave_flags"; then
+  sed -i 's/^--lang=.*/--lang=pt-BR/' "$brave_flags"
+else
+  printf '%s\n' '--lang=pt-BR' >> "$brave_flags"
+fi
+chown "$usuario:$grupo" "$brave_flags"
+
 # Brave + Bonjourr
 install -d /etc/brave/policies/managed /etc/brave/policies/recommended /usr/share/callas-os
 cat > /etc/brave/policies/managed/callas-bonjourr.json <<'EOF'
@@ -203,6 +218,8 @@ data.setdefault("browser", {})["custom_chrome_frame"]=False
 data["browser"]["show_home_button"]=True
 data["homepage_is_newtabpage"]=True
 data.setdefault("bookmark_bar", {})["show_on_all_tabs"]=True
+data.setdefault("intl", {})["accept_languages"]="pt-BR,pt,en-US,en"
+data["intl"]["selected_languages"]="pt-BR,pt,en-US,en"
 data.setdefault("tab_search", {})["pinned_to_tabstrip"]=True
 data.setdefault("everything_menu", {})["pinned_to_tabstrip"]=True
 actions=data.setdefault("toolbar", {}).setdefault("pinned_actions", [])
@@ -228,6 +245,8 @@ data.setdefault("browser", {})["custom_chrome_frame"]=False
 data["browser"]["show_home_button"]=True
 data["homepage_is_newtabpage"]=True
 data.setdefault("bookmark_bar", {})["show_on_all_tabs"]=True
+data.setdefault("intl", {})["accept_languages"]="pt-BR,pt,en-US,en"
+data["intl"]["selected_languages"]="pt-BR,pt,en-US,en"
 data.setdefault("tab_search", {})["pinned_to_tabstrip"]=True
 data.setdefault("everything_menu", {})["pinned_to_tabstrip"]=True
 actions=data.setdefault("toolbar", {}).setdefault("pinned_actions", [])
