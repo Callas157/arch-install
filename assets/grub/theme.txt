@@ -5,6 +5,10 @@ desktop-color: "#050b16"
 desktop-image: "background.png"
 desktop-image-scale-method: "stretch"
 
+terminal-box: "terminal-transparent-*.png"
+terminal-border: 0
+terminal-font: "Unifont Regular 16"
+
 + boot_menu {
     left = 27%
     top = 40%
