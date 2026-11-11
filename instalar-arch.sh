@@ -649,7 +649,7 @@ notificar_reinicio_usuario() {
     fi
     rm -f -- "$estado"
     if [[ $acao == reiniciar ]]; then
-        systemctl reboot
+        systemctl --quiet reboot --check-inhibitors=no --no-wall
     fi
 }
 
@@ -1010,7 +1010,7 @@ menu() {
                 ;;
             6) return 0 ;;
             reboot|REBOOT|Reboot)
-                systemctl reboot
+                systemctl --quiet reboot --check-inhibitors=no --no-wall
                 return 0
                 ;;
             *) printf 'Opção inválida. Digite 1-6 ou reboot.\n'; continue ;;
