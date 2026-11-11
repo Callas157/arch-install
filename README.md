@@ -87,12 +87,14 @@ O instalador detecta automaticamente processadores **AMD** e **Intel** e instala
 
 | Hardware | Configuração |
 | --- | --- |
-| **NVIDIA** | `nvidia-open`, `nvidia-open-lts`, utilitários NVIDIA, Vulkan e bibliotecas de 32 bits |
+| **NVIDIA** | `nvidia-open-dkms` **610.57.04** fixado, utilitários NVIDIA 610, Vulkan e bibliotecas de 32 bits; o mesmo módulo DKMS atende os kernels `linux` e `linux-lts` |
 | **AMD Radeon** | Mesa, RADV e Vulkan Radeon |
 | **Intel** | Mesa, ANV e Vulkan Intel |
 | **VM / GPU genérica** | Mesa com renderização Vulkan virtual ou por software quando necessário |
 
 Máquinas com mais de uma GPU também podem receber os componentes correspondentes a cada fabricante detectado.
+
+Em máquinas NVIDIA, a pilha **610.57.04** é mantida pelo Callas OS e não é substituída automaticamente pela rotina mensal. A troca para outra versão é feita apenas quando o projeto definir uma nova versão validada.
 
 ### Rede e dispositivos
 
@@ -212,6 +214,8 @@ A agenda é verificada:
 Se o computador estiver desligado no dia em que uma atualização vencer, ela continua pendente. No primeiro boot ou verificação seguinte, a atualização roda automaticamente.
 
 Os aplicativos nativos instalados pelos repositórios do Arch ou pelo AUR acompanham a atualização mensal completa do sistema. Eles não são atualizados isoladamente na rotina semanal, porque o Arch Linux não dá suporte a atualizações parciais do sistema.
+
+Em sistemas NVIDIA configurados pelo Callas OS, os pacotes do driver 610 são excluídos dessa atualização mensal para evitar que o `pacman` troque automaticamente para uma série mais nova sem validação prévia do projeto.
 
 Quando a atualização semanal termina com sucesso, o KDE mostra uma notificação informando que os aplicativos foram atualizados.
 
