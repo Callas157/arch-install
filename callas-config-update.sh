@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.10.2"
+VERSAO="2026.11.10.3"
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/main"
 ASSET_BASE="$BASE_RAW/assets"
 ESTADO_DIR="/var/lib/callas-os"
@@ -40,6 +40,51 @@ for arq in   "$home/.config/powerdevilrc"   "$home/.config/ksmserverrc"   /etc/x
   cp -a -- "$arq" "$backup/$nome"
 done
 chown -R "$usuario:$grupo" "$backup" 2>/dev/null || true
+
+# NVIDIA 610.57.04
+# Migra instalações NVIDIA existentes para a versão fixada pelo Callas OS e
+# impede que uma atualização mensal troque apenas parte da pilha.
+if lspci -Dn 2>/dev/null | grep -qi '10de:'; then
+  nvidia_dir=/tmp/callas-nvidia-610
+  rm -rf "$nvidia_dir"
+  install -d "$nvidia_dir"
+
+  nvidia_urls=(
+    "https://archive.archlinux.org/packages/n/nvidia-utils/nvidia-utils-610.57.04-1-x86_64.pkg.tar.zst"
+    "https://archive.archlinux.org/packages/n/nvidia-open-dkms/nvidia-open-dkms-610.57.04-1-x86_64.pkg.tar.zst"
+    "https://archive.archlinux.org/packages/l/lib32-nvidia-utils/lib32-nvidia-utils-610.57.04-1-x86_64.pkg.tar.zst"
+    "https://archive.archlinux.org/packages/l/libxnvctrl/libxnvctrl-610.57.04-1-x86_64.pkg.tar.zst"
+    "https://archive.archlinux.org/packages/n/nvidia-settings/nvidia-settings-610.57.04-1-x86_64.pkg.tar.zst"
+  )
+
+  nvidia_pkgs=()
+  for url in "${nvidia_urls[@]}"; do
+    arquivo="$nvidia_dir/${url##*/}"
+    curl -fL --retry 3 --connect-timeout 15 --max-time 300 "$url" -o "$arquivo" ||
+      erro "Não foi possível baixar ${url##*/} do Arch Linux Archive."
+    curl -fL --retry 3 --connect-timeout 15 --max-time 60 "$url.sig" -o "$arquivo.sig" ||
+      erro "Assinatura ausente para ${url##*/}."
+    nvidia_pkgs+=("$arquivo")
+  done
+
+  # Os pacotes por-kernel entram em conflito com o DKMS. Remove somente esses
+  # wrappers; nvidia-utils é substituído em seguida pelo pacote 610.
+  remover=()
+  pacman -Qq nvidia-open >/dev/null 2>&1 && remover+=(nvidia-open)
+  pacman -Qq nvidia-open-lts >/dev/null 2>&1 && remover+=(nvidia-open-lts)
+  (( ${#remover[@]} == 0 )) || pacman -R --noconfirm "${remover[@]}"
+
+  pacman -U --needed --noconfirm "${nvidia_pkgs[@]}" ||
+    erro "Falha ao instalar a pilha NVIDIA 610.57.04."
+
+  sed -i '/^# CALLAS_NVIDIA_610_BEGIN$/,/^# CALLAS_NVIDIA_610_END$/d' /etc/pacman.conf
+  sed -i '/^\[options\]$/a # CALLAS_NVIDIA_610_BEGIN\nIgnorePkg = nvidia-utils nvidia-open-dkms nvidia-open nvidia-open-lts lib32-nvidia-utils nvidia-settings libxnvctrl opencl-nvidia lib32-opencl-nvidia\n# CALLAS_NVIDIA_610_END' /etc/pacman.conf
+  printf '%s\n' '610.57.04' > /etc/callas-nvidia-version
+
+  dkms autoinstall || erro "O DKMS não conseguiu preparar o NVIDIA 610 para os kernels instalados."
+  mkinitcpio -P || erro "Falha ao reconstruir o initramfs após a migração NVIDIA."
+  rm -rf "$nvidia_dir"
+fi
 
 # Flatpaks padrão do Callas OS.
 if command -v flatpak >/dev/null; then
