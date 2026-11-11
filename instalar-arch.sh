@@ -268,6 +268,8 @@ curl -fsSL "$CALLAS_ASSET_BASE/grub/theme.txt" \
   -o /mnt/usr/share/callas-os/grub/theme.txt
 curl -fsSL "$CALLAS_ASSET_BASE/grub/background.png" \
   -o /mnt/usr/share/callas-os/grub/background.png
+curl -fsSL "$CALLAS_ASSET_BASE/grub/terminal_box_c.png" \
+  -o /mnt/usr/share/callas-os/grub/terminal_box_c.png
 
 # Plymouth
 curl -fsSL "$CALLAS_ASSET_BASE/plymouth/callas/callas.plymouth" \
@@ -2241,6 +2243,7 @@ test -s /boot/vmlinuz-linux-lts && test -s /boot/initramfs-linux-lts.img
 install -d /boot/grub/themes/callas
 install -m 0644 /usr/share/callas-os/grub/theme.txt /boot/grub/themes/callas/theme.txt
 install -m 0644 /usr/share/callas-os/grub/background.png /boot/grub/themes/callas/background.png
+install -m 0644 /usr/share/callas-os/grub/terminal_box_c.png /boot/grub/themes/callas/terminal_box_c.png
 
 # GRUB UEFI: instalação limpa experimental, preservando a partição EFI em /boot.
 # Plymouth permanece integrado ao initramfs; sem atrasos artificiais no carregamento.
