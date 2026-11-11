@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.10.7"
+VERSAO="2026.11.10.8"
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/main"
 ASSET_BASE="$BASE_RAW/assets"
 ESTADO_DIR="/var/lib/callas-os"
