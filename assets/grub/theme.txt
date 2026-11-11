@@ -5,9 +5,15 @@ desktop-color: "#050b16"
 desktop-image: "background.png"
 desktop-image-scale-method: "stretch"
 
-terminal-box: "terminal-transparent-*.png"
+# Oculta o terminal gráfico usado apenas para as mensagens transitórias
+# "Booting/Loading Linux/initramfs". A entrada de diagnóstico continua disponível.
+terminal-left: "0"
+terminal-top: "0"
+terminal-width: "1"
+terminal-height: "1"
 terminal-border: "0"
 terminal-font: "Unifont Regular 16"
+
 
 + boot_menu {
     left = 27%
