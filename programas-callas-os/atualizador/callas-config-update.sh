@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.11.13"
+VERSAO="2026.11.11.14"
 export PATH=/usr/bin:/bin
 umask 077
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/${CALLAS_RELEASE_REF:-main}"
@@ -74,6 +74,17 @@ finalizar() {
   exit "$codigo"
 }
 trap finalizar EXIT
+
+# Older installed launchers know a shorter file list. The verified launcher
+# staged from this same commit can fetch newly introduced helpers on first use.
+if [[ ! -f $CALLAS_RELEASE_DIR/callas-aur.py ]]; then
+  python - "$CALLAS_RELEASE_DIR" "$CALLAS_RELEASE_REF" <<'EXPAND_STAGE'
+import importlib.util, sys
+spec=importlib.util.spec_from_file_location('callas_release', sys.argv[1]+'/callas-release.py')
+module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+module.stage_files(sys.argv[1], sys.argv[2])
+EXPAND_STAGE
+fi
 
 exec 8>/run/put-update.lock
 flock -x 8

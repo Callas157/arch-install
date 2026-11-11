@@ -74,6 +74,7 @@ executar_agendado() {
         # O próximo ciclo começa no dia em que a atualização realmente terminou.
         proxima=$(proxima_data "$modo" "$hoje")
         gravar_data_agenda "$modo" "$proxima"
+        [[ $modo != sistema ]] || gravar_data_agenda apps "$proxima"
     else
         return 1
     fi
@@ -81,7 +82,7 @@ executar_agendado() {
 
 verificar_agenda() {
     local usuario=$1 falhou=0
-    executar_agendado "$usuario" sistema || falhou=1
+    executar_agendado "$usuario" sistema || return 1
     executar_agendado "$usuario" apps || falhou=1
     return "$falhou"
 }
@@ -135,10 +136,7 @@ etapa() {
 
 atualizar_arch() {
     local origem=$1 dbpath tentativa
-    local -a dependencias=() confirmacao=()
-    if [[ $origem == automatico ]]; then
-        confirmacao+=(--noconfirm)
-    fi
+    local -a dependencias=() confirmacao=(--noconfirm)
     dbpath=$(pacman-conf DBPath) || return
     for (( tentativa=0; tentativa<12; tentativa++ )); do
         [[ -e "${dbpath%/}/db.lck" ]] || break
@@ -179,15 +177,14 @@ atualizar_arch() {
     fi
 }
 
-atualizar_aur() {
-    printf 'AUR pendente de revisão manual: abra a opção 3 no menu. Nenhum pacote AUR foi instalado automaticamente.\n'
-}
-
-atualizar_aur_manual() {
-    [[ -x /usr/bin/paru ]] || { printf 'Paru indisponível.\n'; return 1; }
-    printf '\nRevise as alterações dos PKGBUILDs antes de confirmar.\n'
-    /usr/bin/paru -Sua --review
-}
+atualizar_aur() (
+    local temporario codigo=0
+    temporario=$(mktemp /var/tmp/callas-aur-log.XXXXXXXX)
+    trap 'rm -f -- "$temporario"' EXIT
+    /usr/local/libexec/callas-aur 2>&1 | tee "$temporario" || codigo=$?
+    /usr/local/libexec/callas-logs --record AUR < "$temporario" || codigo=1
+    exit "$codigo"
+)
 
 atualizar_discord_integrado() (
     falhar() {
@@ -297,16 +294,21 @@ criar_ponto_recuperacao() {
 }
 
 notificar_reinicio_usuario() {
-    local estado acao
+    local estado acao boot_pendente
     (( EUID != 0 )) || erro 'A notificação deve rodar na sessão do usuário.'
     estado="${XDG_STATE_HOME:-$HOME/.local/state}/callas/reinicio-pendente"
     [[ -f $estado ]] || return 0
+    read -r boot_pendente < "$estado" || boot_pendente=
+    if [[ $boot_pendente != "$(cat /proc/sys/kernel/random/boot_id)" ]]; then
+        rm -f -- "$estado"
+        return 0
+    fi
 
     if command -v notify-send >/dev/null; then
         acao=$(notify-send -a 'Atualizador do sistema' -i system-reboot -u normal \
             -A reiniciar='Reiniciar agora' -A depois='Mais tarde' \
-            'Atualização do sistema concluída' \
-            'A atualização terminou. É recomendado reiniciar o computador.' || true)
+            'Atualização completa concluída' \
+            'Sistema, AUR e aplicativos atualizados; verificações concluídas. Deseja reiniciar?' || true)
     else
         acao=
     fi
@@ -321,8 +323,11 @@ marcar_reinicio_pendente() {
     uid=$(id -u "$usuario") || return 1
     grupo=$(id -gn "$usuario") || return 1
     estado="$home/.local/state/callas"
-    install -d -m 0700 -o "$usuario" -g "$grupo" -- "$estado"
-    runuser -u "$usuario" -- touch "$estado/reinicio-pendente"
+    como_usuario "$usuario" "$home" /usr/bin/bash -c '
+      umask 077
+      mkdir -p -- "$1"
+      cat /proc/sys/kernel/random/boot_id > "$1/reinicio-pendente"
+    ' bash "$estado"
 
     runtime="/run/user/$uid"
     if [[ -S "$runtime/bus" ]]; then
@@ -348,18 +353,14 @@ notificar_apps_usuario() {
 }
 
 atualizar_sistema() {
-    local origem=$1
-
+    local origem=$1 usuario=$2 home=$3 falhou=0
     etapa 'Ponto de recuperação pré-update' criar_ponto_recuperacao || return
-
-    if ! etapa 'Arch e aplicativos dos repositórios' atualizar_arch "$origem"; then
-        printf 'A etapa do AUR aguarda uma atualização bem-sucedida do Arch.\n'
-        return 1
-    fi
-    etapa 'Kernels padrão/LTS e boot' /usr/local/libexec/callas-kernel-check || return
-    if [[ -n $(pacman -Qmq) ]]; then
-        etapa 'Aplicativos do AUR' atualizar_aur || return
-    fi
+    etapa 'Arch e aplicativos dos repositórios' atualizar_arch "$origem" || return
+    etapa 'AUR e recompilações necessárias' atualizar_aur || falhou=1
+    etapa 'Flatpaks e Discord' atualizar_apps "$usuario" "$home" || falhou=1
+    # Always validate boot at the end, even if an application failed earlier.
+    etapa 'Kernels padrão/LTS, DKMS e boot' /usr/local/libexec/callas-kernel-check || falhou=1
+    return "$falhou"
 }
 
 atualizar_apps() {
@@ -380,38 +381,52 @@ atualizar_apps() {
 }
 
 registrar_atualizacao() {
-    local usuario=$1 modo=$2 origem=$3 home codigo=0
+    local usuario=$1 modo=$2 origem=$3 home codigo=0 categoria
     case $modo in
       sistema) categoria='Sistema e Pacman' ;;
       *) categoria='Aplicativos' ;;
     esac
     home=$(home_do_usuario "$usuario")
-    {
+    if {
         printf '\n===== Atualização (%s, %s) | %s =====\n' "$modo" "$origem" "$(date -Is)"
         case $modo in
-            sistema) atualizar_sistema "$origem" || codigo=$? ;;
+            sistema) atualizar_sistema "$origem" "$usuario" "$home" || codigo=$? ;;
             apps) atualizar_apps "$usuario" "$home" || codigo=$? ;;
             discord)
                 etapa 'Discord nativo' como_usuario "$usuario" "$home" \
                     "$program" --discord-sessao || codigo=$?
                 ;;
         esac
-        if [[ $codigo -eq 0 ]]; then
-            if [[ $modo == sistema ]]; then
-                marcar_reinicio_pendente "$usuario" "$home" ||
-                    printf 'Aviso: não consegui preparar a notificação de reinício.\n' >&2
-            elif [[ $modo == apps ]]; then
-                notificar_apps_usuario "$usuario" "$home" ||
-                    printf 'Aviso: não consegui exibir a notificação dos aplicativos.\n' >&2
-            fi
-        fi
         printf '===== Fim da atualização | %s | código %s =====\n' "$(date -Is)" "$codigo"
+        exit "$codigo"
+    } 2>&1 | como_usuario "$usuario" "$home" "$program" --log "$categoria"; then
+        if [[ $modo == sistema ]]; then
+            local proxima
+            proxima=$(proxima_data sistema "$(date +%F)") || return
+            gravar_data_agenda sistema "$proxima" || return
+            gravar_data_agenda apps "$proxima" || return
+            marcar_reinicio_pendente "$usuario" "$home" ||
+                printf 'Aviso: não consegui mostrar a opção de reiniciar.\n' >&2
+        elif [[ $modo == apps ]]; then
+            notificar_apps_usuario "$usuario" "$home" || :
+        fi
+    else
+        codigo=$?
+        printf 'Atualização incompleta (código %s). Consulte os logs; reinício não solicitado.\n' "$codigo" >&2
+        notificar_falha_usuario "$usuario" "$home" || :
         return "$codigo"
-    } 2>&1 | {
-        # O log é aberto com as permissões do usuário. O journal recebe a mesma saída.
-        como_usuario "$usuario" "$home" "$program" --log "$categoria" ||
-            { printf 'Não foi possível gravar o log em Documentos.\n' >&2; return 1; }
-    }
+    fi
+}
+
+notificar_falha_usuario() {
+    local usuario=$1 home=$2 uid runtime
+    uid=$(id -u "$usuario") || return
+    runtime="/run/user/$uid"
+    [[ -S $runtime/bus ]] || return 0
+    runuser -u "$usuario" -- env -i PATH=/usr/bin HOME="$home" USER="$usuario" \
+        XDG_RUNTIME_DIR="$runtime" DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
+        notify-send -u critical -a 'Atualizador do sistema' 'Atualização incompleta' \
+        'Uma etapa falhou. Consulte Documentos/Logs do Callas OS antes de reiniciar.'
 }
 
 instalar_atalhos() {
@@ -584,9 +599,9 @@ menu() {
     while true; do
         printf '\n=== Atualizador do sistema ===\n'
         printf '%s\n' \
-            '1. Ativar ou reparar o automático (sistema e aplicativos semanais; AUR manual)' \
+            '1. Ativar ou reparar o automático (atualização completa semanal)' \
             '2. Atualizar só os aplicativos agora (Flatpak e Discord)' \
-            '3. Atualizar só o sistema agora (Arch/pacman e revisão do AUR)' \
+            '3. Atualizar tudo agora (Arch, AUR, Flatpak e Discord)' \
             '4. Atualizar só o Discord agora' \
             '5. Callas OS Update' \
             '6. Sair'
@@ -621,10 +636,7 @@ menu() {
             continue
         fi
         if sudo "$program" --manual "$modo"; then
-            if [[ $modo == sistema ]]; then
-                atualizar_aur_manual 2>&1 | tee >(/usr/local/libexec/callas-logs --write AUR) ||
-                    printf 'A revisão/atualização do AUR não foi concluída.\n' >&2
-            fi
+            : # The transaction itself offers reboot after every phase succeeds.
         else
             printf 'Atualização com falha. Confira a mensagem acima e o log em Documentos.\n' >&2
         fi

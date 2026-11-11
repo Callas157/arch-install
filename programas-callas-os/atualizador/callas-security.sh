@@ -19,7 +19,7 @@ done
 # No lingering passwordless pacman access, even after an interrupted old update.
 rm -f /etc/sudoers.d/put-update /etc/sudoers.d/99-callas-instalacao
 rm -f /etc/put-update-aur.sudoers /etc/put-update-paru.conf
-for name in callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh; do
+for name in callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py; do
   source_file="$stage/$name"
   [[ -f $source_file && ! -L $source_file && $(stat -c %u "$source_file") == 0 ]] || exit 1
   case $name in
@@ -27,6 +27,7 @@ for name in callas-release.py callas-logs.py callas-kernel-check.sh put-update.s
     callas-logs.py) target=callas-logs ;;
     callas-kernel-check.sh) target=callas-kernel-check ;;
     put-update.sh) target=put-update ;;
+    callas-aur.py) target=callas-aur ;;
   esac
   install -o root -g root -m 0755 "$source_file" "/usr/local/libexec/$target"
 done
@@ -85,7 +86,7 @@ PY
     # Full upgrade, with the user-requested NVIDIA hold kept intact.
     pacman -Syu --needed --noconfirm \
       --ignore=nvidia-utils,nvidia-open-dkms,nvidia-open,nvidia-open-lts,lib32-nvidia-utils,nvidia-settings,libxnvctrl,opencl-nvidia,lib32-opencl-nvidia \
-      linux linux-lts linux-headers linux-lts-headers ufw plasma-firewall python python-dbus python-gobject kscreen
+      linux linux-lts linux-headers linux-lts-headers ufw plasma-firewall python python-dbus python-gobject kscreen base-devel git rebuild-detector
   fi
   nvidia_after=$(pacman -Q nvidia-utils nvidia-open-dkms lib32-nvidia-utils nvidia-settings libxnvctrl 2>/dev/null || :)
   [[ $nvidia_before == "$nvidia_after" ]] || { echo 'A pilha NVIDIA mudou inesperadamente.' >&2; return 1; }
@@ -186,9 +187,17 @@ When = PostTransaction
 Exec = /usr/local/libexec/callas-kernel-check
 HOOK
 
+  if ! id callas-aur >/dev/null 2>&1; then
+    useradd --system --user-group --no-create-home --home-dir /var/empty/callas-aur --shell /usr/bin/nologin callas-aur
+  fi
+  [[ $(getent passwd callas-aur | cut -d: -f6-7) == /var/empty/callas-aur:/usr/bin/nologin ]] || {
+    echo 'A conta callas-aur já existe com uma configuração inesperada.' >&2; return 1;
+  }
+  [[ $(id -nG callas-aur) == callas-aur ]] || { echo 'Grupos da conta de compilação inesperados.' >&2; return 1; }
+
   /usr/local/libexec/put-update --instalar-para "$usuario"
   /usr/local/libexec/callas-kernel-check
-  printf '%s\n' '2026.11.11.security1' > /etc/callas-os/security-version
+  printf '%s\n' '2026.11.11.security2' > /etc/callas-os/security-version
   printf 'Segurança aplicada. NVIDIA e senhas preservadas.\n'
 }
 # Do not place this function in an if/|| condition: Bash would suppress

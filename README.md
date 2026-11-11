@@ -221,13 +221,12 @@ O Discord é instalado sem BetterDiscord e o Spotify sem Spicetify.
 
 O Callas OS possui um **Atualizador do sistema** integrado ao KDE.
 
-Existem duas rotinas automáticas principais:
+Existem duas rotinas automáticas principais; a completa já inclui a etapa de aplicativos e avança as duas agendas, evitando uma segunda execução seguida:
 
 | Rotina | Frequência | O que atualiza |
 | --- | --- | --- |
 | Aplicativos | A cada **7 dias** | Flatpaks e atualização própria do Discord |
-| Sistema | A cada **7 dias** | Atualização completa do Arch Linux via `pacman -Syu`, preservando a pilha NVIDIA |
-| AUR | **Manual, com revisão** | Opção 3 do menu: Paru como usuário normal, com revisão e sudo autenticado |
+| Atualização completa | A cada **7 dias**, ou pela opção **3** | Arch, AUR, recompilações sinalizadas, Flatpaks, Discord e validação final dos kernels/boot; NVIDIA preservada |
 
 Não existe um horário ou dia fixo. Os vencimentos são calculados a partir da instalação e da última execução concluída com sucesso.
 
@@ -242,7 +241,7 @@ Os registros de cada execução ficam na pasta **Logs do Callas OS**, dentro da 
 | `Kernel Linux` | Kernels padrão/LTS, headers, initramfs, DKMS e GRUB |
 | `Driver NVIDIA` | Versões e verificação dos módulos; a migração não troca o driver |
 | `Aplicativos` | Flatpaks e Discord |
-| `AUR` | Revisão/atualização manual pelo Paru |
+| `AUR` | Plano de dependências do Paru, compilação isolada, instalação e recompilações |
 | `Seguranca e Firewall` | Aplicação das proteções e resultado do firewall |
 | `Instalacao` | Saída da instalação nova e avisos disponíveis |
 
@@ -302,9 +301,9 @@ A instalação nova continua usando `grub-custom-v2`. Uma migração de seguran�
 ### Segurança implementada
 
 - Remoção das regras antigas de `pacman` sem senha. O automático oficial roda como serviço administrativo; isso é diferente de conceder ao usuário/compilador permissão irrestrita de sudo sem senha.
-- AUR fora do automático. A instalação inicial pede revisão do Paru e dos pacotes AUR, e pode pedir a senha de sudo. A opção 3 faz a atualização oficial e depois oferece a revisão do AUR como usuário normal. Revisão depende de avaliar o conteúdo, não só confirmar a pergunta.
+- A atualização completa inclui AUR automaticamente, conforme a preferência do projeto. Paru consulta as versões e resolve a ordem de dependências; makepkg compila em uma unidade systemd com conta dedicada, sem sudo, sem novos privilégios, sem acesso às pastas pessoais e com escrita restrita à área de trabalho. O serviço administrativo instala os arquivos prontos após conferir os nomes esperados e rejeitar links simbólicos. A instalação inicial pela ISO continua tendo sua própria revisão interativa dos pacotes AUR.
 - UFW com entrada bloqueada por padrão, saída permitida, IPv4/IPv6 e integração ao KDE. Regras existentes são preservadas. Outro firewall ativo é preservado para evitar regras concorrentes. Serviços que precisem receber conexões, como compartilhamentos, transmissão e portas de torrent, podem precisar de uma regra específica.
-- Pacotes dos repositórios exigem assinatura confiável; arquivos locais revisados do AUR continuam sujeitos à política própria de pacotes locais. NVIDIA baixada do Archive na instalação nova tem sua assinatura explicitamente verificada.
+- Pacotes dos repositórios exigem assinatura confiável; arquivos locais do AUR continuam sujeitos à política própria de pacotes locais. NVIDIA baixada do Archive na instalação nova tem sua assinatura explicitamente verificada.
 - Downloads de código de uma atualização usam um único commit imutável. Os IDs dos blobs são conferidos antes da execução, e o estágio é privado e pertence a root. A opção 5 nova executa somente o lançador instalado de propriedade de root, sem executar com sudo um arquivo temporário gravável pelo usuário.
 - Proteções conservadoras de links/arquivos temporários e ocultação de endereços/mensagens do kernel para usuários comuns; sudo usa terminal dedicado e cache de autenticação de cinco minutos.
 - Caso SSH esteja instalado, o acesso direto como root é desabilitado. Nenhum servidor SSH é habilitado pela migração.
@@ -315,6 +314,22 @@ A instalação nova continua usando `grub-custom-v2`. Uma migração de seguran�
 
 A primeira migração de um cliente antigo ainda passa pelo mecanismo de download antigo. Depois dela, as execuções seguintes usam o lançador novo. O link curto e o nome do instalador permanecem os mesmos.
 
+### Atualização completa sem perguntas intermediárias
+
+A opção **3. Atualizar tudo agora** e a rotina semanal executam, em ordem:
+
+1. Backup de recuperação e atualização completa do Arch, incluindo os aplicativos oficiais.
+2. Consulta do AUR pelo Paru, resolução de dependências e atualização dos pacotes externos. `rebuild-detector` sinaliza recompilações; pacotes de desenvolvimento com sufixo `-git`, `-svn`, `-hg`, `-bzr`, `-darcs` ou `-cvs` são recompilados nessa rotina para acompanhar suas fontes.
+3. Atualização dos Flatpaks do sistema/usuário e do Discord, mantendo seu comportamento de fechar e reabrir quando necessário.
+4. Verificação final dos kernels padrão/LTS, DKMS, initramfs e GRUB.
+5. Depois de salvar o resultado e a agenda, notificação com **Reiniciar agora** ou **Mais tarde**. Não há reinício forçado; uma notificação de um boot anterior é descartada.
+
+A opção **2** continua restrita a Flatpaks/Discord, e a **4** continua atualizando somente o Discord. Aplicativos nativos dos repositórios oficiais e AUR são mantidos na transação completa, junto das dependências do sistema. Uma execução manual pode pedir a senha administrativa no início, mas não solicita revisão/confirmação de cada pacote durante o processo.
+
+**Consequência da automação:** não existe revisão humana dos PKGBUILDs durante a rotina completa. O isolamento limita a compilação, mas não certifica que um pacote é benigno: scripts de instalação de um pacote AUR ainda podem rodar como root. Não se afirma que o automático faz uma auditoria de malware. Checksums e assinaturas de fontes continuam sendo verificados; chaves declaradas pela receita podem ser obtidas automaticamente pelo fingerprint, sem desativar a verificação.
+
+Erros de rede, dependências não resolvidas, assinatura inválida, Paru indisponível, falha de compilação ou pacote ainda incompatível ficam nos logs e impedem que a atualização completa seja anunciada como bem-sucedida. O detector não identifica toda incompatibilidade possível, e recompilar um pacote binário não corrige necessariamente uma biblioteca ausente. A validação dos kernels/boot ainda é tentada ao final se uma etapa de aplicativos falhar. Uma falha não desfaz automaticamente as etapas já instaladas.
+
 ### Kernels padrão e LTS
 
 Ambos já existiam no instalador. A migração garante `linux`, `linux-lts` e seus headers, sem fixar suas versões. Após transações relevantes, um hook verifica módulos NVIDIA/xone quando instalados, recompõe o initramfs e verifica as entradas de ambos no GRUB. Não muda a versão do driver NVIDIA nem força o boot pelo LTS.
@@ -323,7 +338,7 @@ Se `/boot` não estiver montado ou alguma validação falhar, o procedimento reg
 
 ### Validação de segurança
 
-Testes offline: `python -m unittest discover -s programas-callas-os/tests -v`, mais sintaxe dos scripts Bash/Python. Incluem rejeição de download alterado/árvore incompleta, agenda semanal, logs privados separados por execução, interrupção após erro do pacman e sucesso/falha simulados na verificação dos dois kernels.
+Testes offline: `python -m unittest discover -s programas-callas-os/tests -v`, mais sintaxe dos scripts Bash/Python. Incluem rejeição de download alterado/árvore incompleta, migração de lançadores antigos, agenda semanal, logs privados, plano AUR e saídas de consulta vazias, isolamento da compilação, rejeição de links em artefatos, sequência completa e bloqueio da notificação de sucesso após falhas, além da verificação simulada dos dois kernels.
 
 Antes de considerar validado no hardware, testar numa VM Arch e depois na máquina real:
 
@@ -331,7 +346,7 @@ Antes de considerar validado no hardware, testar numa VM Arch e depois na máqui
 2. Confirmar que a lista de versões NVIDIA antes/depois é idêntica; testar Overwatch manualmente. A versão 610.57.04 permanece uma tentativa de contornar regressões, sem promessa de resultado no jogo.
 3. Confirmar `ufw status verbose`, IPv6, navegação, Steam e os serviços locais usados. O firewall não bloqueia uma aplicação maliciosa que já tenha permissão para iniciar conexões de saída.
 4. Atualizar o sistema; iniciar uma vez pelo kernel padrão e outra pelo LTS. Conferir DKMS, initramfs, GRUB e os logs. Testar uma falha simulada de DKMS antes de confiar na detecção.
-5. Conferir que o automático não instala AUR e que a opção 3 permite revisar/cancelar o AUR. Confirmar que uma falha de pacman deixa a atualização pendente.
+5. Conferir a sequência da atualização completa: Arch, AUR/recompilações, Flatpaks/Discord e validação dos kernels/boot. O aviso para reiniciar só deve aparecer depois de todas as etapas e do log terminarem com sucesso. Simular erro de pacman, AUR e validação; deve aparecer falha, sem sucesso falso nem reinício automático. Confirmar que os aplicativos não são atualizados duas vezes seguidas e que não há pedido redundante de reinício após já reiniciar.
 
 Os testes offline não executam uma instalação real nem simulam o driver gráfico, Secure Boot ou o funcionamento do Overwatch.
 
