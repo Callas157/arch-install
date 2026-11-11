@@ -2,7 +2,7 @@
   <img src="assets/logo/callas-plasma-icon.png" alt="Callas OS" width="150">
 </p>
 
-<h1 align="center">Callas OS v3.2.0</h1>
+<h1 align="center">Callas OS v3.2.1</h1>
 
 <p align="center">
   Instalador automatizado de <strong>Arch Linux + KDE Plasma Wayland</strong>, em português do Brasil, preparado para jogos, uso diário, gravação, periféricos e manutenção simplificada.
@@ -142,8 +142,8 @@ Entre os padrões aplicados pelo Callas OS estão:
 - painel configurado pelo projeto;
 - transparência e blur do Plasma;
 - sessão vazia ao entrar no sistema;
-- Steam iniciando silenciosamente;
-- Discord iniciando visível, sem forçar minimização;
+- Steam iniciando silenciosamente a partir do segundo login;
+- Discord iniciando visível, sem forçar minimização, a partir do segundo login;
 - Solaar disponível na bandeja;
 - Digital Vibrance quando compatível;
 - atalho **Super + Shift + S** para captura retangular;
@@ -173,7 +173,7 @@ As regras cobrem Discord, Spotify e Brave. Janelas abertas na primeira ativaçã
 
 As posições aprendidas ficam no arquivo do KDE `~/.config/kwinrulesrc`; backups das alterações desse patch ficam em `~/.config/callas-os/window-backups/`. O configurador apenas conserva a associação das regras existentes à mesma tela física se a escolha do principal mudar a ordem das saídas.
 
-A sessão KDE permanece vazia ao entrar: Discord e os aplicativos de autostart continuam iniciando; Brave e Spotify não são reabertos por restauração da sessão. Outras entradas de autostart escolhidas pelo usuário são preservadas. O utilitário não restaura processos fechados para recuperar geometria.
+A sessão KDE permanece vazia ao entrar: após o primeiro login de uma instalação limpa, Discord e os aplicativos de autostart continuam iniciando; Brave e Spotify não são reabertos por restauração da sessão. Outras entradas de autostart escolhidas pelo usuário são preservadas. O utilitário não restaura processos fechados para recuperar geometria.
 
 Backups locais das configurações alteradas ficam em `~/.config/callas-os/monitor-backups/`. Se uma etapa falhar, o terminal informa a falha; etapas já confirmadas podem ter sido aplicadas. A seleção do login requer sudo. O utilitário é destinado a **Plasma Wayland**, com SDDM/KWin conforme o instalador atual.
 
@@ -192,6 +192,14 @@ Roteiro de aceitação em instalação limpa ou atualizada:
 **Limite de validação:** mudanças de escala/disposição física, desconexões e múltiplas janelas indistinguíveis podem exigir ajustes nas Regras de janelas. Não se promete ausência de bugs sem os testes no hardware real.
 
 ---
+
+## Primeiro login após instalação limpa
+
+Steam e Discord não são abertos automaticamente no primeiro login. O instalador prepara um marcador independente para cada aplicativo, consumido pelo seu autostart sem abrir o programa. Os atalhos normais continuam disponíveis: o usuário pode abrir os aplicativos manualmente desde o primeiro login. Nos logins seguintes, Steam volta a iniciar com `-silent` e Discord com o comportamento habitual. Solaar e os outros autostarts mantêm suas configurações.
+
+A opção 5 e o reparo de sessão não criam nem reiniciam esses marcadores em PCs existentes. Eles não encerram Steam/Discord nem removem contas ou dados desses aplicativos. O perfil existente do Brave não é reescrito pela migração; as políticas de extensões permanecem separadas do perfil. O instalador e o atualizador não abrem Brave para instalar Bonjourr ou SteamDB. O navegador processa as políticas quando o usuário o abre; abas de boas-vindas dependem de cada extensão, sem garantia de quantidade ou ordem.
+
+O configurador de monitores continua nos favoritos; nenhuma janela de seleção de monitores foi adicionada ao primeiro login.
 
 ## Aplicativos
 
@@ -219,11 +227,11 @@ O SteamDB também é disponibilizado em instalações existentes pela opção **
 
 ## Versão do projeto
 
-A versão pública atual é **Callas OS v3.2.0**. O arquivo [`VERSION`](VERSION) é a fonte do número publicado; o [histórico](CHANGELOG.md) descreve os marcos anteriores e a regra para as próximas versões.
+A versão pública atual é **Callas OS v3.2.1**. O arquivo [`VERSION`](VERSION) é a fonte do número publicado; o [histórico](CHANGELOG.md) descreve os marcos anteriores e a regra para as próximas versões.
 
 Instalador e opção **5 — Callas OS Update** registram a versão instalada em `/etc/callas-os/release.json`. Esse arquivo contém apenas identificação e estado, é legível pelo usuário e só pode ser alterado pelo administrador. A versão avança ao concluir as etapas obrigatórias; uma falha preserva a última versão concluída e registra a tentativa incompleta. Um boot antigo incompatível não recebe uma identificação falsa de migração completa. Instalações anteriores sem registro ficam como versão não identificada até uma migração completa ou instalação nova.
 
-A linha OS do NekoFetch lê esse registro e mostra **`Callas OS v3.2.0 (Arch Linux)`**, com o estilo e a arte atuais. O número novo aparece na próxima execução, sem editar o layout a cada versão. Isso não altera `/etc/os-release` nem faz o NekoFetch aparecer dentro dos programas de manutenção. A atualização migra o layout existente; uma instalação nova prepara o layout pelo utilitário habitual.
+A linha OS do NekoFetch lê esse registro e mostra **`Callas OS v3.2.1 (Arch Linux)`**, com o estilo e a arte atuais. O número novo aparece na próxima execução, sem editar o layout a cada versão. Isso não altera `/etc/os-release` nem faz o NekoFetch aparecer dentro dos programas de manutenção. A atualização migra o layout existente; uma instalação nova prepara o layout pelo utilitário habitual.
 
 Novos logs gravados pelo utilitário incluem contexto de versão/estado. Novos arquivos de backup guardam `callas-release.json`, identificando a versão registrada e, durante uma migração, o destino pretendido. Logs e backups antigos não recebem retroativamente uma versão histórica presumida. Atualizações comuns de pacotes, kernels ou aplicativos não mudam a versão do projeto. A revisão interna por data continua existindo para compatibilidade com clientes antigos.
 

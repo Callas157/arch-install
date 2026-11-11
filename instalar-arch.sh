@@ -296,6 +296,7 @@ UUID_RAIZ="$(blkid -s UUID -o value "$RAIZ")"
 install -d /mnt/usr/local/libexec /mnt/usr/share/plymouth/themes/callas
 install -m 0755 "$CALLAS_SECURITY_TMP/callas-monitores.py" /mnt/usr/local/libexec/callas-monitores
 install -m 0755 "$CALLAS_SECURITY_TMP/callas-janelas.py" /mnt/usr/local/libexec/callas-janelas
+install -m 0755 "$CALLAS_SECURITY_TMP/callas-autostart.py" /mnt/usr/local/libexec/callas-autostart
 rm -f -- "$CALLAS_MONITOR_TMP" "$CALLAS_WINDOW_TMP"
 install -d -m 0700 /mnt/usr/local/share/callas-os/security-stage
 for security_file in "$CALLAS_SECURITY_TMP/"*; do
@@ -1181,6 +1182,15 @@ if (( EUID == 0 )); then
     exit 1
 fi
 
+# Only the clean installer arms the one-time autostart suppression. Repairs and
+# existing-system migrations never create/reset these markers.
+case ${1:-} in
+    '') export CALLAS_PREPARE_FIRST_LOGIN=0 ;;
+    --preparar-primeiro-login) export CALLAS_PREPARE_FIRST_LOGIN=1 ;;
+    *) printf 'Argumento inválido.\n' >&2; exit 1 ;;
+esac
+(( $# <= 1 )) || exit 1
+
 for programa in kwriteconfig6 kreadconfig6 python3; do
     if ! command -v "$programa" >/dev/null; then
         printf 'Comando necessário ausente: %s\n' "$programa" >&2
@@ -1296,7 +1306,7 @@ discord = shutil.which("discord")
 if not discord:
     discord = next((p for p in ("/opt/Discord/Discord", "/opt/discord/Discord") if os.access(p, os.X_OK)), None)
 if discord:
-    planos["discord"] = ("callas-discord.desktop", desktop("Discord", launcher(discord), "discord"))
+    planos["discord"] = ("callas-discord.desktop", desktop("Discord", launcher("/usr/local/libexec/callas-autostart", "discord", discord), "discord"))
     perfil = config / "discord"
     if not perfil.exists():
         perfil.mkdir(mode=0o700)
@@ -1316,7 +1326,7 @@ else:
 
 steam = shutil.which("steam")
 if steam:
-    planos["steam"] = ("steam.desktop", desktop("Steam", launcher(steam, "-silent"), "steam"))
+    planos["steam"] = ("steam.desktop", desktop("Steam", launcher("/usr/local/libexec/callas-autostart", "steam", steam, "-silent"), "steam"))
 else:
     avisos.append("Steam nativa não encontrada. Mantive as entradas dela.")
 
@@ -1390,6 +1400,17 @@ for nome, (_, campos) in entradas.items():
 for nome, conteudo in planos.values():
     if nome is not None:
         gravar(auto / nome, conteudo)
+
+if os.environ.get("CALLAS_PREPARE_FIRST_LOGIN") == "1":
+    state = Path(os.environ.get("XDG_STATE_HOME", str(home / ".local/state")))
+    if not state.is_absolute(): raise SystemExit("XDG_STATE_HOME precisa ser absoluto")
+    state = state / "callas-os"
+    state.mkdir(parents=True, exist_ok=True, mode=0o700)
+    for app in ("steam", "discord"):
+        if app in planos:
+            marker = state / ("first-login-" + app + ".pending")
+            marker.touch(mode=0o600, exist_ok=True)
+    print("Primeiro login: Steam e Discord aguardam abertura manual; autostart normal nos próximos logins.")
 
 if any(backup.iterdir()):
     print(f"Backup das configurações: {backup}")
@@ -2687,7 +2708,7 @@ como_usuario kwriteconfig6 --file kscreenlockerrc \
 # A configuração de sessão vazia é preparada ainda no chroot.
 "$libexec/callas-monitores" --install-system
 "$libexec/callas-janelas" --install-system
-como_usuario "$libexec/callas-inicio-kde" || aviso 'Não consegui aplicar o início de sessão do KDE.'
+como_usuario "$libexec/callas-inicio-kde" --preparar-primeiro-login
 
 "$libexec/callas-kde-desligamento-login" --preparar-instalacao ||
   aviso 'O ajuste de desligamento ou do tema de login precisa ser conferido.'

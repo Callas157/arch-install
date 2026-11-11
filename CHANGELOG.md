@@ -1,5 +1,14 @@
 # Histórico do Callas OS
 
+## 3.2.1 — 2026-11-11
+
+- Instalação limpa pula somente o primeiro início automático de Steam e Discord; abertura manual continua disponível e os próximos logins mantêm o autostart habitual.
+- Atualizações e reparos em instalações existentes não reiniciam essa supressão e não removem dados de contas.
+- Migração preserva o arquivo Preferences de perfis Brave existentes; não inicia o navegador para processar políticas de extensões.
+- Solaar e demais autostarts continuam como antes. Configurador de monitores permanece manual, nos favoritos.
+
+Validação: 99 testes offline e sintaxe Bash/Python aprovados. Primeiro login em sessão KDE real permanece pendente.
+
 ## 3.2.0 — 2026-11-11
 
 Primeira versão identificada pelo novo esquema público. Consolida segurança, manutenção, atualização geral mensal, aplicativos semanais, SteamDB no Brave e as melhorias recentes do KDE.

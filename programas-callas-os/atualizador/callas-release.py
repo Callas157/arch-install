@@ -34,6 +34,7 @@ FILES = (
     "programas-callas-os/monitores/callas-monitores.py",
     "programas-callas-os/janelas/callas-janelas.py",
     "programas-callas-os/sessao/callas-inicio-kde.sh",
+    "programas-callas-os/sessao/callas-autostart.py",
     "programas-callas-os/monitores/callas-kde-desligamento-login.sh",
     "assets/plymouth/callas/callas.script",
     "assets/plymouth/callas/callas.plymouth",
