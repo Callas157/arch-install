@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.11.2"
+VERSAO="2026.11.11.3"
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/main"
 ASSET_BASE="$BASE_RAW/assets"
 ESTADO_DIR="/var/lib/callas-os"
@@ -157,6 +157,39 @@ else
   rm -f "$grub_tmp"
   erro "Falha ao validar a configuração do GRUB; o grub.cfg anterior foi preservado."
 fi
+
+# Plymouth do Callas OS.
+# Atualização segura: troca apenas os arquivos do tema e reconstrói o initramfs.
+plymouth_dir=/usr/share/plymouth/themes/callas
+install -d "$plymouth_dir"
+
+curl -fsSL --retry 2 "$ASSET_BASE/plymouth/callas/callas.plymouth" \
+  -o "$plymouth_dir/callas.plymouth" ||
+  erro "Não consegui atualizar o arquivo do tema Plymouth."
+curl -fsSL --retry 2 "$ASSET_BASE/plymouth/callas/callas.script" \
+  -o "$plymouth_dir/callas.script" ||
+  erro "Não consegui atualizar o script do Plymouth."
+curl -fsSL --retry 2 "$ASSET_BASE/plymouth/callas/background.jpg" \
+  -o "$plymouth_dir/background.jpg" ||
+  erro "Não consegui atualizar a arte do Plymouth."
+
+cat > /etc/plymouth/plymouthd.conf <<'PLYMOUTH_CONF'
+[Daemon]
+Theme=callas
+ShowDelay=0
+UseFirmwareBackground=false
+PLYMOUTH_CONF
+
+if command -v plymouth-set-default-theme >/dev/null 2>&1; then
+  plymouth-set-default-theme callas ||
+    erro "Não consegui definir o tema Callas OS como Plymouth padrão."
+fi
+
+mkinitcpio -P || erro "Falha ao reconstruir o initramfs com o novo Plymouth."
+[[ -s /boot/initramfs-linux.img ]] ||
+  erro "O initramfs do kernel principal ficou ausente após atualizar o Plymouth."
+[[ -s /boot/initramfs-linux-lts.img ]] ||
+  erro "O initramfs do kernel LTS ficou ausente após atualizar o Plymouth."
 
 # Flatpaks padrão do Callas OS.
 if command -v flatpak >/dev/null; then
