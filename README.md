@@ -19,11 +19,9 @@ Ele não é uma ISO independente: a instalação começa pela **ISO oficial do A
 O projeto está em desenvolvimento contínuo. Configurações, aplicativos, drivers, boot, aparência e rotinas de manutenção podem mudar conforme o Callas OS evolui.
 
 > [!IMPORTANT]
-> **Uma instalação do Callas OS pode deixar de receber novas atualizações de configuração do projeto.**
+> A opção **5. Callas OS Update** também migra a segurança e o atualizador de instalações existentes. Ela instala dependências e preserva a NVIDIA instalada, suas senhas e a arquitetura de boot.
 >
-> Algumas mudanças podem ser grandes demais para serem aplicadas com segurança em uma instalação antiga — por exemplo, alterações profundas no GRUB, EFI, estrutura de boot ou outras partes críticas do sistema.
->
-> Quando isso acontecer, o **Callas Config Update bloqueará a atualização naquela máquina por segurança**. O sistema continuará podendo receber as atualizações normais do **Arch Linux**, dos aplicativos e dos Flatpaks, mas as novas configurações do **Callas OS** só serão suportadas após uma **instalação limpa com a versão mais recente do instalador**.
+> Se uma instalação usar GRUB antigo, as correções de segurança são aplicadas, mas as novas personalizações visuais de boot ficam bloqueadas. Mudanças estruturais de boot ainda podem exigir instalação limpa.
 
 ---
 
@@ -130,7 +128,7 @@ O instalador detecta automaticamente processadores AMD e Intel e instala o micro
 | **Intel** | Mesa, ANV e Vulkan Intel |
 | **VM / GPU genérica** | Mesa e renderização Vulkan compatível quando necessário |
 
-Em máquinas NVIDIA, a versão **610.57.04** é mantida pelo projeto e não é substituída automaticamente pela atualização mensal do sistema. A troca de versão só deve acontecer quando o Callas OS definir uma nova pilha validada.
+Em máquinas NVIDIA, a versão **610.57.04** é mantida pelo projeto e não é substituída automaticamente pela atualização semanal do sistema. A troca de versão só deve acontecer quando o Callas OS definir uma nova pilha validada.
 
 Após atualizações do sistema, a rotina de manutenção verifica os módulos NVIDIA/DKMS para os kernels instalados antes de considerar a atualização segura para reinicialização.
 
@@ -228,17 +226,31 @@ Existem duas rotinas automáticas principais:
 | Rotina | Frequência | O que atualiza |
 | --- | --- | --- |
 | Aplicativos | A cada **7 dias** | Flatpaks e atualização própria do Discord |
-| Sistema | A cada **1 mês** | Arch Linux via `pacman -Syu` e pacotes AUR via Paru |
+| Sistema | A cada **7 dias** | Atualização completa do Arch Linux via `pacman -Syu`, preservando a pilha NVIDIA |
+| AUR | **Manual, com revisão** | Opção 3 do menu: Paru como usuário normal, com revisão e sudo autenticado |
 
 Não existe um horário ou dia fixo. Os vencimentos são calculados a partir da instalação e da última execução concluída com sucesso.
 
 Se o computador estiver desligado quando uma atualização vencer, ela permanece pendente e será executada numa verificação posterior.
 
-Os registros ficam em:
+Os registros de cada execução ficam na pasta **Logs do Callas OS**, dentro da pasta Documentos configurada no KDE (inclusive quando ela se chama Documents):
 
-`Documentos/Logs de Atualizações/atualizacoes.log`
+| Subpasta | Conteúdo |
+| --- | --- |
+| `Callas OS Update` | Migração de configurações e falhas de download do atualizador novo |
+| `Sistema e Pacman` | Atualizações completas e extrato do histórico do pacman |
+| `Kernel Linux` | Kernels padrão/LTS, headers, initramfs, DKMS e GRUB |
+| `Driver NVIDIA` | Versões e verificação dos módulos; a migração não troca o driver |
+| `Aplicativos` | Flatpaks e Discord |
+| `AUR` | Revisão/atualização manual pelo Paru |
+| `Seguranca e Firewall` | Aplicação das proteções e resultado do firewall |
+| `Instalacao` | Saída da instalação nova e avisos disponíveis |
 
-Antes das atualizações mensais, o sistema também guarda dados de recuperação, incluindo informações de pacotes, partes da configuração de `/etc`, banco local do pacman e configuração do GRUB.
+Os arquivos têm data/hora e não sobrescrevem execuções anteriores. Logs antigos em `Logs de Atualizações` são preservados. Logs novos começam a ser produzidos após a migração; não se inventa histórico de kernels ou drivers anteriores.
+
+Os diagnósticos administrativos também ficam em `/var/log/callas-os`, acessíveis a root, com até 60 registros por categoria. A exportação para Documentos grava como o usuário da sessão, evitando escrita privilegiada em arquivos da pasta pessoal. A exportação copia os cinco registros administrativos mais recentes de cada categoria, podendo repetir um diagnóstico em exportações posteriores. O journal e o log original do pacman continuam nos locais normais do sistema.
+
+Antes das atualizações do sistema, o sistema também guarda dados de recuperação, incluindo informações de pacotes, partes da configuração de `/etc`, banco local do pacman e configuração do GRUB.
 
 > [!NOTE]
 > Esses arquivos ajudam em recuperação e diagnóstico, mas **não são snapshots completos do sistema**.
@@ -258,7 +270,7 @@ Antes das atualizações mensais, o sistema também guarda dados de recuperaçã
 | `programas-callas-os/tests/` | Testes dos programas |
 | `callas-config-update.sh` na raiz | Ponte de compatibilidade para atualizadores antigos |
 
-A ponte da raiz baixa e valida o atualizador no caminho novo. Ao atualizar, o programa instalado passa a consultar diretamente esse caminho. A ponte permanece para instalações que ainda não receberam a migração; removê-la quebraria o endereço usado por essas máquinas. Não há mudança nos links do instalador nem nos caminhos dos recursos visuais.
+A ponte da raiz baixa e confere a sintaxe do atualizador no caminho novo. Ao atualizar, o programa instalado passa a consultar diretamente esse caminho. A ponte permanece para instalações que ainda não receberam a migração; removê-la quebraria o endereço usado por essas máquinas. Não há mudança nos links do instalador nem nos caminhos dos recursos visuais.
 
 ## Callas OS Update
 
@@ -283,22 +295,45 @@ O atualizador mantém controle da versão aplicada e cria backups das configura�
 
 ### Compatibilidade
 
-O **Callas Config Update não é uma promessa de atualização eterna entre todas as versões do projeto**.
+A migração instala primeiro as proteções de segurança e o novo atualizador. Em seguida, verifica a compatibilidade das personalizações do GRUB. Instalações com a arquitetura antiga recebem as correções de segurança e mantêm a arquitetura de boot anterior; somente as novas personalizações visuais ficam bloqueadas.
 
-Antes de executar uma migração, o script pode verificar se aquela instalação ainda possui a estrutura esperada pelo Callas OS atual. Se a máquina estiver usando uma arquitetura antiga e incompatível — como uma geração anterior do GRUB — o processo é **interrompido antes de aplicar alterações**.
+A instalação nova continua usando `grub-custom-v2`. Uma migração de segurança não promete converter todas as arquiteturas antigas nem substituir reinstalações necessárias para mudanças profundas no boot.
 
-Atualmente, instalações novas utilizam a arquitetura de GRUB personalizada do Callas OS, identificada internamente como:
+### Segurança implementada
 
-`grub-custom-v2`
+- Remoção das regras antigas de `pacman` sem senha. O automático oficial roda como serviço administrativo; isso é diferente de conceder ao usuário/compilador permissão irrestrita de sudo sem senha.
+- AUR fora do automático. A instalação inicial pede revisão do Paru e dos pacotes AUR, e pode pedir a senha de sudo. A opção 3 faz a atualização oficial e depois oferece a revisão do AUR como usuário normal. Revisão depende de avaliar o conteúdo, não só confirmar a pergunta.
+- UFW com entrada bloqueada por padrão, saída permitida, IPv4/IPv6 e integração ao KDE. Regras existentes são preservadas. Outro firewall ativo é preservado para evitar regras concorrentes. Serviços que precisem receber conexões, como compartilhamentos, transmissão e portas de torrent, podem precisar de uma regra específica.
+- Pacotes dos repositórios exigem assinatura confiável; arquivos locais revisados do AUR continuam sujeitos à política própria de pacotes locais. NVIDIA baixada do Archive na instalação nova tem sua assinatura explicitamente verificada.
+- Downloads de código de uma atualização usam um único commit imutável. Os IDs dos blobs são conferidos antes da execução, e o estágio é privado e pertence a root. A opção 5 nova executa somente o lançador instalado de propriedade de root, sem executar com sudo um arquivo temporário gravável pelo usuário.
+- Proteções conservadoras de links/arquivos temporários e ocultação de endereços/mensagens do kernel para usuários comuns; sudo usa terminal dedicado e cache de autenticação de cinco minutos.
+- Caso SSH esteja instalado, o acesso direto como root é desabilitado. Nenhum servidor SSH é habilitado pela migração.
+- Driver opcional do Rise Mode passa a usar conta dedicada, permissões de dispositivo restritas e isolamento do serviço, se esse hardware estiver configurado.
+- Senhas existentes e versão NVIDIA preservadas. A senha de usuário/root continua compartilhada conforme a preferência do projeto. Senhas de quatro dígitos continuam fracas; essas proteções não aumentam sua entropia.
 
-Instalações antigas que não atendam aos requisitos atuais podem receber uma mensagem informando que o **Callas Config Update foi bloqueado por segurança**.
+**Limite de confiança:** GitHub e as contas com permissão de escrita continuam sendo a autoridade da atualização. Commit imutável e verificação de blob não são assinatura independente e não protegem contra uma publicação maliciosa feita por uma conta autorizada comprometida. Uma assinatura independente precisa de uma chave administrada separadamente do repositório. Assinatura independente, proteção da conta/repositório e criptografia de um disco já instalado exigem configuração adicional; não estão sendo anunciadas como concluídas.
 
-> [!WARNING]
-> Se uma mudança estrutural do Callas OS exigir instalação limpa, **isso não significa que o Arch Linux deixou de funcionar ou de receber atualizações**.
->
-> O usuário ainda poderá atualizar o Arch Linux, aplicativos nativos, AUR e Flatpaks normalmente. O bloqueio se aplica somente às **novas migrações de configuração do Callas OS** que não possam ser realizadas de forma segura naquela instalação.
+A primeira migração de um cliente antigo ainda passa pelo mecanismo de download antigo. Depois dela, as execuções seguintes usam o lançador novo. O link curto e o nome do instalador permanecem os mesmos.
 
-Quando o projeto exigir uma nova instalação limpa, a recomendação é fazer backup dos arquivos pessoais e instalar novamente usando o comando mais recente deste README.
+### Kernels padrão e LTS
+
+Ambos já existiam no instalador. A migração garante `linux`, `linux-lts` e seus headers, sem fixar suas versões. Após transações relevantes, um hook verifica módulos NVIDIA/xone quando instalados, recompõe o initramfs e verifica as entradas de ambos no GRUB. Não muda a versão do driver NVIDIA nem força o boot pelo LTS.
+
+Se `/boot` não estiver montado ou alguma validação falhar, o procedimento registra falha e cria `/var/lib/callas-os/kernel-check-failed`. Uma atualização com erro não é marcada como concluída. Uma falha em um hook ocorre depois da transação do pacman: não é rollback de pacotes e não impede fisicamente que o usuário reinicie.
+
+### Validação de segurança
+
+Testes offline: `python -m unittest discover -s programas-callas-os/tests -v`, mais sintaxe dos scripts Bash/Python. Incluem rejeição de download alterado/árvore incompleta, agenda semanal, logs privados separados por execução, interrupção após erro do pacman e sucesso/falha simulados na verificação dos dois kernels.
+
+Antes de considerar validado no hardware, testar numa VM Arch e depois na máquina real:
+
+1. Migrar pela opção 5 a partir do atualizador antigo, inclusive pelo endereço da ponte. Conferir logs em Documentos e ausência das regras antigas de sudo sem senha.
+2. Confirmar que a lista de versões NVIDIA antes/depois é idêntica; testar Overwatch manualmente. A versão 610.57.04 permanece uma tentativa de contornar regressões, sem promessa de resultado no jogo.
+3. Confirmar `ufw status verbose`, IPv6, navegação, Steam e os serviços locais usados. O firewall não bloqueia uma aplicação maliciosa que já tenha permissão para iniciar conexões de saída.
+4. Atualizar o sistema; iniciar uma vez pelo kernel padrão e outra pelo LTS. Conferir DKMS, initramfs, GRUB e os logs. Testar uma falha simulada de DKMS antes de confiar na detecção.
+5. Conferir que o automático não instala AUR e que a opção 3 permite revisar/cancelar o AUR. Confirmar que uma falha de pacman deixa a atualização pendente.
+
+Os testes offline não executam uma instalação real nem simulam o driver gráfico, Secure Boot ou o funcionamento do Overwatch.
 
 ---
 
@@ -364,7 +399,7 @@ Por isso:
 - não force uma migração bloqueada por incompatibilidade;
 - quando o projeto indicar instalação limpa, trate isso como uma mudança de geração do Callas OS e não como uma atualização comum.
 
-A prioridade do projeto é **não aplicar automaticamente uma mudança crítica em uma instalação antiga quando não houver segurança suficiente para fazê-la**.
+A prioridade do projeto é preservar a possibilidade de recuperação e informar falhas, sem prometer ausência de vulnerabilidades.
 
 ---
 
@@ -372,4 +407,5 @@ A prioridade do projeto é **não aplicar automaticamente uma mudança crítica 
   <strong>Callas OS</strong><br>
   Arch Linux preparado para instalar, iniciar e usar.
 </p>
+
 

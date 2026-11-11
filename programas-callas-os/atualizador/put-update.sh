@@ -1,0 +1,704 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export PATH=/usr/bin:/bin
+
+program=/usr/local/libexec/put-update
+atalho_menu=/usr/local/share/applications/io.github.Callas157.AtualizadorDoSistema.desktop
+servico_check=put-update-check.service
+timer_check=put-update-check.timer
+agenda_dir=/var/lib/put-update/agenda
+recuperacao_dir=/var/lib/put-update/recuperacao
+lock_atualizador=/run/put-update.lock
+builder=put-aur
+builder_home=/var/lib/put-update/aur
+paru_conf=/etc/put-update-paru.conf
+sudo_template=/etc/put-update-aur.sudoers
+sudo_rule=/etc/sudoers.d/put-update
+config_update_url=https://raw.githubusercontent.com/Callas157/arch-install/main/programas-callas-os/atualizador/callas-config-update.sh
+
+erro() {
+    printf 'Erro: %s\n' "$*" >&2
+    exit 1
+}
+
+proxima_data() {
+    local modo=$1 base=$2
+    case $modo in
+        apps) TZ=UTC0 date -d "$base +7 days" +%F ;;
+        sistema) TZ=UTC0 date -d "$base +7 days" +%F ;;
+        *) erro 'Agenda inválida.' ;;
+    esac
+}
+
+ler_data_agenda() {
+    local data
+    read -r data < "$agenda_dir/$1" || erro "Não foi possível ler a agenda de $1."
+    [[ $data =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || erro "Data inválida na agenda de $1."
+    printf '%s\n' "$data"
+}
+
+gravar_data_agenda() {
+    local temporario
+    temporario=$(mktemp -- "$agenda_dir/.data.XXXXXXXX")
+    printf '%s\n' "$2" > "$temporario"
+    mv -fT -- "$temporario" "$agenda_dir/$1"
+}
+
+preparar_agenda() {
+    local inicio modo data
+    install -d -m 0700 -- "$agenda_dir"
+    if [[ ! -e $agenda_dir/inicio ]]; then
+        data=$(date +%F)
+        gravar_data_agenda inicio "$data"
+    fi
+    inicio=$(ler_data_agenda inicio)
+    for modo in sistema apps; do
+        if [[ ! -e $agenda_dir/$modo ]]; then
+            data=$(proxima_data "$modo" "$inicio")
+            gravar_data_agenda "$modo" "$data"
+        fi
+    done
+}
+
+executar_agendado() {
+    local usuario=$1 modo=$2 hoje vencimento proxima
+    hoje=$(date +%F)
+    vencimento=$(ler_data_agenda "$modo")
+
+    # A data funciona como vencimento, não como uma janela de 24 horas.
+    # Se o computador ficou desligado no dia previsto, a atualização roda
+    # no primeiro boot/verificação seguinte.
+    [[ $hoje < $vencimento ]] && return 0
+
+    if registrar_atualizacao "$usuario" "$modo" automatico; then
+        # O próximo ciclo começa no dia em que a atualização realmente terminou.
+        proxima=$(proxima_data "$modo" "$hoje")
+        gravar_data_agenda "$modo" "$proxima"
+    else
+        return 1
+    fi
+}
+
+verificar_agenda() {
+    local usuario=$1 falhou=0
+    executar_agendado "$usuario" sistema || falhou=1
+    executar_agendado "$usuario" apps || falhou=1
+    return "$falhou"
+}
+
+home_do_usuario() {
+    local home
+    home=$(getent passwd "$1" | cut -d: -f6) || erro "Usuário $1 indisponível."
+    [[ -d "$home" ]] || erro "Pasta pessoal de $1 indisponível."
+    printf '%s\n' "$home"
+}
+
+como_usuario() {
+    local usuario=$1 home=$2
+    shift 2
+    runuser -u "$usuario" -- env -i PATH=/usr/bin HOME="$home" \
+        USER="$usuario" LOGNAME="$usuario" LANG=C.UTF-8 "$@"
+}
+
+pasta_de_documentos() {
+    local documentos
+    documentos=$(xdg-user-dir DOCUMENTS 2>/dev/null) || documentos=
+    if [[ "$documentos" != /* || "${documentos%/}" == "$HOME" ]]; then
+        documentos="$HOME/Documentos"
+        if [[ ! -d "$documentos" && -d "$HOME/Documents" ]]; then
+            documentos="$HOME/Documents"
+        fi
+    fi
+    printf '%s\n' "${documentos%/}"
+}
+
+pasta_de_logs() {
+    local pasta
+    pasta="$(pasta_de_documentos)/Logs do Callas OS"
+    umask 077
+    mkdir -p -- "$pasta" || return
+    printf '%s\n' "$pasta"
+}
+
+etapa() {
+    local nome=$1
+    shift
+    printf '\n==> %s\n' "$nome"
+    if "$@"; then
+        return 0
+    else
+        local codigo=$?
+        printf 'Falha em %s (código %s).\n' "$nome" "$codigo" >&2
+        return "$codigo"
+    fi
+}
+
+atualizar_arch() {
+    local origem=$1 dbpath tentativa
+    local -a dependencias=() confirmacao=()
+    if [[ $origem == automatico ]]; then
+        confirmacao+=(--noconfirm)
+    fi
+    dbpath=$(pacman-conf DBPath) || return
+    for (( tentativa=0; tentativa<12; tentativa++ )); do
+        [[ -e "${dbpath%/}/db.lck" ]] || break
+        sleep 10
+    done
+    if [[ -e "${dbpath%/}/db.lck" ]]; then
+        printf 'O pacman ainda está ocupado ou deixou um lock pendente.\n' >&2
+        return 1
+    fi
+
+    if [[ -x /usr/bin/paru && -f "$paru_conf" ]]; then
+        pacman -Qq base-devel >/dev/null 2>&1 || dependencias+=(base-devel)
+        pacman -Qq git >/dev/null 2>&1 || dependencias+=(git)
+    fi
+    if [[ -r /etc/callas-nvidia-version ]]; then
+        pacman -Syu --needed --ignore=nvidia-utils,nvidia-open-dkms,nvidia-open,nvidia-open-lts,lib32-nvidia-utils,nvidia-settings,libxnvctrl,opencl-nvidia,lib32-opencl-nvidia "${confirmacao[@]}" "${dependencias[@]}" || return
+
+        # Antes de considerar a atualização concluída, garante que o NVIDIA
+        # fixado ainda foi compilado para todos os kernels linux/linux-lts.
+        local pkgbase release falhou_modulo=0
+        dkms autoinstall || falhou_modulo=1
+        for pkgbase in /usr/lib/modules/*/pkgbase; do
+            [[ -f $pkgbase ]] || continue
+            case $(<"$pkgbase") in
+                linux|linux-lts) ;;
+                *) continue ;;
+            esac
+            release=${pkgbase%/pkgbase}
+            release=${release##*/}
+            if ! modinfo -k "$release" nvidia >/dev/null 2>&1; then
+                printf 'NVIDIA %s não está disponível para o kernel %s. Não reinicie antes de corrigir.\n'                     "$(< /etc/callas-nvidia-version)" "$release" >&2
+                falhou_modulo=1
+            fi
+        done
+        (( falhou_modulo == 0 )) || return 1
+    else
+        pacman -Syu --needed "${confirmacao[@]}" "${dependencias[@]}"
+    fi
+}
+
+atualizar_aur() {
+    printf 'AUR pendente de revisão manual: abra a opção 3 no menu. Nenhum pacote AUR foi instalado automaticamente.\n'
+}
+
+atualizar_aur_manual() {
+    [[ -x /usr/bin/paru ]] || { printf 'Paru indisponível.\n'; return 1; }
+    printf '\nRevise as alterações dos PKGBUILDs antes de confirmar.\n'
+    /usr/bin/paru -Sua --review
+}
+
+atualizar_discord_integrado() (
+    falhar() {
+        printf 'Erro: %s\n' "$*" >&2
+        exit 1
+    }
+
+    case "${1:-}" in
+        "") acao=atualizar ;;
+        --pacman) acao=pacman ;;
+        --agendado) acao=agendado ;;
+        --sessao) acao=sessao ;;
+        -h|--help)
+            printf 'Uso: bash %s --discord [--pacman]\n' "${0##*/}"
+            printf 'Atualiza somente o Discord nativo.\n'
+            exit 0
+            ;;
+        *) falhar "Opção desconhecida: $1. Use --help." ;;
+    esac
+    [[ $# -le 1 ]] || falhar 'Passe apenas uma opção.'
+    (( EUID != 0 )) || falhar 'Rode com seu usuário normal. O modo --pacman pede sudo quando necessário.'
+
+    config_dir=${XDG_CONFIG_HOME:-"$HOME/.config"}
+    discord_dir="$config_dir/discord"
+    aviso_discord='Discord Stable nativo não encontrado no perfil. Abra o Discord pelo menu, aguarde a janela principal carregar e tente novamente.'
+    [[ -d $discord_dir ]] || {
+        [[ $acao == agendado ]] && { printf '%s\n' "$aviso_discord"; return 0; }
+        falhar "$aviso_discord"
+    }
+
+    if ! lancador=$(command -v discord); then
+        for candidato in /opt/Discord/Discord /opt/discord/Discord /usr/share/discord/Discord /usr/lib/discord/Discord; do
+            [[ -x $candidato ]] && { lancador=$candidato; break; }
+        done
+    fi
+    [[ -n ${lancador:-} ]] || falhar 'O lançador nativo discord não foi encontrado.'
+
+    pids_discord() {
+        pgrep -u "$EUID" -x 'Discord|discord' || true
+    }
+
+    estava_aberto=0
+    if [[ -n $(pids_discord) ]]; then
+        estava_aberto=1
+        printf 'Fechando o Discord para atualizar...\n'
+        kill -TERM $(pids_discord) 2>/dev/null || true
+        for _ in {1..40}; do
+            [[ -z $(pids_discord) ]] && break
+            sleep 0.25
+        done
+        [[ -z $(pids_discord) ]] || falhar 'O Discord ainda está aberto.'
+    fi
+
+    reabrir() {
+        (( estava_aberto )) || return 0
+        printf 'Reabrindo o Discord...\n'
+        if [[ $acao == agendado || $acao == sessao ]]; then
+            systemd-run --user --collect --slice=app.slice --property=Type=exec \
+                -- "$lancador" --start-minimized >/dev/null 2>&1 || return 1
+        else
+            nohup "$lancador" --start-minimized </dev/null >/dev/null 2>&1 &
+        fi
+    }
+    trap reabrir EXIT
+
+    if [[ $acao == pacman ]]; then
+        pacman -Q discord >/dev/null || falhar 'O pacote discord não está instalado pelo pacman.'
+        sudo pacman -Syu --needed discord || falhar 'Falha ao atualizar o Discord pelo pacman.'
+    fi
+
+    bootstrap=
+    for candidato in "$(dirname -- "$(realpath -- "$lancador")")/updater_bootstrap" \
+        /usr/share/discord/updater_bootstrap /opt/Discord/updater_bootstrap /opt/discord/updater_bootstrap; do
+        [[ -x $candidato ]] && { bootstrap=$candidato; break; }
+    done
+
+    if [[ -n $bootstrap ]]; then
+        printf 'Verificando atualização do Discord nativo...\n'
+        timeout --kill-after=10s 10m "$bootstrap" --no-zenity \
+            "$discord_dir" stable https://updates.discord.com/ >/dev/null ||
+            falhar 'A atualização do Discord nativo falhou.'
+    else
+        printf 'Atualizador interno do Discord não encontrado; o pacote será mantido pelo pacman/AUR.\n'
+    fi
+)
+
+criar_ponto_recuperacao() {
+    local destino antigo
+    install -d -m 0700 -- "$recuperacao_dir"
+    destino="$recuperacao_dir/$(date +%Y%m%d-%H%M%S)"
+    install -d -m 0700 -- "$destino"
+
+    pacman -Q > "$destino/pacotes.txt"
+    pacman -Qqe > "$destino/pacotes-explicitos.txt"
+    tar -C / -czf "$destino/etc.tar.gz" etc
+    tar -C / -czf "$destino/pacman-local.tar.gz" var/lib/pacman/local
+    cp -a /boot/grub/grub.cfg "$destino/grub.cfg" 2>/dev/null || :
+
+    # Mantém somente os três registros mais recentes.
+    mapfile -t antigos < <(find "$recuperacao_dir" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -r)
+    if (( ${#antigos[@]} > 3 )); then
+        for antigo in "${antigos[@]:3}"; do
+            rm -rf -- "$recuperacao_dir/$antigo"
+        done
+    fi
+    printf 'Ponto de recuperação pré-update criado em %s\n' "$destino"
+}
+
+notificar_reinicio_usuario() {
+    local estado acao
+    (( EUID != 0 )) || erro 'A notificação deve rodar na sessão do usuário.'
+    estado="${XDG_STATE_HOME:-$HOME/.local/state}/callas/reinicio-pendente"
+    [[ -f $estado ]] || return 0
+
+    if command -v notify-send >/dev/null; then
+        acao=$(notify-send -a 'Atualizador do sistema' -i system-reboot -u normal \
+            -A reiniciar='Reiniciar agora' -A depois='Mais tarde' \
+            'Atualização do sistema concluída' \
+            'A atualização terminou. É recomendado reiniciar o computador.' || true)
+    else
+        acao=
+    fi
+    rm -f -- "$estado"
+    if [[ $acao == reiniciar ]]; then
+        systemctl --quiet reboot --check-inhibitors=no --no-wall
+    fi
+}
+
+marcar_reinicio_pendente() {
+    local usuario=$1 home=$2 uid runtime estado grupo
+    uid=$(id -u "$usuario") || return 1
+    grupo=$(id -gn "$usuario") || return 1
+    estado="$home/.local/state/callas"
+    install -d -m 0700 -o "$usuario" -g "$grupo" -- "$estado"
+    runuser -u "$usuario" -- touch "$estado/reinicio-pendente"
+
+    runtime="/run/user/$uid"
+    if [[ -S "$runtime/bus" ]]; then
+        runuser -u "$usuario" -- env \
+            HOME="$home" USER="$usuario" LOGNAME="$usuario" \
+            XDG_RUNTIME_DIR="$runtime" DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
+            systemd-run --user --collect --unit=callas-update-reinicio \
+            "$program" --notificar-reinicio >/dev/null 2>&1 || :
+    fi
+}
+
+notificar_apps_usuario() {
+    local usuario=$1 home=$2 uid runtime
+    uid=$(id -u "$usuario") || return 1
+    runtime="/run/user/$uid"
+    [[ -S "$runtime/bus" ]] || return 0
+    runuser -u "$usuario" -- env \
+        HOME="$home" USER="$usuario" LOGNAME="$usuario" \
+        XDG_RUNTIME_DIR="$runtime" DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
+        notify-send -a 'Atualizador do sistema' -i system-software-update \
+        'Aplicativos atualizados' \
+        'Os aplicativos foram atualizados com sucesso.' >/dev/null 2>&1 || :
+}
+
+atualizar_sistema() {
+    local origem=$1
+
+    etapa 'Ponto de recuperação pré-update' criar_ponto_recuperacao || return
+
+    if ! etapa 'Arch e aplicativos dos repositórios' atualizar_arch "$origem"; then
+        printf 'A etapa do AUR aguarda uma atualização bem-sucedida do Arch.\n'
+        return 1
+    fi
+    etapa 'Kernels padrão/LTS e boot' /usr/local/libexec/callas-kernel-check || return
+    if [[ -n $(pacman -Qmq) ]]; then
+        etapa 'Aplicativos do AUR' atualizar_aur || return
+    fi
+}
+
+atualizar_apps() {
+    local usuario=$1 home=$2 falhou=0
+
+    if [[ -x /usr/bin/flatpak ]]; then
+        etapa 'Flatpaks do sistema' flatpak update --system --noninteractive --assumeyes || falhou=1
+        etapa "Flatpaks de $usuario" como_usuario "$usuario" "$home" \
+            /usr/bin/dbus-run-session -- /usr/bin/flatpak update --user --noninteractive --assumeyes ||
+            falhou=1
+    else
+        printf 'Flatpak ausente.\n'
+    fi
+
+    etapa 'Discord nativo' como_usuario "$usuario" "$home" "$program" --discord-agendado ||
+        falhou=1
+    return "$falhou"
+}
+
+registrar_atualizacao() {
+    local usuario=$1 modo=$2 origem=$3 home codigo=0
+    case $modo in
+      sistema) categoria='Sistema e Pacman' ;;
+      *) categoria='Aplicativos' ;;
+    esac
+    home=$(home_do_usuario "$usuario")
+    {
+        printf '\n===== Atualização (%s, %s) | %s =====\n' "$modo" "$origem" "$(date -Is)"
+        case $modo in
+            sistema) atualizar_sistema "$origem" || codigo=$? ;;
+            apps) atualizar_apps "$usuario" "$home" || codigo=$? ;;
+            discord)
+                etapa 'Discord nativo' como_usuario "$usuario" "$home" \
+                    "$program" --discord-sessao || codigo=$?
+                ;;
+        esac
+        if [[ $codigo -eq 0 ]]; then
+            if [[ $modo == sistema ]]; then
+                marcar_reinicio_pendente "$usuario" "$home" ||
+                    printf 'Aviso: não consegui preparar a notificação de reinício.\n' >&2
+            elif [[ $modo == apps ]]; then
+                notificar_apps_usuario "$usuario" "$home" ||
+                    printf 'Aviso: não consegui exibir a notificação dos aplicativos.\n' >&2
+            fi
+        fi
+        printf '===== Fim da atualização | %s | código %s =====\n' "$(date -Is)" "$codigo"
+        return "$codigo"
+    } 2>&1 | {
+        # O log é aberto com as permissões do usuário. O journal recebe a mesma saída.
+        como_usuario "$usuario" "$home" "$program" --log "$categoria" ||
+            { printf 'Não foi possível gravar o log em Documentos.\n' >&2; return 1; }
+    }
+}
+
+instalar_atalhos() {
+    local documentos
+    documentos=$(pasta_de_documentos)
+    mkdir -p -- "$documentos"
+    install -m 0755 -T -- "$program" "$documentos/atualizador-do-sistema.sh"
+    install -m 0755 -T -- "$atalho_menu" "$documentos/Atualizador do sistema.desktop"
+    printf 'Atalho criado em %s/Atualizador do sistema.desktop\n' "$documentos"
+}
+
+instalar_entrada_menu() {
+    local arquivo=$1
+    cat > "$arquivo" <<DESKTOP
+[Desktop Entry]
+Type=Application
+Name=Atualizador do sistema
+Comment=Atualizações automáticas e manuais do Arch, Flatpak e Discord
+Exec=$program --menu
+TryExec=$program
+Icon=system-software-update
+Terminal=true
+Categories=System;
+Keywords=atualizador;atualização;Arch;pacman;Flatpak;Discord;
+DESKTOP
+    install -D -m 0644 -T -- "$arquivo" "$atalho_menu"
+    printf 'Atualizador do sistema disponível no menu de aplicativos.\n'
+}
+
+desativar_agendamento_antigo() {
+    local em_chroot=$1 unidade estado
+    local -a antigas=(
+        put-update.timer put-update-sistema.timer put-update-apps.timer put-update-check.timer
+    )
+
+    if (( em_chroot )); then
+        for unidade in "${antigas[@]}"; do
+            systemctl --root=/ disable "$unidade" 2>/dev/null || :
+        done
+    else
+        for unidade in "${antigas[@]}"; do
+            estado=$(systemctl show -p LoadState --value "$unidade" 2>/dev/null || :)
+            [[ $estado == not-found || -z $estado ]] || systemctl disable --now "$unidade" 2>/dev/null || :
+        done
+    fi
+
+    rm -f -- \
+        /etc/systemd/system/put-update.timer \
+        /etc/systemd/system/put-update.service \
+        /etc/systemd/system/put-update-sistema.timer \
+        /etc/systemd/system/put-update-apps.timer \
+        /etc/systemd/system/put-update@.service \
+        /etc/systemd/system/put-update-check.timer \
+        /etc/systemd/system/put-update-check.service
+}
+
+instalar() {
+    local usuario=$1 origem temporario conta home modo timer hora pasta em_chroot=0
+    [[ "$usuario" =~ ^[a-zA-Z_][a-zA-Z0-9_.-]*$ && "$usuario" != root ]] ||
+        erro 'Informe um usuário normal do Arch.'
+    [[ -f /etc/arch-release ]] || erro 'Este script requer Arch Linux.'
+    if systemd-detect-virt --chroot; then
+        em_chroot=1
+    elif [[ ! -d /run/systemd/system ]]; then
+        erro 'Este script requer o systemd em execução ou o arch-chroot do sistema de destino.'
+    fi
+    home=$(home_do_usuario "$usuario")
+    origem=$(realpath -- "${BASH_SOURCE[0]}")
+    exec 8>"$lock_atualizador"
+    [[ ${CALLAS_UPDATE_LOCK_HELD:-0} == 1 ]] || flock -x 8
+    temporario=$(mktemp -d)
+    trap "rm -rf -- $(printf '%q' "$temporario")" EXIT
+
+    cat > "$temporario/$servico_check" <<UNIT
+[Unit]
+Description=Verificar agenda de atualização do Callas OS
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=$program --check $usuario
+StandardOutput=journal
+StandardError=journal
+UNIT
+
+    cat > "$temporario/$timer_check" <<UNIT
+[Unit]
+Description=Verificar a agenda de atualização ao longo do dia
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=1h
+AccuracySec=1min
+Unit=$servico_check
+
+[Install]
+WantedBy=timers.target
+UNIT
+
+    desativar_agendamento_antigo "$em_chroot"
+    rm -f -- "$sudo_rule"
+
+    rm -f -- "$sudo_rule" "$sudo_template" "$paru_conf"
+    # AUR is reviewed interactively by the session user; no privileged builder.
+
+    preparar_agenda
+    if [[ ! -f $agenda_dir/security-weekly-v1 ]]; then
+        hoje=$(date +%F)
+        vencimento=$(ler_data_agenda sistema)
+        [[ $vencimento < $hoje ]] || gravar_data_agenda sistema "$hoje"
+        touch "$agenda_dir/security-weekly-v1"
+    fi
+    # O programa pode já ser a origem quando o automático é reconfigurado pelo atalho.
+    if [[ $origem != "$program" ]]; then
+        install -D -m 0755 -T -- "$origem" "$program"
+    fi
+    install -m 0644 -- "$temporario/$servico_check" "$temporario/$timer_check" /etc/systemd/system/
+    instalar_entrada_menu "$temporario/${atalho_menu##*/}"
+
+    como_usuario "$usuario" "$home" mkdir -p "$home/.config/autostart"
+    como_usuario "$usuario" "$home" tee "$home/.config/autostart/callas-update-reinicio.desktop" >/dev/null <<'REBOOT_DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Notificação de reinício do Callas OS
+Exec=/usr/local/libexec/put-update --notificar-reinicio
+OnlyShowIn=KDE;
+NoDisplay=true
+StartupNotify=false
+X-KDE-AutostartScript=true
+REBOOT_DESKTOP
+
+    if (( em_chroot )); then
+        systemctl --root=/ enable "$timer_check"
+    else
+        systemctl daemon-reload
+        systemctl enable "$timer_check"
+        systemctl restart "$timer_check"
+    fi
+
+    printf '\nAgendamento automático configurado.\n'
+    printf 'Atualização semanal do sistema vence em: %s.\n' "$(ler_data_agenda sistema)"
+    printf 'Atualização semanal dos aplicativos vence em: %s.\n' "$(ler_data_agenda apps)"
+    printf 'Se o PC estiver desligado no vencimento, a atualização roda no primeiro boot/verificação seguinte.\n'
+    como_usuario "$usuario" "$home" "$program" --instalar-atalhos
+    if pasta=$(como_usuario "$usuario" "$home" "$program" --log-dir); then
+        printf 'Logs por categoria em Documentos: %s\n' "$pasta"
+    else
+        printf 'Não foi possível criar a pasta de logs em Documentos.\n' >&2
+    fi
+}
+
+perguntar_reinicio() {
+    # O callas-config-update.sh pergunta Y/N imediatamente ao concluir.
+    return 0
+}
+
+atualizar_config_callas() {
+    # Root creates/downloads the stage; never sudo-execute a user-owned script.
+    sudo /usr/local/libexec/callas-release
+}
+
+menu() {
+    local origem opcao modo
+    origem=$(realpath -- "${BASH_SOURCE[0]}")
+    if [[ ! -t 0 ]]; then
+        command -v konsole >/dev/null || erro 'Abra o arquivo com bash em um terminal.'
+        exec konsole -e /usr/bin/bash "$origem" --menu
+    fi
+    while true; do
+        printf '\n=== Atualizador do sistema ===\n'
+        printf '%s\n' \
+            '1. Ativar ou reparar o automático (sistema e aplicativos semanais; AUR manual)' \
+            '2. Atualizar só os aplicativos agora (Flatpak e Discord)' \
+            '3. Atualizar só o sistema agora (Arch/pacman e revisão do AUR)' \
+            '4. Atualizar só o Discord agora' \
+            '5. Callas OS Update' \
+            '6. Sair'
+        read -r -p 'Escolha [1-6] ou digite reboot: ' opcao || return 0
+        case $opcao in
+            1)
+                sudo "$program" --instalar ||
+                    printf 'Falha ao configurar o automático. Confira a mensagem acima.\n' >&2
+                continue
+                ;;
+            2) modo=apps ;;
+            3) modo=sistema ;;
+            4) modo=discord ;;
+            5)
+                if atualizar_config_callas; then
+                    perguntar_reinicio
+                else
+                    printf 'Falha ao atualizar as configurações do Callas OS.\n' >&2
+                fi
+                continue
+                ;;
+            6) return 0 ;;
+            reboot|REBOOT|Reboot)
+                systemctl --quiet reboot --check-inhibitors=no --no-wall
+                return 0
+                ;;
+            *) printf 'Opção inválida. Digite 1-6 ou reboot.\n'; continue ;;
+        esac
+
+        if [[ $origem != "$program" ]] && ! cmp -s -- "$origem" "$program"; then
+            printf 'Escolha a opção 1 para instalar esta versão antes de atualizar.\n'
+            continue
+        fi
+        if sudo "$program" --manual "$modo"; then
+            if [[ $modo == sistema ]]; then
+                atualizar_aur_manual 2>&1 | tee >(/usr/local/libexec/callas-logs --write AUR) ||
+                    printf 'A revisão/atualização do AUR não foi concluída.\n' >&2
+            fi
+        else
+            printf 'Atualização com falha. Confira a mensagem acima e o log em Documentos.\n' >&2
+        fi
+    done
+}
+
+case ${1:-} in
+    --discord-boot|--discord-agendado)
+        (( EUID != 0 && $# == 1 )) || erro 'Esta opção é usada pelo serviço de atualização.'
+        atualizar_discord_integrado --agendado
+        ;;
+    --discord-sessao)
+        (( EUID != 0 && $# == 1 )) || erro 'Esta opção é usada pelo menu de atualização.'
+        atualizar_discord_integrado --sessao
+        ;;
+    --discord)
+        shift
+        case ${1:-} in
+            --boot|--agendado|--sessao) erro 'Use --discord para atualização manual.' ;;
+        esac
+        atualizar_discord_integrado "$@"
+        ;;
+    --check)
+        (( EUID == 0 && $# == 2 )) || erro 'Esta opção é usada pelo serviço de atualização.'
+        exec flock -x -o "$lock_atualizador" "$program" --verificar-agenda "$2"
+        ;;
+    --verificar-agenda)
+        (( EUID == 0 && $# == 2 )) || erro 'Esta opção é interna.'
+        rm -f -- "$sudo_rule"
+        verificar_agenda "$2"
+        ;;
+    --manual)
+        (( EUID == 0 && $# == 2 )) || erro 'Esta opção é usada pelo menu de atualização.'
+        [[ -n ${SUDO_USER:-} && $SUDO_USER != root ]] || erro 'Abra o menu com seu usuário normal.'
+        [[ $2 == sistema || $2 == apps || $2 == discord ]] || erro 'Modo manual inválido.'
+        printf 'Preparando a atualização. Se outra estiver em andamento, ela vai terminar primeiro.\n'
+        exec flock -x -o "$lock_atualizador" "$program" --registrar "$SUDO_USER" "$2" manual
+        ;;
+    --registrar)
+        (( EUID == 0 && $# == 4 )) || erro 'Esta opção é interna.'
+        rm -f -- "$sudo_rule"
+        if [[ $4 == automatico ]]; then
+            executar_agendado "$2" "$3"
+        else
+            registrar_atualizacao "$2" "$3" "$4"
+        fi
+        ;;
+    --notificar-reinicio)
+        (( EUID != 0 && $# == 1 )) || erro 'Esta opção é usada pela sessão gráfica do usuário.'
+        notificar_reinicio_usuario
+        ;;
+    --instalar)
+        (( EUID == 0 && $# == 1 )) || erro 'Escolha a opção 1 no menu para instalar.'
+        instalar "${SUDO_USER:-}"
+        ;;
+    --instalar-para)
+        (( EUID == 0 && $# == 2 )) || erro 'Use como root: bash atualizador-do-sistema.sh --instalar-para USUARIO.'
+        instalar "$2"
+        ;;
+    --instalar-atalhos)
+        (( EUID != 0 && $# == 1 )) || erro 'Esta opção é interna.'
+        instalar_atalhos
+        ;;
+    --log-dir)
+        (( EUID != 0 && $# == 1 )) || erro 'Use esta opção como usuário normal.'
+        pasta_de_logs
+        ;;
+    --log)
+        (( EUID != 0 && $# == 2 )) || erro 'Use esta opção como usuário normal.'
+        /usr/bin/tee /dev/stderr | /usr/local/libexec/callas-logs --write "$2"
+        ;;
+    ''|--menu)
+        (( EUID != 0 && $# <= 1 )) || erro 'Abra o atualizador com seu usuário normal, sem sudo.'
+        menu
+        ;;
+    *) erro 'Use bash atualizador-do-sistema.sh para abrir o menu.' ;;
+esac

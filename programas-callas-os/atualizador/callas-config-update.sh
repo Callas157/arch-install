@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.11.12"
-BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/main"
+VERSAO="2026.11.11.13"
+export PATH=/usr/bin:/bin
+umask 077
+BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/${CALLAS_RELEASE_REF:-main}"
 ASSET_BASE="$BASE_RAW/assets"
 PROGRAMAS_BASE="$BASE_RAW/programas-callas-os"
 ESTADO_DIR="/var/lib/callas-os"
@@ -20,34 +22,73 @@ grupo=$(id -gn "$usuario")
 [[ -d "$home" ]] || erro "Pasta pessoal de $usuario não encontrada."
 [[ -f /etc/arch-release ]] || erro "Este atualizador foi preparado para Arch Linux."
 
-# Compatibilidade de arquitetura do GRUB.
-# O Callas Config atual só é suportado em instalações que já usam as entradas
-# próprias do Callas OS. Instalações antigas, geradas pelo 10_linux padrão,
-# são bloqueadas antes de qualquer alteração.
+como_usuario() {
+  runuser -u "$usuario" -- env -i PATH=/usr/bin:/bin HOME="$home" USER="$usuario" LOGNAME="$usuario" LANG=C.UTF-8 "$@"
+}
+
+# Legacy clients bootstrap once through their existing trusted URL. Subsequent
+# launches use the installed root-owned staging runner and one immutable commit.
+if [[ -z ${CALLAS_RELEASE_DIR:-} ]]; then
+  CALLAS_RELEASE_REF=$(python - <<'REF'
+import json, urllib.request
+req=urllib.request.Request('https://api.github.com/repos/Callas157/arch-install/git/ref/heads/main', headers={'User-Agent':'CallasOS-Updater'})
+with urllib.request.urlopen(req, timeout=60) as response: print(json.load(response)['object']['sha'])
+REF
+  )
+  [[ $CALLAS_RELEASE_REF =~ ^[0-9a-f]{40}$ ]] || erro 'Commit inválido.'
+  CALLAS_RELEASE_DIR=$(mktemp -d /var/tmp/callas-bootstrap.XXXXXXXX)
+  trap 'rm -rf -- "$CALLAS_RELEASE_DIR"' EXIT
+  curl --proto '=https' --proto-redir '=https' -fsSL --retry 2 \
+    "https://raw.githubusercontent.com/Callas157/arch-install/$CALLAS_RELEASE_REF/programas-callas-os/atualizador/callas-release.py" \
+    -o "$CALLAS_RELEASE_DIR/callas-release.py"
+  python - "$CALLAS_RELEASE_DIR" "$CALLAS_RELEASE_REF" <<'STAGE'
+import importlib.util, sys
+spec=importlib.util.spec_from_file_location('callas_release', sys.argv[1]+'/callas-release.py')
+module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+module.stage_files(sys.argv[1], sys.argv[2])
+STAGE
+  export CALLAS_RELEASE_REF CALLAS_RELEASE_DIR
+  # Restart using the exact staged version, preserving the cleanup trap.
+  /usr/bin/bash "$CALLAS_RELEASE_DIR/callas-config-update.sh" "$@"
+  exit $?
+fi
+
+BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/$CALLAS_RELEASE_REF"
+ASSET_BASE="$BASE_RAW/assets"
+PROGRAMAS_BASE="$BASE_RAW/programas-callas-os"
+logstage=$(mktemp -d /var/tmp/callas-config-log.XXXXXXXX)
+exec 3>&1 4>&2
+exec > >(tee "$logstage/update.log") 2>&1
+logpid=$!
+finalizar() {
+  local codigo=$?
+  trap - EXIT
+  exec 1>&3 2>&4
+  wait "$logpid" || :
+  if [[ -x /usr/local/libexec/callas-logs ]]; then
+    /usr/local/libexec/callas-logs --record 'Callas OS Update' < "$logstage/update.log" || :
+    /usr/local/libexec/callas-logs --export "$usuario" || :
+  fi
+  rm -rf -- "$logstage"
+  [[ -z ${monitor_stage:-} ]] || rm -rf -- "$monitor_stage"
+  exit "$codigo"
+}
+trap finalizar EXIT
+
+exec 8>/run/put-update.lock
+flock -x 8
+export CALLAS_UPDATE_LOCK_HELD=1
+/usr/bin/bash "$CALLAS_RELEASE_DIR/callas-security.sh" "$usuario"
+
 grub_compativel=0
 if [[ -x /etc/grub.d/09_callas && -f /etc/grub.d/10_linux && ! -x /etc/grub.d/10_linux ]]; then
   grub_compativel=1
 fi
-
 if (( ! grub_compativel )); then
-  cat >&2 <<'EOF'
-ERRO: esta instalação do Callas OS usa uma arquitetura antiga do GRUB.
-
-O Callas Config Update atual não será executado nesta máquina por segurança.
-Nenhuma configuração foi alterada.
-
-Para usar as atualizações atuais, faça uma instalação limpa com a versão
-mais recente do instalar-arch.sh, que cria o GRUB personalizado do Callas OS.
-EOF
-  exit 42
+  printf 'Segurança e atualizador migrados. Personalizações de boot antigas foram preservadas.\n'
+  exit 0
 fi
-
-install -d -m 0755 /etc/callas-os
 printf '%s\n' 'grub-custom-v2' > /etc/callas-os/grub-layout
-
-como_usuario() {
-  runuser -u "$usuario" -- env -i PATH=/usr/bin:/bin HOME="$home" USER="$usuario" LOGNAME="$usuario" LANG=C.UTF-8 "$@"
-}
 
 install -d -m 0755 "$ESTADO_DIR" "$BACKUP_DIR"
 forcar=0
@@ -69,27 +110,24 @@ if [[ "$atual" == "$VERSAO" && $forcar -eq 0 ]]; then
 fi
 
 stamp=$(date +%Y%m%d-%H%M%S)
-backup="$BACKUP_DIR/$stamp"
-install -d -m 0700 "$backup"
+backup=$(mktemp -d "$BACKUP_DIR/$stamp.XXXXXXXX")
 for arq in   "$home/.config/powerdevilrc"   "$home/.config/ksmserverrc"   /etc/xdg/kicker-extra-favoritesrc   /etc/xdg/autostart/callas-limpar-atalhos-desktop.desktop; do
   [[ -f "$arq" ]] || continue
   nome=$(printf '%s' "$arq" | sed 's#^/##; s#/#__#g')
   cp -a -- "$arq" "$backup/$nome"
 done
-chown -R "$usuario:$grupo" "$backup" 2>/dev/null || true
 
 # Instala o utilitário sem modificar monitores nem posições de janelas via root.
 # Todos os downloads são validados antes de substituir os auxiliares instalados.
 monitor_stage=$(mktemp -d)
-trap 'rm -rf -- "$monitor_stage"' EXIT
 for nome in callas-monitores.py callas-janelas.py callas-inicio-kde.sh callas-kde-desligamento-login.sh; do
   case $nome in
     callas-monitores.py|callas-kde-desligamento-login.sh) subpasta=monitores ;;
     callas-janelas.py) subpasta=janelas ;;
     callas-inicio-kde.sh) subpasta=sessao ;;
   esac
-  curl -fsSL --retry 2 --connect-timeout 10 --max-time 120 "$PROGRAMAS_BASE/$subpasta/$nome" -o "$monitor_stage/$nome" ||
-    erro "Não consegui baixar $nome. Auxiliares anteriores preservados."
+  install -m 0600 "$CALLAS_RELEASE_DIR/$nome" "$monitor_stage/$nome" ||
+    erro "Auxiliar verificado ausente: $nome."
 done
 python - "$monitor_stage/callas-monitores.py" "$monitor_stage/callas-janelas.py" <<'CALLAS_MONITOR_CHECK'
 import ast, sys
@@ -98,7 +136,6 @@ for path in sys.argv[1:]:
 CALLAS_MONITOR_CHECK
 bash -n "$monitor_stage/callas-inicio-kde.sh"
 bash -n "$monitor_stage/callas-kde-desligamento-login.sh"
-pacman -S --needed --noconfirm python-dbus python-gobject kscreen
 install -d /usr/local/libexec
 for nome in callas-inicio-kde callas-kde-desligamento-login; do
   [[ ! -f /usr/local/libexec/$nome ]] || cp -a "/usr/local/libexec/$nome" "$backup/$nome"
@@ -117,60 +154,7 @@ if [[ -f $updater_desktop ]]; then
   sed -i 's/^Categories=.*/Categories=System;/' "$updater_desktop"
 fi
 rm -rf -- "$monitor_stage"
-trap - EXIT
-
-# NVIDIA 610.57.04
-# Só faz a migração pesada quando a pilha ainda não estiver correta.
-if lspci -Dn 2>/dev/null | grep -qi '10de:'; then
-  nvidia_ok=1
-  for pkg in nvidia-utils nvidia-open-dkms lib32-nvidia-utils nvidia-settings libxnvctrl; do
-    versao_pkg=$(pacman -Q "$pkg" 2>/dev/null | awk '{print $2}') || versao_pkg=
-    [[ $versao_pkg == 610.57.04-* ]] || nvidia_ok=0
-  done
-
-  if (( ! nvidia_ok )); then
-    nvidia_dir=/tmp/callas-nvidia-610
-    rm -rf "$nvidia_dir"
-    install -d "$nvidia_dir"
-
-    nvidia_urls=(
-      "https://archive.archlinux.org/packages/n/nvidia-utils/nvidia-utils-610.57.04-1-x86_64.pkg.tar.zst"
-      "https://archive.archlinux.org/packages/n/nvidia-open-dkms/nvidia-open-dkms-610.57.04-1-x86_64.pkg.tar.zst"
-      "https://archive.archlinux.org/packages/l/lib32-nvidia-utils/lib32-nvidia-utils-610.57.04-1-x86_64.pkg.tar.zst"
-      "https://archive.archlinux.org/packages/l/libxnvctrl/libxnvctrl-610.57.04-1-x86_64.pkg.tar.zst"
-      "https://archive.archlinux.org/packages/n/nvidia-settings/nvidia-settings-610.57.04-1-x86_64.pkg.tar.zst"
-    )
-
-    nvidia_pkgs=()
-    for url in "${nvidia_urls[@]}"; do
-      arquivo="$nvidia_dir/${url##*/}"
-      curl -fL --retry 3 --connect-timeout 15 --max-time 300 "$url" -o "$arquivo" ||
-        erro "Não foi possível baixar ${url##*/} do Arch Linux Archive."
-      curl -fL --retry 3 --connect-timeout 15 --max-time 60 "$url.sig" -o "$arquivo.sig" ||
-        erro "Assinatura ausente para ${url##*/}."
-      nvidia_pkgs+=("$arquivo")
-    done
-
-    remover=()
-    pacman -Qq nvidia-open >/dev/null 2>&1 && remover+=(nvidia-open)
-    pacman -Qq nvidia-open-lts >/dev/null 2>&1 && remover+=(nvidia-open-lts)
-    (( ${#remover[@]} == 0 )) || pacman -R --noconfirm "${remover[@]}"
-
-    pacman -U --noconfirm "${nvidia_pkgs[@]}" ||
-      erro "Falha ao instalar a pilha NVIDIA 610.57.04."
-
-    dkms autoinstall || erro "O DKMS não conseguiu preparar o NVIDIA 610 para os kernels instalados."
-    mkinitcpio -P || erro "Falha ao reconstruir o initramfs após a migração NVIDIA."
-    rm -rf "$nvidia_dir"
-  else
-    printf 'NVIDIA 610.57.04 já está instalada; pulando reinstalação do driver.\n'
-  fi
-
-  # Garante a trava mesmo quando o driver já estava correto.
-  sed -i '/^# CALLAS_NVIDIA_610_BEGIN$/,/^# CALLAS_NVIDIA_610_END$/d' /etc/pacman.conf
-  sed -i '/^\[options\]$/a # CALLAS_NVIDIA_610_BEGIN\nIgnorePkg = nvidia-utils nvidia-open-dkms nvidia-open nvidia-open-lts lib32-nvidia-utils nvidia-settings libxnvctrl opencl-nvidia lib32-opencl-nvidia\n# CALLAS_NVIDIA_610_END' /etc/pacman.conf
-  printf '%s\n' '610.57.04' > /etc/callas-nvidia-version
-fi
+# NVIDIA: versão e trava existentes preservadas por solicitação do usuário.
 
 # GRUB: restaura apenas o tema estável do Callas OS.
 # Não altera terminal-box nem tenta forçar transparência.
@@ -200,85 +184,13 @@ else
   erro "Falha ao validar a configuração do GRUB; o grub.cfg anterior foi preservado."
 fi
 
-# Simplifica a opção 5 do Atualizador do Sistema já instalado.
-put_update=/usr/local/libexec/put-update
-if [[ -f "$put_update" ]]; then
-  python - "$put_update" <<'PY'
-from pathlib import Path
-import re
-import sys
-
-path = Path(sys.argv[1])
-text = path.read_text()
-start = text.find("atualizar_config_callas() {")
-end = text.find("\nmenu() {", start)
-if start < 0 or end < 0:
-    raise SystemExit("não encontrei a função atualizar_config_callas no put-update")
-
-new = r'''atualizar_config_callas() {
-    local temporario versao_remota versao_local resposta_forcar
-    temporario=$(mktemp)
-    trap 'rm -f -- "$temporario"' RETURN
-
-    # Bloqueia instalações antigas antes de pedir senha.
-    if [[ ! -x /etc/grub.d/09_callas || ! -f /etc/grub.d/10_linux || -x /etc/grub.d/10_linux ]]; then
-        printf '\nCallas Config Update indisponível nesta instalação.\n'
-        printf 'A estrutura do sistema é antiga e requer instalação limpa para receber novas configurações do Callas OS.\n'
-        return 0
-    fi
-
-    printf '\nVerificando Callas Config Update...\n'
-    curl -fsSL --retry 2 --connect-timeout 10 --max-time 120 \
-        "$config_update_url" -o "$temporario" ||
-        { printf 'Falha ao baixar o atualizador de configurações.\n' >&2; return 1; }
-
-    bash -n "$temporario" ||
-        { printf 'O arquivo baixado falhou na validação de sintaxe.\n' >&2; return 1; }
-
-    versao_remota=$(sed -n 's/^VERSAO="\\([^"]*\\)".*/\\1/p' "$temporario" | head -n1)
-    versao_local=
-    [[ -r /var/lib/callas-os/config-version ]] &&
-        read -r versao_local < /var/lib/callas-os/config-version || :
-
-    if [[ -n $versao_remota && $versao_local == "$versao_remota" ]]; then
-        printf 'Callas OS já está na versão de configuração %s.\n' "$versao_remota"
-        read -r -p 'Deseja reaplicar esta mesma versão à força? [s/N]: ' resposta_forcar || return 0
-        [[ $resposta_forcar =~ ^[sS]$ ]] || { printf 'Nenhuma alteração foi feita.\n'; return 0; }
-        sudo /usr/bin/bash "$temporario" --force
-        return
-    fi
-
-    if [[ -n $versao_remota ]]; then
-        printf 'Atualização disponível: %s -> %s\n' "${versao_local:-não instalada}" "$versao_remota"
-    fi
-    sudo /usr/bin/bash "$temporario"
-}
-'''
-updated = text[:start] + new + text[end:]
-updated = re.sub(r'^config_update_url=.*$',
-    'config_update_url=https://raw.githubusercontent.com/Callas157/arch-install/main/programas-callas-os/atualizador/callas-config-update.sh',
-    updated, flags=re.MULTILINE)
-path.write_text(updated)
-PY
-  chmod 0755 "$put_update"
-fi
-
-# Atualiza também o nome exibido no menu.
-if [[ -f "$put_update" ]]; then
-  sed -i "s/5\. Atualizar configurações do Callas OS/5. Callas OS Update/g" "$put_update"
-fi
-
 # Plymouth do Callas OS.
 # Atualização segura: troca apenas os arquivos do tema e reconstrói o initramfs.
 plymouth_dir=/usr/share/plymouth/themes/callas
 install -d "$plymouth_dir"
 
-curl -fsSL --retry 2 "$ASSET_BASE/plymouth/callas/callas.plymouth" \
-  -o "$plymouth_dir/callas.plymouth" ||
-  erro "Não consegui atualizar o arquivo do tema Plymouth."
-curl -fsSL --retry 2 "$ASSET_BASE/plymouth/callas/callas.script" \
-  -o "$plymouth_dir/callas.script" ||
-  erro "Não consegui atualizar o script do Plymouth."
+install -m 0644 "$CALLAS_RELEASE_DIR/callas.plymouth" "$plymouth_dir/callas.plymouth"
+install -m 0644 "$CALLAS_RELEASE_DIR/callas.script" "$plymouth_dir/callas.script"
 curl -fsSL --retry 2 "$ASSET_BASE/plymouth/callas/background.jpg" \
   -o "$plymouth_dir/background.jpg" ||
   erro "Não consegui atualizar a arte do Plymouth."
@@ -339,18 +251,16 @@ fi
 
 # Brave em Português do Brasil. O Bonjourr usa navigator.language no
 # primeiro carregamento para escolher o idioma padrão.
-install -d -o "$usuario" -g "$grupo" "$home/.config"
-brave_flags="$home/.config/brave-flags.conf"
-touch "$brave_flags"
-chown "$usuario:$grupo" "$brave_flags"
-grep -Fxq -- '--password-store=kwallet6' "$brave_flags" ||
-  printf '%s\n' '--password-store=kwallet6' >> "$brave_flags"
-if grep -Eq '^--lang=' "$brave_flags"; then
-  sed -i 's/^--lang=.*/--lang=pt-BR/' "$brave_flags"
-else
-  printf '%s\n' '--lang=pt-BR' >> "$brave_flags"
-fi
-chown "$usuario:$grupo" "$brave_flags"
+como_usuario python3 - <<'FLAGS'
+from pathlib import Path
+p=Path.home()/'.config/brave-flags.conf'
+p.parent.mkdir(parents=True, exist_ok=True)
+lines=p.read_text().splitlines() if p.exists() else []
+lines=[line for line in lines if not line.startswith('--lang=')]
+if '--password-store=kwallet6' not in lines: lines.append('--password-store=kwallet6')
+lines.append('--lang=pt-BR')
+p.write_text('\n'.join(lines)+'\n')
+FLAGS
 
 # Brave + Bonjourr
 install -d /etc/brave/policies/managed /etc/brave/policies/recommended /usr/share/callas-os
@@ -384,7 +294,7 @@ brave_pref="$home/.config/BraveSoftware/Brave-Browser/Default/Preferences"
 if ! pgrep -u "$usuario" -f '(^|/)(brave|brave-browser)( |$)' >/dev/null 2>&1; then
   if [[ -f "$brave_pref" ]]; then
     cp -a "$brave_pref" "$backup/Brave-Preferences" 2>/dev/null || true
-    python3 - "$brave_pref" <<'EOF'
+    como_usuario python3 - "$brave_pref" <<'EOF'
 import json, os, sys
 path=sys.argv[1]
 try:
@@ -407,7 +317,6 @@ os.makedirs(os.path.dirname(path), exist_ok=True)
 with open(path, "w", encoding="utf-8") as f:
     json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
 EOF
-    chown "$usuario:$grupo" "$brave_pref" 2>/dev/null || true
   elif [[ -d /opt/brave-bin ]]; then
     initial=/opt/brave-bin/initial_preferences
     python3 - "$initial" <<'EOF'
@@ -556,13 +465,4 @@ printf 'Backup desta aplicação: %s\n' "$backup"
 printf 'Abra Callas OS — Monitores no menu Sistema para escolher sua tela principal.\n'
 printf 'Algumas mudanças do KDE podem aparecer por completo após encerrar e iniciar a sessão.\n'
 
-printf '\n'
-read -r -p 'Deseja reiniciar o sistema agora? [Y/N]: ' resposta_reboot || resposta_reboot=N
-case $resposta_reboot in
-  Y|y|S|s)
-    printf 'Reiniciando agora...\n'
-    exec systemctl --quiet reboot --check-inhibitors=no --no-wall
-    ;;
-  *) printf 'Reinicialização adiada.\n' ;;
-esac
-
+printf 'Consulte os logs em Documentos/Logs do Callas OS.\n'

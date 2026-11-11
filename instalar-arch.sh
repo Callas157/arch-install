@@ -20,7 +20,18 @@ HOSTNAME="arch"
 FUSO="America/Sao_Paulo"
 LOCALE="pt_BR.UTF-8"
 TECLADO="us-acentos"   # console: EUA Internacional (com acentos)
+command -v python >/dev/null || { echo 'Python ausente na ISO oficial.' >&2; exit 1; }
 CALLAS_ASSET_REF="${CALLAS_ASSET_REF:-main}"
+if [[ $CALLAS_ASSET_REF == main ]]; then
+  CALLAS_ASSET_REF=$(python - <<'CALLAS_REF'
+import json, urllib.request
+req=urllib.request.Request('https://api.github.com/repos/Callas157/arch-install/git/ref/heads/main', headers={'User-Agent':'CallasOS-Installer'})
+with urllib.request.urlopen(req, timeout=60) as response:
+    print(json.load(response)['object']['sha'])
+CALLAS_REF
+  )
+fi
+[[ $CALLAS_ASSET_REF =~ ^[0-9a-f]{40}$ ]] || { echo 'Referência de instalação inválida.' >&2; exit 1; }
 CALLAS_ASSET_BASE="https://raw.githubusercontent.com/Callas157/arch-install/${CALLAS_ASSET_REF}/assets"
 CALLAS_PROGRAMAS_BASE="https://raw.githubusercontent.com/Callas157/arch-install/${CALLAS_ASSET_REF}/programas-callas-os"
 # -----------------------------------------------
@@ -164,6 +175,18 @@ import ast, sys
 ast.parse(open(sys.argv[1], encoding="utf-8").read())
 CALLAS_WINDOW_CHECK
 
+# Security helpers are staged before the destructive installation starts.
+CALLAS_SECURITY_TMP=$(mktemp -d)
+curl --proto '=https' --proto-redir '=https' -fsSL --retry 2 \
+  "https://raw.githubusercontent.com/Callas157/arch-install/$CALLAS_ASSET_REF/programas-callas-os/atualizador/callas-release.py" \
+  -o "$CALLAS_SECURITY_TMP/callas-release.py"
+python - "$CALLAS_SECURITY_TMP" "$CALLAS_ASSET_REF" <<'CALLAS_STAGE'
+import importlib.util, sys
+spec=importlib.util.spec_from_file_location('callas_release', sys.argv[1]+'/callas-release.py')
+module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+module.stage_files(sys.argv[1], sys.argv[2])
+CALLAS_STAGE
+
 # ---------------- Escolha do disco ----------------
 BOOTPART="$(findmnt -no SOURCE /run/archiso/bootmnt 2>/dev/null || true)"
 BOOTDISK=""
@@ -216,6 +239,10 @@ while true; do
   echo "As senhas não conferem, tente de novo."
 done
 
+# Full installation output, excluding hidden password input and without shell tracing.
+CALLAS_INSTALL_LOG=$(mktemp /var/tmp/callas-install.XXXXXXXX.log)
+exec > >(tee "$CALLAS_INSTALL_LOG") 2>&1
+
 # ---------------- Preparação da ISO ----------------
 timedatectl set-ntp true
 sed -i 's/^#ParallelDownloads.*/ParallelDownloads = 10/' /etc/pacman.conf
@@ -259,7 +286,7 @@ pacstrap -K /mnt \
   "${GPU_PACOTES[@]}" "${RISEMODE_PACOTES[@]}" plymouth \
   noto-fonts noto-fonts-emoji ttf-dejavu ttf-liberation \
   flatpak \
-  zram-generator
+  zram-generator ufw plasma-firewall
 
 genfstab -U /mnt > /mnt/etc/fstab
 
@@ -267,9 +294,13 @@ UUID_RAIZ="$(blkid -s UUID -o value "$RAIZ")"
 
 # ---------------- Arquivos integrados ----------------
 install -d /mnt/usr/local/libexec /mnt/usr/share/plymouth/themes/callas
-install -m 0755 "$CALLAS_MONITOR_TMP" /mnt/usr/local/libexec/callas-monitores
-install -m 0755 "$CALLAS_WINDOW_TMP" /mnt/usr/local/libexec/callas-janelas
+install -m 0755 "$CALLAS_SECURITY_TMP/callas-monitores.py" /mnt/usr/local/libexec/callas-monitores
+install -m 0755 "$CALLAS_SECURITY_TMP/callas-janelas.py" /mnt/usr/local/libexec/callas-janelas
 rm -f -- "$CALLAS_MONITOR_TMP" "$CALLAS_WINDOW_TMP"
+install -d -m 0700 /mnt/usr/local/share/callas-os/security-stage
+install -m 0600 "$CALLAS_SECURITY_TMP/"* /mnt/usr/local/share/callas-os/security-stage/
+printf '%s\n' "$CALLAS_ASSET_REF" > /mnt/usr/local/share/callas-os/security-stage/commit
+rm -rf -- "$CALLAS_SECURITY_TMP"
 install -d /mnt/usr/share/icons/hicolor/256x256/apps
 # Assets visuais do Callas OS ficam organizados no repositório.
 # Isso reduz bastante o tamanho do instalador e evita duplicar imagens em base64.
@@ -385,7 +416,7 @@ proxima_data() {
     local modo=$1 base=$2
     case $modo in
         apps) TZ=UTC0 date -d "$base +7 days" +%F ;;
-        sistema) TZ=UTC0 date -d "$base +1 month" +%F ;;
+        sistema) TZ=UTC0 date -d "$base +7 days" +%F ;;
         *) erro 'Agenda inválida.' ;;
     esac
 }
@@ -474,7 +505,7 @@ pasta_de_documentos() {
 
 pasta_de_logs() {
     local pasta
-    pasta="$(pasta_de_documentos)/Logs de Atualizações"
+    pasta="$(pasta_de_documentos)/Logs do Callas OS"
     umask 077
     mkdir -p -- "$pasta" || return
     printf '%s\n' "$pasta"
@@ -539,21 +570,15 @@ atualizar_arch() {
     fi
 }
 
-atualizar_aur() (
-    if [[ ! -x /usr/bin/paru || ! -f "$paru_conf" || ! -f "$sudo_template" ]]; then
-        printf 'Atualização do AUR indisponível. Instale o Paru e rode bash atualizador-do-sistema.sh para configurar.\n' >&2
-        return 1
-    fi
+atualizar_aur() {
+    printf 'AUR pendente de revisão manual: abra a opção 3 no menu. Nenhum pacote AUR foi instalado automaticamente.\n'
+}
 
-    # A conta de compilação só pode chamar o pacman durante esta etapa.
-    trap 'rm -f -- "$sudo_rule"' EXIT
-    trap 'exit 130' INT
-    trap 'exit 143' TERM
-    install -D -m 0440 "$sudo_template" "$sudo_rule" || return
-    runuser -u "$builder" -- env -i PATH=/usr/bin HOME="$builder_home" \
-        USER="$builder" LOGNAME="$builder" LANG=C.UTF-8 PARU_CONF="$paru_conf" \
-        /usr/bin/paru -Su --aur --noconfirm --skipreview --devel
-)
+atualizar_aur_manual() {
+    [[ -x /usr/bin/paru ]] || { printf 'Paru indisponível.\n'; return 1; }
+    printf '\nRevise as alterações dos PKGBUILDs antes de confirmar.\n'
+    /usr/bin/paru -Sua --review
+}
 
 atualizar_discord_integrado() (
     falhar() {
@@ -672,7 +697,7 @@ notificar_reinicio_usuario() {
         acao=$(notify-send -a 'Atualizador do sistema' -i system-reboot -u normal \
             -A reiniciar='Reiniciar agora' -A depois='Mais tarde' \
             'Atualização do sistema concluída' \
-            'A atualização mensal terminou. É recomendado reiniciar o computador.' || true)
+            'A atualização terminou. É recomendado reiniciar o computador.' || true)
     else
         acao=
     fi
@@ -722,6 +747,7 @@ atualizar_sistema() {
         printf 'A etapa do AUR aguarda uma atualização bem-sucedida do Arch.\n'
         return 1
     fi
+    etapa 'Kernels padrão/LTS e boot' /usr/local/libexec/callas-kernel-check || return
     if [[ -n $(pacman -Qmq) ]]; then
         etapa 'Aplicativos do AUR' atualizar_aur || return
     fi
@@ -746,6 +772,10 @@ atualizar_apps() {
 
 registrar_atualizacao() {
     local usuario=$1 modo=$2 origem=$3 home codigo=0
+    case $modo in
+      sistema) categoria='Sistema e Pacman' ;;
+      *) categoria='Aplicativos' ;;
+    esac
     home=$(home_do_usuario "$usuario")
     {
         printf '\n===== Atualização (%s, %s) | %s =====\n' "$modo" "$origem" "$(date -Is)"
@@ -770,7 +800,7 @@ registrar_atualizacao() {
         return "$codigo"
     } 2>&1 | {
         # O log é aberto com as permissões do usuário. O journal recebe a mesma saída.
-        como_usuario "$usuario" "$home" "$program" --log ||
+        como_usuario "$usuario" "$home" "$program" --log "$categoria" ||
             { printf 'Não foi possível gravar o log em Documentos.\n' >&2; return 1; }
     }
 }
@@ -842,7 +872,7 @@ instalar() {
     home=$(home_do_usuario "$usuario")
     origem=$(realpath -- "${BASH_SOURCE[0]}")
     exec 8>"$lock_atualizador"
-    flock -x 8
+    [[ ${CALLAS_UPDATE_LOCK_HELD:-0} == 1 ]] || flock -x 8
     temporario=$(mktemp -d)
     trap "rm -rf -- $(printf '%q' "$temporario")" EXIT
 
@@ -876,45 +906,16 @@ UNIT
     desativar_agendamento_antigo "$em_chroot"
     rm -f -- "$sudo_rule"
 
-    if [[ -x /usr/bin/paru ]]; then
-        install -d -m 0755 /var/lib/put-update
-        if ! getent passwd "$builder" >/dev/null; then
-            useradd --system --create-home --user-group --home-dir "$builder_home" \
-                --shell /usr/bin/nologin "$builder"
-        fi
-        conta=$(getent passwd "$builder" | cut -d: -f6-7)
-        [[ "$conta" == "$builder_home:/usr/bin/nologin" ]] ||
-            erro "A conta $builder já existe com outra configuração."
-        [[ -d "$builder_home" && ! -L "$builder_home" &&
-            "$(stat -c '%U' -- "$builder_home")" == "$builder" ]] ||
-            erro "Pasta da conta $builder inválida."
-        chmod 0700 "$builder_home"
-        if [[ -r /etc/callas/spotify-aur.gpg ]]; then
-            como_usuario "$builder" "$builder_home" /usr/bin/gpg --batch --import /etc/callas/spotify-aur.gpg ||
-                printf 'A chave do Spotify não foi importada para a conta que atualiza o AUR.\n' >&2
-        fi
-
-        cat > "$temporario/put-update-makepkg" <<'MAKEPKG'
-#!/usr/bin/bash
-exec /usr/bin/setpriv --no-new-privs -- /usr/bin/makepkg "$@"
-MAKEPKG
-        cat > "$temporario/put-update-paru.conf" <<'PARU'
-[bin]
-Makepkg = /usr/local/libexec/put-update-makepkg
-Sudo = /usr/bin/sudo
-SudoFlags = -n
-PARU
-        printf '%s ALL=(root) NOPASSWD: /usr/bin/pacman\n' "$builder" > "$temporario/put-update"
-        chmod 0440 "$temporario/put-update"
-        visudo -cf "$temporario/put-update" >/dev/null
-        install -D -m 0755 "$temporario/put-update-makepkg" /usr/local/libexec/put-update-makepkg
-        install -m 0644 "$temporario/put-update-paru.conf" "$paru_conf"
-        install -m 0440 "$temporario/put-update" "$sudo_template"
-    else
-        printf 'Paru ausente. A atualização do AUR ainda não foi configurada.\n'
-    fi
+    rm -f -- "$sudo_rule" "$sudo_template" "$paru_conf"
+    # AUR is reviewed interactively by the session user; no privileged builder.
 
     preparar_agenda
+    if [[ ! -f $agenda_dir/security-weekly-v1 ]]; then
+        hoje=$(date +%F)
+        vencimento=$(ler_data_agenda sistema)
+        [[ $vencimento < $hoje ]] || gravar_data_agenda sistema "$hoje"
+        touch "$agenda_dir/security-weekly-v1"
+    fi
     # O programa pode já ser a origem quando o automático é reconfigurado pelo atalho.
     if [[ $origem != "$program" ]]; then
         install -D -m 0755 -T -- "$origem" "$program"
@@ -922,8 +923,8 @@ PARU
     install -m 0644 -- "$temporario/$servico_check" "$temporario/$timer_check" /etc/systemd/system/
     instalar_entrada_menu "$temporario/${atalho_menu##*/}"
 
-    install -d -m 0755 "$home/.config/autostart"
-    cat > "$home/.config/autostart/callas-update-reinicio.desktop" <<'REBOOT_DESKTOP'
+    como_usuario "$usuario" "$home" mkdir -p "$home/.config/autostart"
+    como_usuario "$usuario" "$home" tee "$home/.config/autostart/callas-update-reinicio.desktop" >/dev/null <<'REBOOT_DESKTOP'
 [Desktop Entry]
 Type=Application
 Name=Notificação de reinício do Callas OS
@@ -933,7 +934,6 @@ NoDisplay=true
 StartupNotify=false
 X-KDE-AutostartScript=true
 REBOOT_DESKTOP
-    chown "$usuario:$(id -gn "$usuario")" "$home/.config/autostart/callas-update-reinicio.desktop"
 
     if (( em_chroot )); then
         systemctl --root=/ enable "$timer_check"
@@ -944,12 +944,12 @@ REBOOT_DESKTOP
     fi
 
     printf '\nAgendamento automático configurado.\n'
-    printf 'Atualização mensal do sistema vence em: %s.\n' "$(ler_data_agenda sistema)"
+    printf 'Atualização semanal do sistema vence em: %s.\n' "$(ler_data_agenda sistema)"
     printf 'Atualização semanal dos aplicativos vence em: %s.\n' "$(ler_data_agenda apps)"
     printf 'Se o PC estiver desligado no vencimento, a atualização roda no primeiro boot/verificação seguinte.\n'
     como_usuario "$usuario" "$home" "$program" --instalar-atalhos
     if pasta=$(como_usuario "$usuario" "$home" "$program" --log-dir); then
-        printf 'Log em Documentos: %s/atualizacoes.log\n' "$pasta"
+        printf 'Logs por categoria em Documentos: %s\n' "$pasta"
     else
         printf 'Não foi possível criar a pasta de logs em Documentos.\n' >&2
     fi
@@ -961,42 +961,8 @@ perguntar_reinicio() {
 }
 
 atualizar_config_callas() {
-    local temporario versao_remota versao_local resposta_forcar
-    temporario=$(mktemp)
-    trap 'rm -f -- "$temporario"' RETURN
-
-    # Bloqueia instalações antigas antes de pedir senha.
-    if [[ ! -x /etc/grub.d/09_callas || ! -f /etc/grub.d/10_linux || -x /etc/grub.d/10_linux ]]; then
-        printf '\nCallas Config Update indisponível nesta instalação.\n'
-        printf 'A estrutura do sistema é antiga e requer instalação limpa para receber novas configurações do Callas OS.\n'
-        return 0
-    fi
-
-    printf '\nVerificando Callas Config Update...\n'
-    curl -fsSL --retry 2 --connect-timeout 10 --max-time 120 \
-        "$config_update_url" -o "$temporario" ||
-        { printf 'Falha ao baixar o atualizador de configurações.\n' >&2; return 1; }
-
-    bash -n "$temporario" ||
-        { printf 'O arquivo baixado falhou na validação de sintaxe.\n' >&2; return 1; }
-
-    versao_remota=$(sed -n 's/^VERSAO="\\([^"]*\\)".*/\\1/p' "$temporario" | head -n1)
-    versao_local=
-    [[ -r /var/lib/callas-os/config-version ]] &&
-        read -r versao_local < /var/lib/callas-os/config-version || :
-
-    if [[ -n $versao_remota && $versao_local == "$versao_remota" ]]; then
-        printf 'Callas OS já está na versão de configuração %s.\n' "$versao_remota"
-        read -r -p 'Deseja reaplicar esta mesma versão à força? [s/N]: ' resposta_forcar || return 0
-        [[ $resposta_forcar =~ ^[sS]$ ]] || { printf 'Nenhuma alteração foi feita.\n'; return 0; }
-        sudo /usr/bin/bash "$temporario" --force
-        return
-    fi
-
-    if [[ -n $versao_remota ]]; then
-        printf 'Atualização disponível: %s -> %s\n' "${versao_local:-não instalada}" "$versao_remota"
-    fi
-    sudo /usr/bin/bash "$temporario"
+    # Root creates/downloads the stage; never sudo-execute a user-owned script.
+    sudo /usr/local/libexec/callas-release
 }
 
 menu() {
@@ -1009,16 +975,16 @@ menu() {
     while true; do
         printf '\n=== Atualizador do sistema ===\n'
         printf '%s\n' \
-            '1. Ativar ou reparar o automático (sistema mensal e aplicativos semanais)' \
+            '1. Ativar ou reparar o automático (sistema e aplicativos semanais; AUR manual)' \
             '2. Atualizar só os aplicativos agora (Flatpak e Discord)' \
-            '3. Atualizar só o sistema agora (Arch, pacman e AUR)' \
+            '3. Atualizar só o sistema agora (Arch/pacman e revisão do AUR)' \
             '4. Atualizar só o Discord agora' \
             '5. Callas OS Update' \
             '6. Sair'
         read -r -p 'Escolha [1-6] ou digite reboot: ' opcao || return 0
         case $opcao in
             1)
-                sudo /usr/bin/bash "$origem" --instalar ||
+                sudo "$program" --instalar ||
                     printf 'Falha ao configurar o automático. Confira a mensagem acima.\n' >&2
                 continue
                 ;;
@@ -1045,8 +1011,14 @@ menu() {
             printf 'Escolha a opção 1 para instalar esta versão antes de atualizar.\n'
             continue
         fi
-        sudo "$program" --manual "$modo" ||
+        if sudo "$program" --manual "$modo"; then
+            if [[ $modo == sistema ]]; then
+                atualizar_aur_manual 2>&1 | tee >(/usr/local/libexec/callas-logs --write AUR) ||
+                    printf 'A revisão/atualização do AUR não foi concluída.\n' >&2
+            fi
+        else
             printf 'Atualização com falha. Confira a mensagem acima e o log em Documentos.\n' >&2
+        fi
     done
 }
 
@@ -1112,10 +1084,8 @@ case ${1:-} in
         pasta_de_logs
         ;;
     --log)
-        (( EUID != 0 && $# == 1 )) || erro 'Use esta opção como usuário normal.'
-        pasta=$(pasta_de_logs)
-        umask 077
-        exec tee --output-error=warn -a -- "$pasta/atualizacoes.log"
+        (( EUID != 0 && $# == 2 )) || erro 'Use esta opção como usuário normal.'
+        /usr/bin/tee /dev/stderr | /usr/local/libexec/callas-logs --write "$2"
         ;;
     ''|--menu)
         (( EUID != 0 && $# <= 1 )) || erro 'Abra o atualizador com seu usuário normal, sem sudo.'
@@ -2077,6 +2047,11 @@ then
 fi
 
 # ---------------- Configuração dentro do sistema ----------------
+# Create accounts and set passwords over stdin before interactive AUR review.
+arch-chroot /mnt useradd -m -U -G wheel -s /bin/bash "$USUARIO"
+printf '%s:%s\n%s:%s\n' "$USUARIO" "$SENHA" root "$SENHA" | arch-chroot /mnt chpasswd
+unset SENHA SENHA2
+
 echo ">>> Configurando o sistema"
 arch-chroot /mnt /bin/bash -s -- "$USUARIO" "$FUSO" "$LOCALE" "$TECLADO" \
   "$HOSTNAME" "$UUID_RAIZ" "$NVIDIA" "$VM" "$BROADCOM" "$GPU_PCI" "$RISEMODE" "$AMD_GPU" "$INTEL_GPU" <<'CALLAS_CHROOT'
@@ -2129,9 +2104,7 @@ sed -i '/^#\[multilib\]/,/^#Include/ s/^#//' /etc/pacman.conf
 if (( nvidia )); then
   pacman -Syu --needed --noconfirm lib32-libglvnd egl-wayland
 
-  nvidia_dir=/tmp/callas-nvidia-610
-  rm -rf "$nvidia_dir"
-  install -d "$nvidia_dir"
+  nvidia_dir=$(mktemp -d /var/tmp/callas-nvidia.XXXXXXXX)
 
   nvidia_urls=(
     "https://archive.archlinux.org/packages/n/nvidia-utils/nvidia-utils-610.57.04-1-x86_64.pkg.tar.zst"
@@ -2148,6 +2121,9 @@ if (( nvidia )); then
       { echo "ERRO: não foi possível baixar ${url##*/} do Arch Linux Archive." >&2; exit 1; }
     curl -fL --retry 3 --connect-timeout 15 --max-time 60 "$url.sig" -o "$arquivo.sig" ||
       { echo "ERRO: assinatura ausente para ${url##*/}." >&2; exit 1; }
+    pacman-key --verify "$arquivo.sig" "$arquivo" || {
+      echo 'ERRO: assinatura NVIDIA inválida.' >&2; exit 1;
+    }
     nvidia_pkgs+=("$arquivo")
   done
 
@@ -2161,7 +2137,6 @@ if (( nvidia )); then
   rm -rf "$nvidia_dir"
 fi
 
-useradd -m -U -G wheel -s /bin/bash "$usuario"
 printf '%%wheel ALL=(ALL:ALL) ALL\n' > /etc/sudoers.d/10-wheel
 chmod 0440 /etc/sudoers.d/10-wheel
 visudo -cf /etc/sudoers.d/10-wheel >/dev/null
@@ -2413,8 +2388,8 @@ if (( risemode )); then
     install -Dm755 "$risemode_src/target/release/risemode-driver" /usr/local/bin/risemode-driver
 
     cat > /etc/udev/rules.d/99-risemode.rules <<'RISEMODE_UDEV'
-SUBSYSTEM=="hidraw", ATTRS{idVendor}=="aa88", ATTRS{idProduct}=="8666", MODE="0666", TAG+="uaccess"
-SUBSYSTEM=="usb", ATTRS{idVendor}=="aa88", ATTRS{idProduct}=="8666", MODE="0666", TAG+="uaccess"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="aa88", ATTRS{idProduct}=="8666", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="aa88", ATTRS{idProduct}=="8666", MODE="0660", TAG+="uaccess"
 RISEMODE_UDEV
 
     cat > /etc/systemd/system/risemode-driver.service <<'RISEMODE_SERVICE'
@@ -2433,7 +2408,7 @@ WantedBy=multi-user.target
 RISEMODE_SERVICE
 
     systemctl enable risemode-driver.service
-    echo "Driver Rise Mode instalado e habilitado para iniciar com o sistema."
+    echo 'Driver Rise Mode preparado; o ajuste de segurança cria conta dedicada antes do primeiro boot.'
   else
     aviso 'O water cooler Rise Mode foi detectado, mas o driver não pôde ser compilado. A instalação do Callas OS continuará.'
     rm -f /usr/local/bin/risemode-driver /etc/udev/rules.d/99-risemode.rules /etc/systemd/system/risemode-driver.service
@@ -2467,19 +2442,22 @@ fi
 # O mesmo Paru serve para a instalação inicial e para o atualizador.
 temporario_aur=$(mktemp -d)
 chown "$usuario:$usuario" "$temporario_aur"
-sudo_temporario=/etc/sudoers.d/99-callas-instalacao
 limpar_aur() {
-  rm -f -- "$sudo_temporario"
   rm -rf -- "$temporario_aur"
 }
 trap limpar_aur EXIT
-printf '%s ALL=(root) NOPASSWD: /usr/bin/pacman\n' "$usuario" > "$sudo_temporario"
-chmod 0440 "$sudo_temporario"
-visudo -cf "$sudo_temporario" >/dev/null
 if como_usuario git clone --depth 1 https://aur.archlinux.org/paru-bin.git "$temporario_aur/paru-bin" &&
-   como_usuario bash -c 'cd "$1" && makepkg -si --needed --noconfirm' bash "$temporario_aur/paru-bin" </dev/null; then
+   como_usuario bash -c '
+     cd "$1"
+     printf "\nRevise o pacote de inicialização do Paru:\n"
+     git --no-pager show HEAD:PKGBUILD
+     git --no-pager show HEAD:.SRCINFO
+     read -r -p "Instalar este PKGBUILD após a revisão? [s/N]: " resposta </dev/tty
+     [[ $resposta =~ ^[sS]$ ]] || exit 1
+     makepkg -si --needed </dev/tty
+   ' bash "$temporario_aur/paru-bin"; then
   instalar_aur() {
-    como_usuario paru -S --needed --noconfirm --skipreview "$@" </dev/null ||
+    como_usuario paru -S --needed --review "$@" </dev/tty ||
       { aviso "Falha ao instalar via AUR: $*."; return 1; }
   }
   instalar_aur brave-bin || :
@@ -2546,7 +2524,7 @@ cat > /etc/brave/policies/recommended/callas-defaults.json <<'CALLAS_BRAVE_DEFAU
 }
 CALLAS_BRAVE_DEFAULTS
 
-curl -fsSL --retry 2 "https://raw.githubusercontent.com/Callas157/arch-install/main/assets/bonjourr/callas-profile.json" \
+curl -fsSL --retry 2 "${CALLAS_ASSET_BASE}/bonjourr/callas-profile.json" \
   -o /usr/share/callas-os/bonjourr-profile.json ||
   aviso 'Não consegui baixar o perfil padrão do Bonjourr.'
 
@@ -2629,14 +2607,20 @@ como_usuario "$libexec/callas-inicio-kde" || aviso 'Não consegui aplicar o iní
 
 "$libexec/callas-kde-desligamento-login" --preparar-instalacao ||
   aviso 'O ajuste de desligamento ou do tema de login precisa ser conferido.'
-"$libexec/put-update" --instalar-para "$usuario" || aviso 'Não consegui instalar o atualizador do sistema.'
+export CALLAS_RELEASE_DIR=/usr/local/share/callas-os/security-stage
+export CALLAS_RELEASE_REF=$(< "$CALLAS_RELEASE_DIR/commit")
+SUDO_USER="$usuario" bash "$CALLAS_RELEASE_DIR/callas-security.sh" "$usuario" --installation
+rm -rf -- "$CALLAS_RELEASE_DIR"
 como_usuario "$libexec/callas-nekofetch" || aviso 'Não consegui configurar o Nekofetch.'
 
 CALLAS_CHROOT
 
-# Senhas pelo stdin, sem interpolar em código ou passar na linha de comando.
-printf '%s:%s\n%s:%s\n' "$USUARIO" "$SENHA" root "$SENHA" | arch-chroot /mnt chpasswd
-unset SENHA SENHA2
+# Exporta o log da instalação concluída.
+install -d -m 0700 '/mnt/var/log/callas-os/Instalacao'
+install -m 0600 "$CALLAS_INSTALL_LOG" "/mnt/var/log/callas-os/Instalacao/$(date +%Y-%m-%d_%H-%M-%S).log"
+arch-chroot /mnt /usr/local/libexec/callas-logs --export "$USUARIO" ||
+  echo 'Aviso: não consegui exportar o log de instalação para Documentos.'
+
 
 echo
 echo "=========================================================="
@@ -2646,4 +2630,5 @@ if [[ -s /mnt/var/log/callas-instalacao-avisos.log ]]; then
 fi
 echo " Remova o pendrive e digite: reboot"
 echo "=========================================================="
+
 

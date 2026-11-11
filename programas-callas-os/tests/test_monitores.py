@@ -315,18 +315,17 @@ if(ps[0].screen!==0 || !logs.includes('CALLAS_OK')) throw Error('panel');
         self.assertFalse(Path(call[call.index('-o')+1]).exists())
 
     def test_update_migrates_installed_updater_to_new_url(self):
-        text = (ROOT / 'atualizador/callas-config-update.sh').read_text()
-        code = text.split('python - "$put_update" <<\'PY\'\n', 1)[1].split('\nPY\n', 1)[0]
+        # Migration replaces the complete root-owned updater, rather than
+        # editing downloaded/user-controlled shell code with text substitutions.
+        text = (ROOT / 'atualizador/callas-security.sh').read_text()
+        self.assertIn('put-update.sh) target=put-update', text)
+        self.assertIn('install -o root -g root -m 0755', text)
         installer = (REPO / 'instalar-arch.sh').read_text()
         program = installer.split("<<'CALLAS_UPDATER'\n", 1)[1].split('\nCALLAS_UPDATER\n', 1)[0]
-        new = 'https://raw.githubusercontent.com/Callas157/arch-install/main/programas-callas-os/atualizador/callas-config-update.sh'
-        old = 'https://raw.githubusercontent.com/Callas157/arch-install/main/callas-config-update.sh'
-        target = self.base / 'put-update'
-        target.write_text(program.replace(new, old))
-        subprocess.run([sys.executable, '-', str(target)], input=code, text=True, check=True)
-        self.assertIn('config_update_url='+new, target.read_text())
-        self.assertNotIn('config_update_url='+old+'\n', target.read_text())
-        subprocess.run(['bash', '-n', str(target)], check=True)
+        canonical = (ROOT / 'atualizador/put-update.sh').read_text().rstrip('\n')
+        self.assertEqual(program, canonical)
+        self.assertIn('sudo /usr/local/libexec/callas-release', program)
+        subprocess.run(['bash', '-n'], input=program, text=True, check=True)
 
     def test_program_sources_are_organized_and_version_matches_bridge(self):
         import re
@@ -344,8 +343,9 @@ if(ps[0].screen!==0 || !logs.includes('CALLAS_OK')) throw Error('panel');
         installer = (REPO / 'instalar-arch.sh').read_text()
         self.assertIn('$CALLAS_PROGRAMAS_BASE/monitores/callas-monitores.py', installer)
         self.assertIn('$CALLAS_PROGRAMAS_BASE/janelas/callas-janelas.py', installer)
-        self.assertIn('$PROGRAMAS_BASE/$subpasta/$nome', canonical)
+        self.assertIn('$CALLAS_RELEASE_DIR/$nome', canonical)
 
 
 if __name__ == '__main__':
     unittest.main()
+
