@@ -226,7 +226,7 @@ Existem duas rotinas automáticas principais; a completa já inclui a etapa de a
 | Rotina | Frequência | O que atualiza |
 | --- | --- | --- |
 | Aplicativos | A cada **7 dias** | Flatpaks e atualização própria do Discord |
-| Atualização completa | A cada **7 dias**, ou pela opção **3** | Arch, AUR, recompilações sinalizadas, Flatpaks, Discord e validação final dos kernels/boot; NVIDIA preservada |
+| Atualização completa | A cada **7 dias**, ou pela opção **4** | Arch, AUR, recompilações sinalizadas, Flatpaks, Discord e validação final dos kernels/boot; NVIDIA preservada |
 
 Não existe um horário ou dia fixo. Os vencimentos são calculados a partir da instalação e da última execução concluída com sucesso.
 
@@ -316,7 +316,7 @@ A primeira migração de um cliente antigo ainda passa pelo mecanismo de downloa
 
 ### Atualização completa sem perguntas intermediárias
 
-A opção **3. Atualizar tudo agora** e a rotina semanal executam, em ordem:
+A opção **4. Atualizar tudo** e a rotina semanal executam, em ordem:
 
 1. Backup de recuperação e atualização completa do Arch, incluindo os aplicativos oficiais.
 2. Consulta do AUR pelo Paru, resolução de dependências e atualização dos pacotes externos. `rebuild-detector` sinaliza recompilações; pacotes de desenvolvimento com sufixo `-git`, `-svn`, `-hg`, `-bzr`, `-darcs` ou `-cvs` são recompilados nessa rotina para acompanhar suas fontes.
@@ -324,7 +324,7 @@ A opção **3. Atualizar tudo agora** e a rotina semanal executam, em ordem:
 4. Verificação final dos kernels padrão/LTS, DKMS, initramfs e GRUB.
 5. Depois de salvar o resultado e a agenda, notificação com **Reiniciar agora** ou **Mais tarde**. Não há reinício forçado; uma notificação de um boot anterior é descartada.
 
-A opção **2** atualiza somente os Flatpaks, sem fechar nem atualizar o Discord. A opção **4** atualiza somente o Discord. Aplicativos nativos dos repositórios oficiais e AUR são mantidos na transação completa, junto das dependências do sistema. Uma execução manual pode pedir a senha administrativa no início, mas não solicita revisão/confirmação de cada pacote durante o processo.
+A opção **2** atualiza somente os Flatpaks, sem fechar nem atualizar o Discord. A opção **3** atualiza somente o Discord. Aplicativos nativos dos repositórios oficiais e AUR são mantidos na transação completa, junto das dependências do sistema. Uma execução manual pode pedir a senha administrativa no início, mas não solicita revisão/confirmação de cada pacote durante o processo.
 
 **Consequência da automação:** não existe revisão humana dos PKGBUILDs durante a rotina completa. O isolamento limita a compilação, mas não certifica que um pacote é benigno: scripts de instalação de um pacote AUR ainda podem rodar como root. Não se afirma que o automático faz uma auditoria de malware. Checksums e assinaturas de fontes continuam sendo verificados; chaves declaradas pela receita podem ser obtidas automaticamente pelo fingerprint, sem desativar a verificação.
 

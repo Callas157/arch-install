@@ -1005,9 +1005,9 @@ menu() {
         printf '\n=== Atualizador do sistema ===\n'
         printf '%s\n' \
             '1. Ativar ou reparar o automático (atualização completa semanal)' \
-            '2. Atualizar somente os Flatpaks' \
-            '3. Atualizar tudo agora (Arch, AUR, Flatpak e Discord)' \
-            '4. Atualizar só o Discord agora' \
+            '2. Atualizar Flatpaks' \
+            '3. Atualizar Discord' \
+            '4. Atualizar tudo' \
             '5. Callas OS Update' \
             '6. Sair'
         read -r -p 'Escolha [1-6] ou digite reboot: ' opcao || return 0
@@ -1018,8 +1018,8 @@ menu() {
                 continue
                 ;;
             2) modo=flatpaks ;;
-            3) modo=sistema ;;
-            4) modo=discord ;;
+            3) modo=discord ;;
+            4) modo=sistema ;;
             5)
                 if atualizar_config_callas; then
                     perguntar_reinicio
