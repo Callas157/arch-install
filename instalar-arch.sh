@@ -2226,6 +2226,7 @@ Theme=callas
 ShowDelay=0
 UseFirmwareBackground=false
 PLYMOUTH_CONF
+plymouth-set-default-theme callas
 # O hook microcode incorpora o microcódigo Intel ou AMD no initramfs.
 sed -i 's/^HOOKS=.*/HOOKS=(base systemd autodetect microcode modconf kms plymouth keyboard sd-vconsole block filesystems fsck)/' /etc/mkinitcpio.conf
 nvidia_args=
