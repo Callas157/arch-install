@@ -22,6 +22,7 @@ LOCALE="pt_BR.UTF-8"
 TECLADO="us-acentos"   # console: EUA Internacional (com acentos)
 CALLAS_ASSET_REF="${CALLAS_ASSET_REF:-main}"
 CALLAS_ASSET_BASE="https://raw.githubusercontent.com/Callas157/arch-install/${CALLAS_ASSET_REF}/assets"
+CALLAS_PROGRAMAS_BASE="https://raw.githubusercontent.com/Callas157/arch-install/${CALLAS_ASSET_REF}/programas-callas-os"
 # -----------------------------------------------
 
 if [[ $EUID -ne 0 ]]; then
@@ -148,7 +149,7 @@ fi
 command -v python >/dev/null || { echo "ERRO: Python ausente na ISO. Instale com pacman -Sy python antes de continuar."; exit 1; }
 CALLAS_MONITOR_TMP=$(mktemp)
 curl -fsSL --retry 2 --connect-timeout 10 --max-time 120 \
-  "https://raw.githubusercontent.com/Callas157/arch-install/${CALLAS_ASSET_REF}/callas-monitores.py" \
+  "$CALLAS_PROGRAMAS_BASE/monitores/callas-monitores.py" \
   -o "$CALLAS_MONITOR_TMP"
 python - "$CALLAS_MONITOR_TMP" <<'CALLAS_MONITOR_CHECK'
 import ast, sys
@@ -156,7 +157,7 @@ ast.parse(open(sys.argv[1], encoding="utf-8").read())
 CALLAS_MONITOR_CHECK
 CALLAS_WINDOW_TMP=$(mktemp)
 curl -fsSL --retry 2 --connect-timeout 10 --max-time 120 \
-  "https://raw.githubusercontent.com/Callas157/arch-install/${CALLAS_ASSET_REF}/callas-janelas.py" \
+  "$CALLAS_PROGRAMAS_BASE/janelas/callas-janelas.py" \
   -o "$CALLAS_WINDOW_TMP"
 python - "$CALLAS_WINDOW_TMP" <<'CALLAS_WINDOW_CHECK'
 import ast, sys
@@ -373,7 +374,7 @@ builder_home=/var/lib/put-update/aur
 paru_conf=/etc/put-update-paru.conf
 sudo_template=/etc/put-update-aur.sudoers
 sudo_rule=/etc/sudoers.d/put-update
-config_update_url=https://raw.githubusercontent.com/Callas157/arch-install/main/callas-config-update.sh
+config_update_url=https://raw.githubusercontent.com/Callas157/arch-install/main/programas-callas-os/atualizador/callas-config-update.sh
 
 erro() {
     printf 'Erro: %s\n' "$*" >&2

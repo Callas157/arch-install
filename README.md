@@ -167,7 +167,7 @@ A Área de Trabalho principal exibe a pasta padrão de atalhos. Nas outras telas
 
 ### Memória de janelas — patch automático
 
-A memória de janelas é um ajuste independente do configurador de monitores. A opção **5. Callas OS Update** instala `callas-janelas.py` e ativa as regras nativas **Lembrar** do KWin automaticamente na sessão Plasma do usuário. Não é necessário abrir o configurador, escolher uma tela ou ativar uma opção manual de aprendizado. A ativação usa o serviço de usuário `callas-janelas.service`; o script de monitores não instala nem inicializa regras de aprendizado.
+A memória de janelas é um ajuste independente do configurador de monitores. A opção **5. Callas OS Update** instala `programas-callas-os/janelas/callas-janelas.py` e ativa as regras nativas **Lembrar** do KWin automaticamente na sessão Plasma do usuário. Não é necessário abrir o configurador, escolher uma tela ou ativar uma opção manual de aprendizado. A ativação usa o serviço de usuário `callas-janelas.service`; o script de monitores não instala nem inicializa regras de aprendizado.
 
 Em instalações novas, esse ajuste também é instalado e ativado silenciosamente no login KDE. A rotina pode executar novamente para completar atributos ainda não aprendidos, mas preserva os valores já salvos. Se não houver sessão gráfica ativa durante a atualização, a ativação ocorre no próximo login. A ferramenta de monitores continua sendo aberta manualmente; não foi adicionada uma janela automática no primeiro login.
 
@@ -181,7 +181,7 @@ Backups locais das configurações alteradas ficam em `~/.config/callas-os/monit
 
 ### Validação de monitores
 
-Verificações automatizadas: `python -m unittest discover -s tests -v`. Elas cobrem seleção, cancelamento, desconexão durante a escolha, prioridades sem alteração de modos, preservação de regras, favoritos e scripts do Plasma. Também é necessário validar em uma sessão gráfica real; os testes automatizados não simulam a GPU, os painéis físicos ou o greeter.
+Verificações automatizadas: `python -m unittest discover -s programas-callas-os/tests -v`. Elas cobrem seleção, cancelamento, desconexão durante a escolha, prioridades sem alteração de modos, preservação de regras, favoritos e scripts do Plasma. Também é necessário validar em uma sessão gráfica real; os testes automatizados não simulam a GPU, os painéis físicos ou o greeter.
 
 Roteiro de aceitação em instalação limpa ou atualizada:
 
@@ -245,13 +245,28 @@ Antes das atualizações mensais, o sistema também guarda dados de recuperaçã
 
 ---
 
+## Organização do repositório
+
+| Caminho | Conteúdo |
+| --- | --- |
+| `instalar-arch.sh` | Instalador principal, no mesmo endereço de sempre |
+| `assets/` | Recursos visuais e arquivos de temas existentes |
+| `programas-callas-os/monitores/` | Configurador de monitores e auxiliar do login |
+| `programas-callas-os/janelas/` | Memória automática das janelas |
+| `programas-callas-os/sessao/` | Configuração de inicialização do KDE |
+| `programas-callas-os/atualizador/` | Código completo do Callas OS Update |
+| `programas-callas-os/tests/` | Testes dos programas |
+| `callas-config-update.sh` na raiz | Ponte de compatibilidade para atualizadores antigos |
+
+A ponte da raiz baixa e valida o atualizador no caminho novo. Ao atualizar, o programa instalado passa a consultar diretamente esse caminho. A ponte permanece para instalações que ainda não receberam a migração; removê-la quebraria o endereço usado por essas máquinas. Não há mudança nos links do instalador nem nos caminhos dos recursos visuais.
+
 ## Callas OS Update
 
 Além das atualizações normais do Arch Linux e dos aplicativos, existe a opção de atualizar as **configurações do Callas OS**.
 
 O arquivo responsável por isso é:
 
-`callas-config-update.sh`
+`programas-callas-os/atualizador/callas-config-update.sh`
 
 Essa rotina pode distribuir mudanças consideradas seguras para sistemas já instalados, por exemplo:
 

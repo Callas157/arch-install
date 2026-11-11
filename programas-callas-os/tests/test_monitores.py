@@ -1,5 +1,5 @@
 """Regression checks without a running Plasma/SDDM session.
-Run: python -m unittest discover -s tests -v
+Run: python -m unittest discover -s programas-callas-os/tests -v
 Hardware acceptance steps are documented in README; these are not GUI tests.
 """
 import configparser
@@ -14,10 +14,11 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location('monitores', ROOT / 'callas-monitores.py')
+REPO = ROOT.parent
+spec = importlib.util.spec_from_file_location('monitores', ROOT / 'monitores/callas-monitores.py')
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
-window_spec = importlib.util.spec_from_file_location('janelas', ROOT / 'callas-janelas.py')
+window_spec = importlib.util.spec_from_file_location('janelas', ROOT / 'janelas/callas-janelas.py')
 win = importlib.util.module_from_spec(window_spec)
 window_spec.loader.exec_module(win)
 
@@ -132,11 +133,11 @@ if(ps[0].screen!==0 || !logs.includes('CALLAS_OK')) throw Error('panel');
         self.assertNotIn('remove()', js)
 
     def test_installer_helpers_match_update_sources(self):
-        installer = (ROOT / 'instalar-arch.sh').read_text()
+        installer = (REPO / 'instalar-arch.sh').read_text()
         for name, delim in [('callas-inicio-kde', 'CALLAS_KDE_START'), ('callas-kde-desligamento-login', 'CALLAS_KDE_LOGIN')]:
             embedded = installer.split("<<'"+delim+"'\n", 1)[1].split('\n'+delim+'\n', 1)[0]+'\n'
-            self.assertEqual(embedded, (ROOT / (name+'.sh')).read_text())
-        startup = (ROOT / 'callas-inicio-kde.sh').read_text()
+            self.assertEqual(embedded, (ROOT / ('sessao' if name == 'callas-inicio-kde' else 'monitores') / (name+'.sh')).read_text())
+        startup = (ROOT / 'sessao/callas-inicio-kde.sh').read_text()
         self.assertIn('"emptySession"', startup)
         self.assertNotIn('--start-minimized', startup)
         self.assertNotIn('or outro_app_do_usuario', startup)
@@ -178,7 +179,7 @@ if(ps[0].screen!==0 || !logs.includes('CALLAS_OK')) throw Error('panel');
         browser = auto / 'brave.desktop'
         browser.write_text('[Desktop Entry]\nType=Application\nName=Brave\nExec=brave\n')
         before = unknown.read_bytes()
-        code = (ROOT / 'callas-inicio-kde.sh').read_text().split("python3 - <<'PY'\n", 1)[1].split('\nPY', 1)[0]
+        code = (ROOT / 'sessao/callas-inicio-kde.sh').read_text().split("python3 - <<'PY'\n", 1)[1].split('\nPY', 1)[0]
         settings = self.base / 'discord/settings.json'
         settings.parent.mkdir()
         settings.write_text('{"windowBounds":{"x":1920,"y":0,"width":960,"height":1080}}')
@@ -195,7 +196,7 @@ if(ps[0].screen!==0 || !logs.includes('CALLAS_OK')) throw Error('panel');
         self.assertEqual(json.loads(settings.read_text())['windowBounds']['x'], 1920)
 
     def test_login_theme_patch_is_idempotent_and_keeps_wallpaper(self):
-        text = (ROOT / 'callas-kde-desligamento-login.sh').read_text()
+        text = (ROOT / 'monitores/callas-kde-desligamento-login.sh').read_text()
         func = text.split('ajustar_tema_sddm() {', 1)[1].split('\ninstalar_tema_sddm()', 1)[0]
         qml = self.base / 'Main.qml'
         qml.write_text('import QtQuick\nItem {\n Item {\n id: wallpaper\n }\n MouseArea {\n id: loginScreenRoot\n }\n}\n')
@@ -248,8 +249,8 @@ if(ps[0].screen!==0 || !logs.includes('CALLAS_OK')) throw Error('panel');
         self.assertNotIn('callas-monitores', ''.join(written.values()))
 
     def test_update_activates_memory_and_install_does_not_open_monitor_tool(self):
-        updater = (ROOT / 'callas-config-update.sh').read_text()
-        installer = (ROOT / 'instalar-arch.sh').read_text()
+        updater = (ROOT / 'atualizador/callas-config-update.sh').read_text()
+        installer = (REPO / 'instalar-arch.sh').read_text()
         self.assertIn('start callas-janelas.service', updater)
         self.assertIn('DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_sessao/bus" systemctl --user', updater)
         self.assertIn('"$libexec/callas-janelas" --install-system', installer)
@@ -285,6 +286,65 @@ if(ps[0].screen!==0 || !logs.includes('CALLAS_OK')) throw Error('panel');
             self.assertEqual(rule['size'], '960,900')
             self.assertEqual(rule['maximizehorizrule'], '4')
             self.assertTrue(list((win.STATE / 'window-backups').glob('*/kwinrulesrc')))
+
+    def test_old_url_bridge_forwards_arguments_and_cleans_download(self):
+        import os
+        bindir = self.base / 'bin'
+        bindir.mkdir()
+        fake_curl = bindir / 'curl'
+        fake_curl.write_text('#!/usr/bin/env python3\nimport json,os,sys\nfrom pathlib import Path\na=sys.argv[1:]\nPath(os.environ["TEST_CURL_LOG"]).write_text(json.dumps(a))\nPath(a[a.index("-o")+1]).write_text(os.environ["TEST_CURL_BODY"])\n')
+        fake_curl.chmod(0o755)
+        log = self.base / 'curl.json'
+        args = self.base / 'args.txt'
+        env = dict(os.environ, PATH=str(bindir)+os.pathsep+os.environ['PATH'],
+                   TEST_CURL_LOG=str(log), TEST_ARGS=str(args),
+                   TEST_CURL_BODY='printf "%s\\n" "$@" > "$TEST_ARGS"\nexit 7\n')
+        result = subprocess.run(['bash', str(REPO / 'callas-config-update.sh'), '--force', 'argument with spaces'], env=env)
+        self.assertEqual(result.returncode, 7)
+        self.assertEqual(args.read_text().splitlines(), ['--force', 'argument with spaces'])
+        call = json.loads(log.read_text())
+        self.assertIn('/programas-callas-os/atualizador/callas-config-update.sh', next(x for x in call if x.startswith('https://')))
+        self.assertFalse(Path(call[call.index('-o')+1]).exists())
+        # A malformed downloaded script is rejected before execution.
+        args.unlink()
+        env['TEST_CURL_BODY'] = 'if then\nprintf bad > "$TEST_ARGS"\n'
+        result = subprocess.run(['bash', str(REPO / 'callas-config-update.sh')], env=env, capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(args.exists())
+        call = json.loads(log.read_text())
+        self.assertFalse(Path(call[call.index('-o')+1]).exists())
+
+    def test_update_migrates_installed_updater_to_new_url(self):
+        text = (ROOT / 'atualizador/callas-config-update.sh').read_text()
+        code = text.split('python - "$put_update" <<\'PY\'\n', 1)[1].split('\nPY\n', 1)[0]
+        installer = (REPO / 'instalar-arch.sh').read_text()
+        program = installer.split("<<'CALLAS_UPDATER'\n", 1)[1].split('\nCALLAS_UPDATER\n', 1)[0]
+        new = 'https://raw.githubusercontent.com/Callas157/arch-install/main/programas-callas-os/atualizador/callas-config-update.sh'
+        old = 'https://raw.githubusercontent.com/Callas157/arch-install/main/callas-config-update.sh'
+        target = self.base / 'put-update'
+        target.write_text(program.replace(new, old))
+        subprocess.run([sys.executable, '-', str(target)], input=code, text=True, check=True)
+        self.assertIn('config_update_url='+new, target.read_text())
+        self.assertNotIn('config_update_url='+old+'\n', target.read_text())
+        subprocess.run(['bash', '-n', str(target)], check=True)
+
+    def test_program_sources_are_organized_and_version_matches_bridge(self):
+        import re
+        expected = ['monitores/callas-monitores.py', 'monitores/callas-kde-desligamento-login.sh',
+                    'janelas/callas-janelas.py', 'sessao/callas-inicio-kde.sh',
+                    'atualizador/callas-config-update.sh', 'tests/test_monitores.py']
+        for relative in expected:
+            self.assertTrue((ROOT / relative).is_file(), relative)
+        for name in ['callas-monitores.py', 'callas-janelas.py', 'callas-inicio-kde.sh', 'callas-kde-desligamento-login.sh', 'tests']:
+            self.assertFalse((REPO / name).exists(), name)
+        bridge = (REPO / 'callas-config-update.sh').read_text()
+        canonical = (ROOT / 'atualizador/callas-config-update.sh').read_text()
+        self.assertEqual(re.search(r'^VERSAO="([^"]+)"', bridge, re.M)[1],
+                         re.search(r'^VERSAO="([^"]+)"', canonical, re.M)[1])
+        installer = (REPO / 'instalar-arch.sh').read_text()
+        self.assertIn('$CALLAS_PROGRAMAS_BASE/monitores/callas-monitores.py', installer)
+        self.assertIn('$CALLAS_PROGRAMAS_BASE/janelas/callas-janelas.py', installer)
+        self.assertIn('$PROGRAMAS_BASE/$subpasta/$nome', canonical)
 
 
 if __name__ == '__main__':
