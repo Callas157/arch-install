@@ -2306,6 +2306,10 @@ chmod 0755 /etc/grub.d/09_callas
 # ser reativado manualmente em recuperação, mas não entra no grub.cfg normal.
 chmod -x /etc/grub.d/10_linux
 
+# Marca a arquitetura de GRUB compatível com o Callas Config Update atual.
+install -d /etc/callas-os
+printf '%s\n' 'grub-custom-v2' > /etc/callas-os/grub-layout
+
 # Mantém essa arquitetura após futuras atualizações do pacote grub.
 install -d /usr/local/libexec /etc/pacman.d/hooks
 cat > /usr/local/libexec/callas-grub-custom <<'CALLAS_GRUB_CUSTOM'
