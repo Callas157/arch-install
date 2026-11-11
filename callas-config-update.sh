@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.10.13"
+VERSAO="2026.11.10.14"
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/main"
 ASSET_BASE="$BASE_RAW/assets"
 ESTADO_DIR="/var/lib/callas-os"
@@ -105,18 +105,20 @@ if lspci -Dn 2>/dev/null | grep -qi '10de:'; then
   printf '%s\n' '610.57.04' > /etc/callas-nvidia-version
 fi
 
-# GRUB: usa o mesmo wallpaper no terminal transitório de carregamento.
+# GRUB: restaura apenas o tema estável do Callas OS.
+# Não altera terminal-box nem tenta forçar transparência.
 install -d /boot/grub/themes/callas
 
-curl -fsSL --retry 2 "$ASSET_BASE/grub/theme.txt"   -o /boot/grub/themes/callas/theme.txt ||
+curl -fsSL --retry 2 "$ASSET_BASE/grub/theme.txt" \
+  -o /boot/grub/themes/callas/theme.txt ||
   erro "Não consegui atualizar o tema do GRUB."
-curl -fsSL --retry 2 "$ASSET_BASE/grub/background.png"   -o /boot/grub/themes/callas/background.png ||
+curl -fsSL --retry 2 "$ASSET_BASE/grub/background.png" \
+  -o /boot/grub/themes/callas/background.png ||
   erro "Não consegui atualizar o wallpaper do GRUB."
 
-# O GRUB procura terminal_box_c.png para preencher o centro do terminal.
-# Usamos exatamente o mesmo wallpaper; como o terminal ocupa 100% da tela,
-# visualmente ele continua a imagem do menu em vez de desenhar um bloco preto.
-cp -f /boot/grub/themes/callas/background.png   /boot/grub/themes/callas/terminal_box_c.png
+rm -f /boot/grub/themes/callas/terminal_box_c.png
+rm -f /usr/local/libexec/callas-grub-silencioso
+rm -f /etc/pacman.d/hooks/99-callas-grub-silencioso.hook
 
 cp -a /etc/default/grub "$backup/etc__default__grub" 2>/dev/null || true
 cp -a /boot/grub/grub.cfg "$backup/boot__grub__grub.cfg" 2>/dev/null || true
@@ -128,7 +130,7 @@ if grub-mkconfig -o "$grub_tmp" && [[ -s "$grub_tmp" ]] &&
   mv -f "$grub_tmp" /boot/grub/grub.cfg
 else
   rm -f "$grub_tmp"
-  erro "Falha ao validar a nova configuração do GRUB; o grub.cfg anterior foi preservado."
+  erro "Falha ao validar a configuração do GRUB; o grub.cfg anterior foi preservado."
 fi
 
 # Flatpaks padrão do Callas OS.
