@@ -2246,7 +2246,6 @@ install -m 0644 /usr/share/callas-os/grub/background.png /boot/grub/themes/calla
 # Plymouth permanece integrado ao initramfs; sem atrasos artificiais no carregamento.
 cat > /etc/default/grub <<GRUB_DEFAULTS
 GRUB_DEFAULT=0
-GRUB_TOP_LEVEL="/boot/vmlinuz-linux"
 GRUB_TIMEOUT=3
 GRUB_TIMEOUT_STYLE=menu
 GRUB_DISTRIBUTOR="Callas OS"
@@ -2270,38 +2269,83 @@ GRUB_DEFAULTS
 efi_uuid="$(findmnt -no UUID /boot)"
 [[ -n "$efi_uuid" ]] || { echo "ERRO: não consegui obter o UUID da ESP." >&2; exit 1; }
 
-# Segunda opção para diagnóstico, sem Plymouth e com mensagens visíveis.
-cat > /etc/grub.d/42_callas_diagnostico <<'GRUB_DIAG'
+# Entradas de boot próprias do Callas OS.
+# Não usamos o 10_linux automático porque ele injeta mensagens "Loading Linux"
+# antes do kernel, o que abre o grande terminal preto sobre o wallpaper.
+rm -f /etc/grub.d/42_callas_diagnostico /etc/grub.d/43_callas_recuperacao_lts
+
+cat > /etc/grub.d/09_callas <<'GRUB_CALLAS'
 #!/bin/sh
 cat <<'MENU'
-menuentry 'Callas OS (diagnóstico sem splash)' --class gnu-linux {
+menuentry 'Callas OS Linux' --class gnu-linux --class callas {
+    search --no-floppy --fs-uuid --set=root CALLAS_EFI_UUID
+    linux /vmlinuz-linux root=UUID=CALLAS_ROOT_UUID rw quiet splashCALLAS_NVIDIA_ARGS
+    initrd /initramfs-linux.img
+}
+
+menuentry 'Callas OS (kernel LTS - recuperação)' --class gnu-linux --class callas {
+    search --no-floppy --fs-uuid --set=root CALLAS_EFI_UUID
+    linux /vmlinuz-linux-lts root=UUID=CALLAS_ROOT_UUID rw quiet splashCALLAS_NVIDIA_ARGS
+    initrd /initramfs-linux-lts.img
+}
+
+menuentry 'Callas OS (diagnóstico sem splash)' --class gnu-linux --class callas {
     search --no-floppy --fs-uuid --set=root CALLAS_EFI_UUID
     linux /vmlinuz-linux root=UUID=CALLAS_ROOT_UUID rw plymouth.enable=0 disablehooks=plymouthCALLAS_NVIDIA_ARGS
     initrd /initramfs-linux.img
 }
 MENU
-GRUB_DIAG
-sed -i "s/CALLAS_EFI_UUID/$efi_uuid/" /etc/grub.d/42_callas_diagnostico
-sed -i "s/CALLAS_ROOT_UUID/$uuid_raiz/" /etc/grub.d/42_callas_diagnostico
-sed -i "s|CALLAS_NVIDIA_ARGS|$nvidia_args|" /etc/grub.d/42_callas_diagnostico
-chmod 0755 /etc/grub.d/42_callas_diagnostico
+GRUB_CALLAS
 
-# Kernel LTS separado para recuperação caso uma atualização do kernel/driver
-# impeça o sistema principal de iniciar.
-cat > /etc/grub.d/43_callas_recuperacao_lts <<'GRUB_LTS'
-#!/bin/sh
-cat <<'MENU'
-menuentry 'Callas OS (kernel LTS - recuperação)' --class gnu-linux {
-    search --no-floppy --fs-uuid --set=root CALLAS_EFI_UUID
-    linux /vmlinuz-linux-lts root=UUID=CALLAS_ROOT_UUID rw quiet splashCALLAS_NVIDIA_ARGS
-    initrd /initramfs-linux-lts.img
+sed -i "s/CALLAS_EFI_UUID/$efi_uuid/g" /etc/grub.d/09_callas
+sed -i "s/CALLAS_ROOT_UUID/$uuid_raiz/g" /etc/grub.d/09_callas
+sed -i "s|CALLAS_NVIDIA_ARGS|$nvidia_args|g" /etc/grub.d/09_callas
+chmod 0755 /etc/grub.d/09_callas
+
+# Desativa a geração automática do Arch. O arquivo permanece no sistema e pode
+# ser reativado manualmente em recuperação, mas não entra no grub.cfg normal.
+chmod -x /etc/grub.d/10_linux
+
+# Mantém essa arquitetura após futuras atualizações do pacote grub.
+install -d /usr/local/libexec /etc/pacman.d/hooks
+cat > /usr/local/libexec/callas-grub-custom <<'CALLAS_GRUB_CUSTOM'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+[[ -x /etc/grub.d/09_callas ]] || {
+    echo "Callas OS: /etc/grub.d/09_callas não está disponível; GRUB não será regenerado." >&2
+    exit 1
 }
-MENU
-GRUB_LTS
-sed -i "s/CALLAS_EFI_UUID/$efi_uuid/" /etc/grub.d/43_callas_recuperacao_lts
-sed -i "s/CALLAS_ROOT_UUID/$uuid_raiz/" /etc/grub.d/43_callas_recuperacao_lts
-sed -i "s|CALLAS_NVIDIA_ARGS|$nvidia_args|" /etc/grub.d/43_callas_recuperacao_lts
-chmod 0755 /etc/grub.d/43_callas_recuperacao_lts
+
+[[ -f /etc/grub.d/10_linux ]] && chmod -x /etc/grub.d/10_linux
+
+tmp=$(mktemp /boot/grub/.grub.cfg.callas.XXXXXX)
+trap 'rm -f "$tmp"' EXIT
+
+grub-mkconfig -o "$tmp"
+[[ -s "$tmp" ]]
+grep -q "menuentry 'Callas OS Linux'" "$tmp"
+grep -q "menuentry 'Callas OS (kernel LTS - recuperação)'" "$tmp"
+grep -q "menuentry 'Callas OS (diagnóstico sem splash)'" "$tmp"
+
+chmod 0600 "$tmp"
+mv -f "$tmp" /boot/grub/grub.cfg
+trap - EXIT
+CALLAS_GRUB_CUSTOM
+chmod 0755 /usr/local/libexec/callas-grub-custom
+
+cat > /etc/pacman.d/hooks/99-callas-grub-custom.hook <<'CALLAS_GRUB_CUSTOM_HOOK'
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = grub
+
+[Action]
+Description = Restaurando entradas personalizadas do GRUB do Callas OS...
+When = PostTransaction
+Exec = /usr/local/libexec/callas-grub-custom
+CALLAS_GRUB_CUSTOM_HOOK
 
 # Instala a entrada UEFI normal. Alguns firmwares/VMs recusam gravar NVRAM;
 # isso não deve impedir a instalação porque também criamos o caminho fallback.
@@ -2313,7 +2357,7 @@ fi
 # Não adiciona espera ao boot e aumenta a chance de iniciar em firmwares/VMs chatos.
 grub-install --target=x86_64-efi --efi-directory=/boot --removable --no-nvram --recheck
 
-grub-mkconfig -o /boot/grub/grub.cfg
+/usr/local/libexec/callas-grub-custom
 [[ -s /boot/grub/grub.cfg && -f /boot/grub/x86_64-efi/normal.mod ]]
 [[ -f /boot/EFI/BOOT/BOOTX64.EFI ]] || {
   echo "ERRO: o executável fallback do GRUB não foi criado." >&2
