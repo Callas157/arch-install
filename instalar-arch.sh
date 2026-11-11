@@ -2241,7 +2241,6 @@ test -s /boot/vmlinuz-linux-lts && test -s /boot/initramfs-linux-lts.img
 install -d /boot/grub/themes/callas
 install -m 0644 /usr/share/callas-os/grub/theme.txt /boot/grub/themes/callas/theme.txt
 install -m 0644 /usr/share/callas-os/grub/background.png /boot/grub/themes/callas/background.png
-cp -f /boot/grub/themes/callas/background.png /boot/grub/themes/callas/terminal_box_c.png
 
 # GRUB UEFI: instalação limpa experimental, preservando a partição EFI em /boot.
 # Plymouth permanece integrado ao initramfs; sem atrasos artificiais no carregamento.
