@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.10.6"
+VERSAO="2026.11.10.7"
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/main"
 ASSET_BASE="$BASE_RAW/assets"
 ESTADO_DIR="/var/lib/callas-os"
@@ -125,6 +125,71 @@ if [[ -f /etc/default/grub && -d /boot/grub ]]; then
     rm -f "$grub_tmp"
     erro "Falha ao validar a nova configuração do GRUB; o grub.cfg anterior foi preservado."
   fi
+fi
+
+# Atualiza o menu do Atualizador do sistema para oferecer reinício após
+# aplicar configurações do Callas OS e aceitar o comando "reboot".
+put_update=/usr/local/libexec/put-update
+if [[ -f "$put_update" ]]; then
+  python3 - "$put_update" <<'EOF'
+import sys
+path=sys.argv[1]
+text=open(path, encoding="utf-8").read()
+
+if "perguntar_reinicio()" not in text:
+    needle="atualizar_config_callas() {\n    local temporario resposta\n"
+    repl="""perguntar_reinicio() {
+    local resposta
+    printf '\\nDeseja reiniciar o sistema agora?\\n'
+    printf '1. Sim, reiniciar agora\\n'
+    printf '2. Não\\n'
+    read -r -p 'Escolha [1-2]: ' resposta || return 0
+    case $resposta in
+        1) systemctl reboot ;;
+        2|"") return 0 ;;
+        *) printf 'Opção inválida. Não vou reiniciar.\\n' ;;
+    esac
+}
+
+atualizar_config_callas() {
+    local temporario resposta
+"""
+    if needle in text:
+        text=text.replace(needle,repl,1)
+
+text=text.replace("read -r -p 'Escolha [1-6]: ' opcao || return 0",
+                  "read -r -p 'Escolha [1-6] ou digite reboot: ' opcao || return 0")
+
+old="""            5)
+                atualizar_config_callas ||
+                    printf 'Falha ao atualizar as configurações do Callas OS.\\n' >&2
+                continue
+                ;;
+            6) return 0 ;;
+            *) printf 'Opção inválida.\\n'; continue ;;
+"""
+new="""            5)
+                if atualizar_config_callas; then
+                    perguntar_reinicio
+                else
+                    printf 'Falha ao atualizar as configurações do Callas OS.\\n' >&2
+                fi
+                continue
+                ;;
+            6) return 0 ;;
+            reboot|REBOOT|Reboot)
+                systemctl reboot
+                return 0
+                ;;
+            *) printf 'Opção inválida. Digite 1-6 ou reboot.\\n'; continue ;;
+"""
+if old in text:
+    text=text.replace(old,new,1)
+
+open(path,"w",encoding="utf-8").write(text)
+EOF
+  chmod 0755 "$put_update"
+  bash -n "$put_update" || erro "O Atualizador do sistema ficou com erro de sintaxe; restaure o backup antes de usar."
 fi
 
 # Flatpaks padrão do Callas OS.
