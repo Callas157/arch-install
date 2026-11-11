@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.10.10"
+VERSAO="2026.11.10.11"
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/main"
 ASSET_BASE="$BASE_RAW/assets"
 ESTADO_DIR="/var/lib/callas-os"
@@ -112,6 +112,9 @@ if [[ -f /etc/default/grub && -d /boot/grub ]]; then
   curl -fsSL --retry 2 "$ASSET_BASE/grub/theme.txt" \
     -o /boot/grub/themes/callas/theme.txt ||
     erro "Não consegui atualizar o tema do GRUB."
+  curl -fsSL --retry 2 "$ASSET_BASE/grub/terminal_box_c.png" \
+    -o /boot/grub/themes/callas/terminal_box_c.png ||
+    erro "Não consegui atualizar o fundo transparente do terminal do GRUB."
   if [[ ! -f /boot/grub/themes/callas/background.png ]]; then
     curl -fsSL --retry 2 "$ASSET_BASE/grub/background.png" \
       -o /boot/grub/themes/callas/background.png ||
