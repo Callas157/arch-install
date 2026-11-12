@@ -296,7 +296,7 @@ mount --mkdir -o fmask=0077,dmask=0077 "$EFI" /mnt/boot
 echo ">>> Instalando pacotes (isso demora)"
 pacstrap -K /mnt \
   base linux linux-lts linux-firmware "$UCODE_PACKAGE" base-devel sudo nano git curl gnupg acl grub efibootmgr \
-  linux-headers linux-lts-headers dkms pciutils usbutils libnotify \
+  linux-headers linux-lts-headers dkms pciutils usbutils usb_modeswitch libnotify \
   networkmanager "${REDE_PACOTES[@]}" \
   plasma-desktop sddm sddm-kcm plasma-nm plasma-pa kscreen powerdevil xorg-xwayland \
   konsole dolphin kate ark gwenview okular spectacle kdeplasma-addons \

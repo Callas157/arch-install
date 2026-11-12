@@ -114,7 +114,7 @@ PY
   # full Arch upgrade when every requirement is already available.
   if [[ ${2:-} != --installation ]]; then
     missing=()
-    for package in linux linux-lts linux-headers linux-lts-headers ufw plasma-firewall python python-dbus python-gobject kscreen base-devel git rebuild-detector pacman-contrib acl gpu-screen-recorder-ui; do
+    for package in linux linux-lts linux-headers linux-lts-headers ufw plasma-firewall python python-dbus python-gobject kscreen base-devel git rebuild-detector pacman-contrib acl gpu-screen-recorder-ui usb_modeswitch; do
       if pacman -Qq "$package" >/dev/null 2>&1; then :; else
         code=$?; [[ $code == 1 ]] || { echo 'Falha ao consultar o banco de pacotes.' >&2; return 1; }
         missing+=("$package")
@@ -130,6 +130,22 @@ PY
   fi
   nvidia_after=$(pacman -Q nvidia-utils nvidia-open-dkms lib32-nvidia-utils nvidia-settings libxnvctrl 2>/dev/null || :)
   [[ $nvidia_before == "$nvidia_after" ]] || { echo 'A pilha NVIDIA mudou inesperadamente.' >&2; return 1; }
+
+  # G920: the official usb_modeswitch package already supplies the c261 ->
+  # HID rule/profile. In HID mode (c262), the stock hid_logitech_hidpp driver
+  # handles buttons, pedals and force feedback on linux and linux-lts.
+  # Keep this before 73-seat-late.rules so logind grants the active local seat
+  # read/write input access for FFB, without a global input group or mode 0666.
+  # Do not replace the existing Solaar/headset hidraw rules.
+  install -d -m 0755 /etc/udev/rules.d
+  cat > /etc/udev/rules.d/70-callas-g920.rules <<'CALLAS_G920_UDEV'
+SUBSYSTEM=="input", KERNEL=="event*|js*", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="c262", MODE="0660", TAG+="uaccess"
+CALLAS_G920_UDEV
+  chmod 0644 /etc/udev/rules.d/70-callas-g920.rules
+  if ! systemd-detect-virt --chroot >/dev/null; then
+    udevadm control --reload-rules
+  fi
+  printf 'G920 preparado com driver nativo e troca automática de modo USB. Reconecte o volante se já estiver conectado.\n'
 
   cat > /etc/sudoers.d/20-callas-security <<'SUDO'
 Defaults use_pty

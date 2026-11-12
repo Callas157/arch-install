@@ -1,5 +1,14 @@
 # Histórico do Callas OS
 
+## 3.3.0 — 2026-11-12
+
+- Prepara o Logitech G920 (Xbox) na instalação e na opção 5 do Update com `usb_modeswitch`, incluindo a regra/perfil oficial de troca automática de Xbox (`046d:c261`) para HID (`046d:c262`).
+- Usa o driver nativo `hid_logitech_hidpp` para botões, pedais e force feedback, sem substituir drivers ou instalar `new-lg4ff`. Permissões de entrada ficam restritas à sessão local ativa e ao G920.
+- Preserva o pacote na revisão de órfãos e reaplica a configuração quando faltar sua regra. Volante já conectado deve ser reconectado após o Update.
+- Mantém fluxo automático, prompts, estrutura do instalador, NVIDIA e suporte existente ao headset/Solaar. Revisão e roteiro físico em `programas-callas-os/REVISAO-G920.md`.
+
+Validação: 172 testes offline aprovados, incluindo dependência ausente/presente, erros de consulta/transação, configuração repetida, preservação do headset e comportamento no chroot; sintaxe Bash/Python e regra pelo `udevadm verify` aprovadas. A configuração completa do instalador foi executada em filesystem isolado com comandos Arch/hardware simulados. Funcionamento de eixos, botões, câmbio opcional e force feedback depende de teste no G920 físico e nos jogos usados.
+
 ## 3.2.2 — 2026-11-11
 
 Correção funcional após falha de instalação limpa relatada na VM.
