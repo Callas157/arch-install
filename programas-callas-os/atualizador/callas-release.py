@@ -28,6 +28,7 @@ FILES = (
     "programas-callas-os/atualizador/callas-aur-install.py",
     "programas-callas-os/atualizador/callas-config-update.sh",
     "programas-callas-os/atualizador/callas-security.sh",
+    "programas-callas-os/atualizador/callas-update-state.py",
     "programas-callas-os/atualizador/callas-spotify-permissions.sh",
     "programas-callas-os/atualizador/callas-release.py",
     "programas-callas-os/atualizador/put-update.sh",
@@ -70,6 +71,8 @@ def stage_files(destination, ref):
     if tree.get("truncated"):
         raise ValueError("Árvore incompleta")
     blobs = {item["path"]: item for item in tree["tree"] if item["type"] == "blob"}
+    manifest={'commit':ref,'assets':{name.removeprefix('assets/'):item['sha'] for name,item in blobs.items() if name.startswith('assets/')}}
+    (Path(destination)/'update-assets.json').write_text(json.dumps(manifest,sort_keys=True)+'\n')
     for name in FILES:
         item = blobs[name]
         if item["mode"] not in ("100644", "100755"):
@@ -95,6 +98,14 @@ def main():
     os.umask(0o077)
     try:
         ref = resolve_ref()
+        if not sys.argv[1:]:
+            try:
+                installed=json.loads(Path('/etc/callas-os/release.json').read_text())
+            except FileNotFoundError:installed={}
+            pending=Path('/var/lib/callas-os')/('update-pending-'+str(pwd.getpwnam(user).pw_uid))
+            if installed.get('release')==ref and installed.get('status')=='complete' and not pending.exists():
+                print('Callas OS Update: nenhuma nova atualização do projeto no GitHub.')
+                return 0
         with tempfile.TemporaryDirectory(prefix="callas-release-", dir="/var/tmp") as stage:
             stage_files(stage, ref)
             env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "SUDO_USER": user,

@@ -12,7 +12,7 @@ import sys
 import time
 
 CATEGORIES = ('Callas OS Update', 'Sistema e Pacman', 'Kernel Linux', 'Driver NVIDIA',
-              'Aplicativos', 'AUR', 'Seguranca e Firewall', 'Instalacao', 'Manutencao')
+              'Aplicativos', 'AUR', 'Seguranca e Firewall', 'Instalacao', 'Manutencao', 'Janelas')
 MAX_FILE = 2 * 1024**2
 MAX_TOTAL = 128 * 1024**2
 MAX_AGE = 30 * 86400
@@ -88,6 +88,25 @@ def identified(data):
     remaining = MAX_FILE - len(header)
     return header + (tail(data)[-remaining:] if remaining else b'')
 
+def create_log(base):
+    # The name records the local completion time. A readable sequence prevents
+    # overwrites when two diagnostics finish in the same second.
+    stamp = datetime.datetime.now().strftime('%Y-%m-%d_%Hh%Mm%Ss')
+    for number in range(1, 10001):
+        suffix = '' if number == 1 else '__parte-' + str(number).zfill(2)
+        path = base / (stamp + suffix + '.log')
+        try:
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            return fd, path
+        except FileExistsError:
+            continue
+    raise RuntimeError('Muitos logs no mesmo segundo; nenhum arquivo foi substituído')
+
+
+def completed(data):
+    timestamp = datetime.datetime.now().astimezone().strftime('%d/%m/%Y às %H:%M:%S %z')
+    return identified(('Encerrado em: ' + timestamp + '\n').encode() + data)
+
 def write_log(category, data, origin=None):
     if os.geteuid() == 0 or category not in CATEGORIES:
         raise ValueError('Categoria ou usuário inválido')
@@ -95,15 +114,15 @@ def write_log(category, data, origin=None):
     if origin is not None:
         if not re.fullmatch(r'[A-Za-z0-9_.-]{1,160}', origin): raise ValueError('Origem inválida')
         filename = origin if origin.endswith('.log') else origin + '.log'
+        path = base / category / filename
+        try: fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        except FileExistsError:
+            return path  # This exact root log was already exported.
     else:
-        filename = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S_%f.log')
-    path = base / category / filename
-    try: fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    except FileExistsError:
-        return path  # Same root diagnostic was already exported. Never overwrite it.
+        fd, path = create_log(base / category)
     # Imported diagnostics retain their original context, including old logs
     # that predate project versioning. Do not label old events as today's OS.
-    with os.fdopen(fd, 'wb') as stream: stream.write(tail(data) if origin is not None else identified(data))
+    with os.fdopen(fd, 'wb') as stream: stream.write(tail(data) if origin is not None else completed(data))
     prune(base)
     return path
 
@@ -112,9 +131,8 @@ def root_log(category, data):
     if os.geteuid() != 0: return write_log(category, data)
     base = ROOT / category
     base.mkdir(mode=0o700, parents=True, exist_ok=True)
-    filename = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S_%f.log')
-    fd = os.open(base / filename, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, 'wb') as stream: stream.write(identified(data))
+    fd, path = create_log(base)
+    with os.fdopen(fd, 'wb') as stream: stream.write(completed(data))
     prune(ROOT)
 
 def user_command(user, *args, **kwargs):
@@ -139,7 +157,8 @@ def export(user):
         if path.is_file() and not path.is_symlink():
             with path.open('rb') as stream:
                 stream.seek(0, 2); stream.seek(max(0, stream.tell() - MAX_FILE)); data = stream.read()
-            origin = path.stem + '-' + hashlib.sha256(data).hexdigest()[:16] + '.log'
+            stamp = datetime.datetime.fromtimestamp(path.stat().st_mtime).strftime('%Y-%m-%d_%Hh%Mm%Ss')
+            origin = path.stem + '-' + stamp + '-' + hashlib.sha256(data).hexdigest()[:8] + '.log'
             user_command(user, '--write', category, '--origin', origin, input=data)
 
 def main():

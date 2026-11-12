@@ -49,7 +49,7 @@ def bus():
 
 
 
-def remember_windows():
+def capture_windows():
     """Seed native Remember rules from live windows without changing their geometry.
     Snapshot transport is private to this invocation; KWin owns persistence afterward.
     """
@@ -72,10 +72,11 @@ def remember_windows():
 
     receiver = Receiver(owner, '/Snapshot')
     js = '''const result = [];
-workspace.windowList().forEach(function(w) {
+const windows = typeof workspace.windowList === "function" ? workspace.windowList() : workspace.stackingOrder;
+windows.forEach(function(w) {
     if (!w.normalWindow || w.transient || !w.resourceClass) return;
     const g = w.frameGeometry;
-    result.push({app: String(w.resourceClass).toLowerCase(), role: String(w.windowRole || ""), output: String(w.output.name),
+    result.push({app: String(w.resourceClass).toLowerCase(), role: String(w.windowRole || ""), output: String(w.output ? w.output.name : ""),
         x: Math.round(g.x), y: Math.round(g.y), width: Math.round(g.width), height: Math.round(g.height),
         maxH: (Number(w.maximizeMode) & 2) !== 0,
         maxV: (Number(w.maximizeMode) & 1) !== 0});
@@ -109,8 +110,23 @@ callDBus(SERVICE, "/Snapshot", "io.github.Callas157.Snapshot", "accept", JSON.st
             Path(name).unlink(missing_ok=True)
             receiver.remove_from_connection()
             session.close()
-    remember_rules(received[0])
+    return received[0]
 
+
+
+def remember_windows():
+    try:
+        windows = capture_windows()
+    except Exception as exc:
+        # Only snapshot errors use the fallback. Saving/reloading the rules
+        # below remains required and errors propagate to the updater.
+        message = 'Captura de janelas indisponível: ' + str(exc)
+        print('Aviso:', message, file=sys.stderr)
+        helper = Path('/usr/local/libexec/callas-logs')
+        if helper.is_file():
+            subprocess.run([str(helper), '--write', 'Janelas'], input=(message+'\n').encode(), check=False)
+        windows = []
+    remember_rules(windows)
 
 
 def remember_rules(windows):
@@ -194,7 +210,8 @@ def remember_rules(windows):
     dbus.Interface(bus().get_object('org.kde.KWin', '/KWin'), 'org.kde.KWin').reconfigure()
     print('Memória de janelas ativada/atualizada. Valores aprendidos foram preservados.')
     print('Discord, Spotify e Brave: mova/redimensione suas janelas uma vez e feche normalmente para o KDE aprender.')
-    print('As janelas abertas tiveram sua posição atual capturada; as fechadas serão aprendidas no uso normal.')
+    if windows:
+        print('As janelas abertas tiveram sua posição atual capturada; as fechadas serão aprendidas no uso normal.')
 
 
 

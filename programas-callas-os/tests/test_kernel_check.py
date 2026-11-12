@@ -134,7 +134,7 @@ pacman() { return 0; }
         installer=(UPDATER.parents[1]/'instalar-arch.sh').read_text()
         helper=installer.split("<<'CALLAS_GRUB_CUSTOM'\n",1)[1].split('\nCALLAS_GRUB_CUSTOM',1)[0]
         updater=(UPDATER/'callas-config-update.sh').read_text()
-        update=updater[updater.index('grub_tmp=$(mktemp'):updater.index('# Plymouth do Callas OS.')]
+        update='grub_changed=1\n'+updater[updater.index('if (( grub_changed )); then'):updater.index('# Plymouth do Callas OS.')]
         for program, source in (('installer',helper),('update',update)):
             for failure in ('','grub-syntax','missing-main'):
                 with self.subTest(program=program,failure=failure), tempfile.TemporaryDirectory() as temp:

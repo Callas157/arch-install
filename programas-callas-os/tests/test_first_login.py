@@ -83,7 +83,7 @@ class FirstLoginTests(unittest.TestCase):
         self.assertNotIn('first-login-',updater)
     def test_brave_visual_repair_keeps_accounts_and_rejects_malformed_profiles(self):
         updater=(ROOT/'atualizador/callas-config-update.sh').read_text()
-        section=updater[updater.index('brave_pref='):updater.index('# Coleção atual de wallpapers')]
+        section=updater[updater.index('brave_pref='):updater.index('if (( ! browser_pending )); then')]
         pref=self.home/'.config/BraveSoftware/Brave-Browser/Default/Preferences'; pref.parent.mkdir(parents=True)
         for content in (b'{"account":"keep","extensions":{"settings":{"id":"keep"}}}',b'{invalid-profile'):
             for running in (True,False):

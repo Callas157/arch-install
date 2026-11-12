@@ -79,7 +79,7 @@ trap finalizar EXIT
 
 # Older installed launchers know a shorter file list. The verified launcher
 # staged from this same commit can fetch newly introduced helpers on first use.
-if [[ ! -f $CALLAS_RELEASE_DIR/callas-spotify-permissions.sh || ! -f $CALLAS_RELEASE_DIR/callas-aur-install.py || ! -f $CALLAS_RELEASE_DIR/callas-autostart.py || ! -f $CALLAS_RELEASE_DIR/VERSION || ! -f $CALLAS_RELEASE_DIR/callas-version.py || ! -f $CALLAS_RELEASE_DIR/callas-nekofetch.sh || ! -f $CALLAS_RELEASE_DIR/callas-aur.py || ! -f $CALLAS_RELEASE_DIR/callas-storage.py || ! -f $CALLAS_RELEASE_DIR/callas-maintenance.py || ! -f $CALLAS_RELEASE_DIR/callas-native.py ]]; then
+if [[ ! -f $CALLAS_RELEASE_DIR/callas-update-state.py || ! -f $CALLAS_RELEASE_DIR/update-assets.json || ! -f $CALLAS_RELEASE_DIR/callas-spotify-permissions.sh || ! -f $CALLAS_RELEASE_DIR/callas-aur-install.py || ! -f $CALLAS_RELEASE_DIR/callas-autostart.py || ! -f $CALLAS_RELEASE_DIR/VERSION || ! -f $CALLAS_RELEASE_DIR/callas-version.py || ! -f $CALLAS_RELEASE_DIR/callas-nekofetch.sh || ! -f $CALLAS_RELEASE_DIR/callas-aur.py || ! -f $CALLAS_RELEASE_DIR/callas-storage.py || ! -f $CALLAS_RELEASE_DIR/callas-maintenance.py || ! -f $CALLAS_RELEASE_DIR/callas-native.py ]]; then
   python - "$CALLAS_RELEASE_DIR" "$CALLAS_RELEASE_REF" <<'EXPAND_STAGE'
 import importlib.util, sys
 spec=importlib.util.spec_from_file_location('callas_release', sys.argv[1]+'/callas-release.py')
@@ -93,16 +93,56 @@ flock -x 8
 export CALLAS_UPDATE_LOCK_HELD=1
 python "$CALLAS_RELEASE_DIR/callas-version.py" --begin "$CALLAS_RELEASE_DIR/VERSION" "$CALLAS_RELEASE_REF"
 migration_active=1
-python "$CALLAS_RELEASE_DIR/callas-storage.py" --config "$usuario"
-# Content comparison lets this repair run once without changing any version
-# number or asking an already-updated user to force the same release again.
-media_repair=0
-if ! cmp -s "$CALLAS_RELEASE_DIR/callas-spotify-permissions.sh" /usr/local/libexec/callas-spotify-permissions ||
-   ! cmp -s "$CALLAS_RELEASE_DIR/callas-inicio-kde.sh" /usr/local/libexec/callas-inicio-kde; then
-  media_repair=1
+forcar=0
+[[ ${1:-} != --force ]] || forcar=1
+# Deploy verified helpers cheaply; policy/package/boot work is checkpointed below.
+/usr/bin/bash "$CALLAS_RELEASE_DIR/callas-security.sh" "$usuario" --helpers-only
+state_helper=(python "$CALLAS_RELEASE_DIR/callas-update-state.py")
+force_args=()
+(( ! forcar )) || force_args=(--force)
+declare -A execute
+has_work=0
+for phase in security apps tools boot flatpaks browser desktop session; do
+  if "${state_helper[@]}" --needed "$phase" "$CALLAS_RELEASE_DIR" "$usuario" "${force_args[@]}"; then
+    execute[$phase]=1; has_work=1
+  else
+    code=$?; [[ $code == 1 ]] || erro "Não consegui planejar a etapa $phase."
+    execute[$phase]=0
+  fi
+done
+if (( has_work )); then
+  python "$CALLAS_RELEASE_DIR/callas-storage.py" --config "$usuario"
 fi
-/usr/bin/bash "$CALLAS_RELEASE_DIR/callas-security.sh" "$usuario"
+phase_needed() {
+  if [[ ${execute[$1]} == 1 ]]; then
+    printf '\n==> Aplicando etapa alterada: %s\n' "$1"
+    return 0
+  fi
+  printf 'Etapa %s já aplicada; preservada.\n' "$1"
+  return 1
+}
+phase_done() { "${state_helper[@]}" --complete "$1" "$CALLAS_RELEASE_DIR" "$usuario"; }
+asset() {
+  local result
+  result=$("${state_helper[@]}" --asset "$CALLAS_RELEASE_DIR" "$1" "$2") || erro "Não consegui verificar/baixar o asset $1."
+  asset_changed=0
+  [[ $result != changed ]] || asset_changed=1
+}
+copy_changed() {
+  if ! cmp -s "$1" "$2"; then
+    install -m 0644 "$1" "$2"
+    initramfs_changed=1
+  fi
+}
+# CALLAS_PHASE_BEGIN security
+if phase_needed security; then
+  /usr/bin/bash "$CALLAS_RELEASE_DIR/callas-security.sh" "$usuario" --config-update
+  phase_done security
+fi
+# CALLAS_PHASE_END security
 
+# CALLAS_PHASE_BEGIN apps
+if phase_needed apps; then
 # Complete the native application set on existing installations as well.
 # The initial AUR helper keeps checksum/PGP verification enabled and builds as
 # the normal user, never via passwordless sudo. Existing Spotify is preserved.
@@ -122,24 +162,9 @@ fi
 # End native Spotify preparation.
 
 
-# Browser extensions also apply to installations with the older boot layout.
-# Use the same extension IDs; existing profiles and extension settings stay intact.
-install -d /etc/brave/policies/managed
-cat > /etc/brave/policies/managed/callas-bonjourr.json <<'EOF'
-{
-  "ExtensionSettings": {
-    "dlnejlppicbjfcfcedcflplfjajinajd": {
-      "installation_mode": "normal_installed",
-      "update_url": "https://clients2.google.com/service/update2/crx"
-    },
-    "kdbmhfkmnlmbkgbabkdealhhbfhlmmon": {
-      "installation_mode": "normal_installed",
-      "update_url": "https://clients2.google.com/service/update2/crx"
-    }
-  }
-}
-EOF
-chmod 0644 /etc/brave/policies/managed/callas-bonjourr.json
+phase_done apps
+fi
+# CALLAS_PHASE_END apps
 
 grub_compativel=0
 if [[ -x /etc/grub.d/09_callas && -f /etc/grub.d/10_linux && ! -x /etc/grub.d/10_linux ]]; then
@@ -156,25 +181,9 @@ fi
 printf '%s\n' 'grub-custom-v2' > /etc/callas-os/grub-layout
 
 install -d -m 0755 "$ESTADO_DIR"
-forcar=0
-[[ ${1:-} == --force ]] && forcar=1
 
-atual=0
-[[ -r "$VERSAO_ARQ" ]] && atual=$(<"$VERSAO_ARQ")
-if [[ "$atual" == "$VERSAO" && $forcar -eq 0 && $media_repair -eq 0 ]] && python "$CALLAS_RELEASE_DIR/callas-version.py" --is-installed "$CALLAS_RELEASE_DIR/VERSION"; then
-  printf 'Configurações já aplicadas: '
-  /usr/local/libexec/callas-version --label
-  printf '\nDeseja reaplicar esta mesma versão à força?\n'
-  printf '1. Sim, reaplicar agora\n'
-  printf '2. Não\n'
-  read -r -p 'Escolha [1-2]: ' resposta_reaplicar || exit 0
-  case $resposta_reaplicar in
-    1) forcar=1 ;;
-    2|"") exit 0 ;;
-    *) printf 'Opção inválida. Nenhuma alteração foi feita.\n'; exit 0 ;;
-  esac
-fi
-
+# CALLAS_PHASE_BEGIN tools
+if phase_needed tools; then
 # Instala o utilitário sem modificar monitores nem posições de janelas via root.
 # Todos os downloads são validados antes de substituir os auxiliares instalados.
 monitor_stage=$(mktemp -d)
@@ -210,22 +219,30 @@ fi
 rm -rf -- "$monitor_stage"
 # NVIDIA: versão e trava existentes preservadas por solicitação do usuário.
 
+phase_done tools
+fi
+# CALLAS_PHASE_END tools
+
+# CALLAS_PHASE_BEGIN boot
+if phase_needed boot; then
 # GRUB: restaura apenas o tema estável do Callas OS.
 # Não altera terminal-box nem tenta forçar transparência.
 install -d /boot/grub/themes/callas
 
-curl -fsSL --retry 2 "$ASSET_BASE/grub/theme.txt" \
-  -o /boot/grub/themes/callas/theme.txt ||
-  erro "Não consegui atualizar o tema do GRUB."
-curl -fsSL --retry 2 "$ASSET_BASE/grub/background.png" \
-  -o /boot/grub/themes/callas/background.png ||
-  erro "Não consegui atualizar o wallpaper do GRUB."
+grub_changed=0
+initramfs_changed=0
+asset grub/theme.txt /boot/grub/themes/callas/theme.txt
+(( asset_changed == 0 )) || grub_changed=1
+asset grub/background.png /boot/grub/themes/callas/background.png
+(( asset_changed == 0 )) || grub_changed=1
+[[ -s /boot/grub/grub.cfg ]] || grub_changed=1
 
 rm -f /boot/grub/themes/callas/terminal_box_c.png
 rm -f /usr/local/libexec/callas-grub-silencioso
 rm -f /etc/pacman.d/hooks/99-callas-grub-silencioso.hook
 
 
+if (( grub_changed )); then
 grub_tmp=$(mktemp /boot/grub/.grub.cfg.callas.XXXXXX)
 if grub-mkconfig -o "$grub_tmp" && [[ -s "$grub_tmp" ]] &&
    grub-script-check "$grub_tmp" &&
@@ -239,34 +256,39 @@ else
   erro "Falha ao validar a configuração do GRUB; o grub.cfg anterior foi preservado."
 fi
 
+fi
+
 # Plymouth do Callas OS.
 # Atualização segura: troca apenas os arquivos do tema e reconstrói o initramfs.
 plymouth_dir=/usr/share/plymouth/themes/callas
 install -d "$plymouth_dir"
 
-install -m 0644 "$CALLAS_RELEASE_DIR/callas.plymouth" "$plymouth_dir/callas.plymouth"
-install -m 0644 "$CALLAS_RELEASE_DIR/callas.script" "$plymouth_dir/callas.script"
-curl -fsSL --retry 2 "$ASSET_BASE/plymouth/callas/background.jpg" \
-  -o "$plymouth_dir/background.jpg" ||
-  erro "Não consegui atualizar a arte do Plymouth."
+copy_changed "$CALLAS_RELEASE_DIR/callas.plymouth" "$plymouth_dir/callas.plymouth"
+copy_changed "$CALLAS_RELEASE_DIR/callas.script" "$plymouth_dir/callas.script"
+asset plymouth/callas/background.jpg "$plymouth_dir/background.jpg"
+(( asset_changed == 0 )) || initramfs_changed=1
 
 # Usa os assets PNG oficiais do tema script instalado pelo pacote Plymouth.
 [[ -f /usr/share/plymouth/themes/script/progress_box.png ]] ||
   erro "progress_box.png do Plymouth não foi encontrado."
 [[ -f /usr/share/plymouth/themes/script/progress_bar.png ]] ||
   erro "progress_bar.png do Plymouth não foi encontrado."
-install -m 0644 /usr/share/plymouth/themes/script/progress_box.png \
+copy_changed /usr/share/plymouth/themes/script/progress_box.png \
   "$plymouth_dir/progress_box.png"
-install -m 0644 /usr/share/plymouth/themes/script/progress_bar.png \
+copy_changed /usr/share/plymouth/themes/script/progress_bar.png \
   "$plymouth_dir/progress_bar.png"
 
-cat > /etc/plymouth/plymouthd.conf <<'PLYMOUTH_CONF'
+cat > "$logstage/plymouthd.conf" <<'PLYMOUTH_CONF'
 [Daemon]
 Theme=callas
 ShowDelay=0
 UseFirmwareBackground=false
 PLYMOUTH_CONF
-
+copy_changed "$logstage/plymouthd.conf" /etc/plymouth/plymouthd.conf
+for kernel in linux linux-lts; do
+  [[ -s /boot/initramfs-$kernel.img ]] || initramfs_changed=1
+done
+if (( initramfs_changed )); then
 if command -v plymouth-set-default-theme >/dev/null 2>&1; then
   plymouth-set-default-theme callas ||
     erro "Não consegui definir o tema Callas OS como Plymouth padrão."
@@ -278,31 +300,51 @@ mkinitcpio -P || erro "Falha ao reconstruir o initramfs com o novo Plymouth."
 [[ -s /boot/initramfs-linux-lts.img ]] ||
   erro "O initramfs do kernel LTS ficou ausente após atualizar o Plymouth."
 
+fi
+/usr/local/libexec/callas-kernel-check --verify-only
+phase_done boot
+fi
+# CALLAS_PHASE_END boot
+
+# CALLAS_PHASE_BEGIN flatpaks
+if phase_needed flatpaks; then
 # Flatpaks padrão do Callas OS.
 if command -v flatpak >/dev/null; then
   flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || :
   for app in com.vysp3r.ProtonPlus io.github.kolunmi.Bazaar io.missioncenter.MissionCenter; do
-    flatpak install --system --noninteractive --assumeyes flathub "$app" ||
-      aviso "Não consegui instalar/confirmar $app."
+    if ! flatpak info --system "$app" >/dev/null 2>&1; then
+      flatpak install --system --noninteractive --assumeyes flathub "$app" ||
+        erro "Não consegui instalar $app."
+    fi
   done
 fi
 
 
-# KDE Plasma: painel translúcido + blur.
-# A migração em /usr/share/plasma/.../updates é executada uma vez pelo Plasma
-# no próximo login, usando a API oficial de scripting do painel.
-plasma_updates=/usr/share/plasma/shells/org.kde.plasma.desktop/contents/updates
-install -d "$plasma_updates"
-cat > "$plasma_updates/callas-panel-translucent-v2.js" <<'EOF'
-panels().forEach(function (panel) {
-    panel.opacity = "translucent";
-});
-EOF
-
-if command -v kwriteconfig6 >/dev/null; then
-  como_usuario kwriteconfig6 --file kwinrc --group Plugins --key blurEnabled true ||
-    aviso "Não consegui garantir o efeito de blur do KWin."
+phase_done flatpaks
 fi
+# CALLAS_PHASE_END flatpaks
+
+# CALLAS_PHASE_BEGIN browser
+if phase_needed browser; then
+browser_pending=0
+# Browser extensions also apply to installations with the older boot layout.
+# Use the same extension IDs; existing profiles and extension settings stay intact.
+install -d /etc/brave/policies/managed
+cat > /etc/brave/policies/managed/callas-bonjourr.json <<'EOF'
+{
+  "ExtensionSettings": {
+    "dlnejlppicbjfcfcedcflplfjajinajd": {
+      "installation_mode": "normal_installed",
+      "update_url": "https://clients2.google.com/service/update2/crx"
+    },
+    "kdbmhfkmnlmbkgbabkdealhhbfhlmmon": {
+      "installation_mode": "normal_installed",
+      "update_url": "https://clients2.google.com/service/update2/crx"
+    }
+  }
+}
+EOF
+chmod 0644 /etc/brave/policies/managed/callas-bonjourr.json
 
 # Brave em Português do Brasil. O Bonjourr usa navigator.language no
 # primeiro carregamento para escolher o idioma padrão.
@@ -329,8 +371,7 @@ cat > /etc/brave/policies/recommended/callas-defaults.json <<'EOF'
 }
 EOF
 
-curl -fsSL --retry 2 "$ASSET_BASE/bonjourr/callas-profile.json"   -o /usr/share/callas-os/bonjourr-profile.json ||
-  aviso "Não consegui atualizar o perfil padrão do Bonjourr."
+asset bonjourr/callas-profile.json /usr/share/callas-os/bonjourr-profile.json
 
 # Reaplica apenas as preferências visuais conhecidas, sem recriar o perfil.
 # Com o navegador aberto, preserva Preferences para evitar concorrência.
@@ -394,7 +435,34 @@ with open(path, "w", encoding="utf-8") as f:
 EOF
   fi
 else
+  browser_pending=1
   aviso 'Brave aberto: perfil preservado. Feche o navegador e reaplique a opção 5 para reparar as preferências visuais.'
+fi
+
+if (( ! browser_pending )); then
+  phase_done browser
+else
+  printf 'Preferências do Brave pendentes; os demais passos foram aplicados.\n'
+fi
+fi
+# CALLAS_PHASE_END browser
+
+# CALLAS_PHASE_BEGIN desktop
+if phase_needed desktop; then
+# KDE Plasma: painel translúcido + blur.
+# A migração em /usr/share/plasma/.../updates é executada uma vez pelo Plasma
+# no próximo login, usando a API oficial de scripting do painel.
+plasma_updates=/usr/share/plasma/shells/org.kde.plasma.desktop/contents/updates
+install -d "$plasma_updates"
+cat > "$plasma_updates/callas-panel-translucent-v2.js" <<'EOF'
+panels().forEach(function (panel) {
+    panel.opacity = "translucent";
+});
+EOF
+
+if command -v kwriteconfig6 >/dev/null; then
+  como_usuario kwriteconfig6 --file kwinrc --group Plugins --key blurEnabled true ||
+    aviso "Não consegui garantir o efeito de blur do KWin."
 fi
 
 # Coleção atual de wallpapers do Callas OS.
@@ -419,8 +487,7 @@ for wallpaper in "${wallpapers[@]}"; do
   id="CallasOS-${wallpaper%.jpg}"
   destino="/usr/share/wallpapers/$id"
   install -d "$destino/contents/images"
-  curl -fsSL --retry 2 "$ASSET_BASE/wallpapers/$wallpaper" -o "$destino/contents/images/1920x1080.jpg" ||
-    aviso "Falha ao atualizar wallpaper $wallpaper."
+  asset "wallpapers/$wallpaper" "$destino/contents/images/1920x1080.jpg"
   cat > "$destino/metadata.json" <<EOF
 {
   "KPackageStructure": "Plasma/Wallpaper",
@@ -476,6 +543,13 @@ NoDisplay=true
 StartupNotify=false
 EOF
 
+phase_done desktop
+fi
+# CALLAS_PHASE_END desktop
+
+# CALLAS_PHASE_BEGIN session
+if phase_needed session; then
+session_pending=0
 # Repair the persistent theme without depending on a running graphical session.
 como_usuario kwriteconfig6 --file kdeglobals --group KDE --key LookAndFeelPackage org.kde.breezedark.desktop
 como_usuario kwriteconfig6 --file kdeglobals --group General --key ColorScheme BreezeDark
@@ -501,14 +575,33 @@ if [[ -S "$runtime_sessao/bus" ]]; then
     USER="$usuario" LOGNAME="$usuario" LANG=C.UTF-8 XDG_RUNTIME_DIR="$runtime_sessao"
     DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_sessao/bus" systemctl --user)
   "${sessao_systemctl[@]}" daemon-reload
-  "${sessao_systemctl[@]}" start callas-janelas.service ||
-    erro 'Não consegui ativar a memória de janelas na sessão. Consulte journalctl --user -u callas-janelas.service.'
+  if ! "${sessao_systemctl[@]}" start callas-janelas.service; then
+    runuser -u "$usuario" -- env -i PATH=/usr/bin:/bin HOME="$home" XDG_RUNTIME_DIR="$runtime_sessao" \
+      DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_sessao/bus" \
+      journalctl --user -u callas-janelas.service -n 40 --no-pager || :
+    erro 'A memória de janelas falhou; o diagnóstico foi incluído neste log. As etapas concluídas não serão repetidas na próxima tentativa.'
+  fi
   printf 'Memória de janelas ativada automaticamente. Não depende do configurador de monitores.\n'
 else
+  session_pending=1
   printf 'Sem sessão gráfica ativa: a memória será ativada automaticamente no próximo login KDE.\n'
 fi
 
 como_usuario kbuildsycoca6 --noincremental || aviso 'O menu será atualizado no próximo login.'
+
+(( session_pending )) || phase_done session
+fi
+# CALLAS_PHASE_END session
+
+pending_file="$ESTADO_DIR/update-pending-$(id -u "$usuario")"
+rm -f -- "$pending_file"
+for phase in security apps tools boot flatpaks browser desktop session; do
+  if "${state_helper[@]}" --needed "$phase" "$CALLAS_RELEASE_DIR" "$usuario"; then
+    printf '%s\n' "$phase" >> "$pending_file"
+  else
+    code=$?; [[ $code == 1 ]] || erro "Não consegui confirmar a etapa $phase."
+  fi
+done
 
 printf '%s\n' "$VERSAO" > "$VERSAO_ARQ"
 /usr/local/libexec/callas-version --complete "$CALLAS_RELEASE_DIR/VERSION" "$CALLAS_RELEASE_REF"

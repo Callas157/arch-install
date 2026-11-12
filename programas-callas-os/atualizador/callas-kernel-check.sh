@@ -3,6 +3,9 @@ set -Eeuo pipefail
 export PATH=/usr/bin:/bin
 (( EUID == 0 )) || exit 1
 umask 077
+[[ $# == 0 || ( $# == 1 && $1 == --verify-only ) ]] || exit 1
+verify_only=0
+[[ ${1:-} != --verify-only ]] || verify_only=1
 stage=$(mktemp -d /var/tmp/callas-kernel.XXXXXXXX)
 status=0
 exec 3>&1 4>&2
@@ -61,7 +64,7 @@ falha() {
       [[ -s /usr/lib/modules/$release/vmlinuz ]] || falha "Imagem do kernel $kernel ($release) ausente em /usr/lib/modules."
       # uname reports the ISO kernel inside arch-chroot, and the old running
       # kernel after an upgrade. Always target the installed releases explicitly.
-      if command -v dkms >/dev/null; then
+      if (( ! verify_only )) && command -v dkms >/dev/null; then
         dkms autoinstall -k "$release" || falha "DKMS não conseguiu preparar os módulos para $kernel ($release)."
       fi
       if [[ -r /etc/callas-nvidia-version ]]; then
@@ -73,11 +76,14 @@ falha() {
     done
     (( found )) || falha "Não encontrei o kernel instalado $kernel em /usr/lib/modules."
   done
-  mkinitcpio -P || falha 'Falha ao gerar initramfs com mkinitcpio.'
+  if (( ! verify_only )); then
+    mkinitcpio -P || falha 'Falha ao gerar initramfs com mkinitcpio.'
+  fi
   for kernel in linux linux-lts; do
     [[ -s /boot/initramfs-$kernel.img ]] || falha "Initramfs de $kernel ausente ou vazio em /boot."
     [[ -s /boot/vmlinuz-$kernel ]] || falha "Imagem de $kernel ausente ou vazia em /boot."
   done
+  if (( ! verify_only )); then
   if [[ -x /usr/local/libexec/callas-grub-custom ]]; then
     /usr/local/libexec/callas-grub-custom || falha 'Falha ao gerar ou validar o GRUB Callas OS.'
   elif [[ -f /boot/grub/grub.cfg ]]; then
@@ -92,6 +98,7 @@ falha() {
       rm -f -- "$temp_grub"
       falha 'GRUB gerado inválido ou sem os dois kernels; configuração anterior preservada.'
     fi
+  fi
   fi
   if [[ -f /boot/grub/grub.cfg ]]; then
     grub-script-check /boot/grub/grub.cfg || falha 'Sintaxe inválida em /boot/grub/grub.cfg.'

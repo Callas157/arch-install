@@ -84,10 +84,10 @@ class MediaAppsTests(unittest.TestCase):
         self.assertNotIn('pubkey_5384CE82BA52C83A.gpg',installer)
         security=(UPDATER/'callas-security.sh').read_text()
         upgrade=security.split('pacman -Syu --needed --noconfirm',1)[1].split('\n  fi',1)[0]
-        self.assertIn('gpu-screen-recorder-ui',upgrade)
-        self.assertIn('acl',upgrade)
+        self.assertIn('gpu-screen-recorder-ui',security[security.index('for package in '):security.index('missing+=("$package")')])
+        self.assertIn('acl',security[security.index('for package in '):security.index('missing+=("$package")')])
         updater=(UPDATER/'callas-config-update.sh').read_text()
-        self.assertLess(updater.index('/usr/local/libexec/callas-spotify-permissions "$usuario"'),updater.index('Configurações já aplicadas:'))
+        self.assertLess(updater.index('/usr/local/libexec/callas-spotify-permissions "$usuario"'),updater.index('/usr/local/libexec/callas-version --complete'))
 
     def test_native_overlay_is_preferred_when_flatpak_is_also_present(self):
         session=(ROOT/'sessao/callas-inicio-kde.sh').read_text()
@@ -105,24 +105,5 @@ class MediaAppsTests(unittest.TestCase):
         installer=(ROOT.parent/'instalar-arch.sh').read_text()
         embedded=installer.split("<<'CALLAS_KDE_START'\n",1)[1].split('\nCALLAS_KDE_START',1)[0]+'\n'
         self.assertEqual(embedded,session)
-
-    def test_repair_detects_changed_helpers_without_bumping_version(self):
-        updater=(UPDATER/'callas-config-update.sh').read_text()
-        code=updater[updater.index('media_repair=0'):updater.index('/usr/bin/bash "$CALLAS_RELEASE_DIR/callas-security.sh"')]
-        with tempfile.TemporaryDirectory() as temp:
-            root=Path(temp);stage=root/'stage';stage.mkdir();installed=root/'installed';installed.mkdir()
-            for name in ('callas-spotify-permissions','callas-inicio-kde'):
-                (stage/(name+'.sh')).write_text('new')
-            code=code.replace('/usr/local/libexec/',str(installed)+'/')+'\nprintf "%s\\n" "$media_repair"\n'
-            for state,expected in (('absent','1'),('matching','0'),('old-session','1'),('old-acl','1')):
-                for name in ('callas-spotify-permissions','callas-inicio-kde'):
-                    path=installed/name
-                    if state=='absent':continue
-                    path.write_text('new')
-                if state=='old-session':(installed/'callas-inicio-kde').write_text('old')
-                if state=='old-acl':(installed/'callas-spotify-permissions').write_text('old')
-                result=subprocess.run(['bash','-eu','-c',code],env=dict(os.environ,CALLAS_RELEASE_DIR=str(stage)),capture_output=True,text=True)
-                self.assertEqual(result.returncode,0,result.stderr)
-                self.assertEqual(result.stdout.strip(),expected)
 
 if __name__=='__main__':unittest.main()

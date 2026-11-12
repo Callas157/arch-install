@@ -8,7 +8,7 @@ usuario=${SUDO_USER:-${1:-}}
 [[ -n $usuario && $usuario != root ]] && id "$usuario" >/dev/null || exit 1
 stage=${CALLAS_RELEASE_DIR:?Arquivos de atualização não preparados}
 [[ -d $stage && ! -L $stage && $(stat -c %u "$stage") == 0 ]] || exit 1
-for name in callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
+for name in callas-update-state.py callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
   [[ -f $stage/$name && ! -L $stage/$name && $(stat -c %u "$stage/$name") == 0 ]] || {
     echo "Arquivo verificado ausente/inseguro: $name" >&2; exit 1;
   }
@@ -25,16 +25,19 @@ POLICY
 fi
 
 # Back up before any settings are changed. Files stay root-only in Documents.
-python "$stage/callas-storage.py" --migrate "$usuario"
-python "$stage/callas-storage.py" --security "$usuario"
+if [[ ${2:-} != --helpers-only ]]; then
+  python "$stage/callas-storage.py" --migrate "$usuario"
+  python "$stage/callas-storage.py" --security "$usuario"
+fi
 
 # No lingering passwordless pacman access, even after an interrupted old update.
 rm -f /etc/sudoers.d/put-update /etc/sudoers.d/99-callas-instalacao
 rm -f /etc/put-update-aur.sudoers /etc/put-update-paru.conf
-for name in callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
+for name in callas-update-state.py callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
   source_file="$stage/$name"
   [[ -f $source_file && ! -L $source_file && $(stat -c %u "$source_file") == 0 ]] || exit 1
   case $name in
+    callas-update-state.py) target=callas-update-state ;;
     callas-spotify-permissions.sh) target=callas-spotify-permissions ;;
     callas-aur-install.py) target=callas-aur-install ;;
     callas-autostart.py) target=callas-autostart ;;
@@ -49,10 +52,12 @@ for name in callas-spotify-permissions.sh callas-aur-install.py callas-autostart
     callas-maintenance.py) target=callas-maintenance ;;
     callas-native.py) target=callas-native ;;
   esac
-  install -o root -g root -m 0755 "$source_file" "/usr/local/libexec/$target"
+  cmp -s "$source_file" "/usr/local/libexec/$target" || install -o root -g root -m 0755 "$source_file" "/usr/local/libexec/$target"
 done
 printf '%s\n' "$usuario" > /etc/callas-os/log-user
 printf '%s\n' "${CALLAS_RELEASE_REF:-installation}" > /etc/callas-os/security-release
+
+[[ ${2:-} != --helpers-only ]] || exit 0
 
 logdir=$(mktemp -d /var/tmp/callas-security.XXXXXXXX)
 finish() {
@@ -104,13 +109,23 @@ PY
     sed -i '/^# CALLAS_NVIDIA_610_BEGIN$/,/^# CALLAS_NVIDIA_610_END$/d' /etc/pacman.conf
     sed -i '/^\[options\]$/a # CALLAS_NVIDIA_610_BEGIN\nIgnorePkg = nvidia-utils nvidia-open-dkms nvidia-open nvidia-open-lts lib32-nvidia-utils nvidia-settings libxnvctrl opencl-nvidia lib32-opencl-nvidia\n# CALLAS_NVIDIA_610_END' /etc/pacman.conf
   fi
-  # Apply the signature policy before the first network transaction.
+  # Configuration updates install missing requirements; they do not initiate a
+  # full Arch upgrade when every requirement is already available.
   if [[ ${2:-} != --installation ]]; then
-    mountpoint -q /boot || { echo '/boot não está montado; pacman não foi executado.' >&2; return 1; }
-    # Full upgrade, with the user-requested NVIDIA hold kept intact.
-    pacman -Syu --needed --noconfirm \
-      --ignore=nvidia-utils,nvidia-open-dkms,nvidia-open,nvidia-open-lts,lib32-nvidia-utils,nvidia-settings,libxnvctrl,opencl-nvidia,lib32-opencl-nvidia \
-      linux linux-lts linux-headers linux-lts-headers ufw plasma-firewall python python-dbus python-gobject kscreen base-devel git rebuild-detector pacman-contrib acl gpu-screen-recorder-ui
+    missing=()
+    for package in linux linux-lts linux-headers linux-lts-headers ufw plasma-firewall python python-dbus python-gobject kscreen base-devel git rebuild-detector pacman-contrib acl gpu-screen-recorder-ui; do
+      if pacman -Qq "$package" >/dev/null 2>&1; then :; else
+        code=$?; [[ $code == 1 ]] || { echo 'Falha ao consultar o banco de pacotes.' >&2; return 1; }
+        missing+=("$package")
+      fi
+    done
+    if (( ${#missing[@]} )); then
+      mountpoint -q /boot || { echo '/boot não está montado; pacman não foi executado.' >&2; return 1; }
+      pacman -Syu --needed --noconfirm \
+        --ignore=nvidia-utils,nvidia-open-dkms,nvidia-open,nvidia-open-lts,lib32-nvidia-utils,nvidia-settings,libxnvctrl,opencl-nvidia,lib32-opencl-nvidia "${missing[@]}"
+    else
+      printf 'Dependências já instaladas; atualização geral do Arch não executada.\n'
+    fi
   fi
   nvidia_after=$(pacman -Q nvidia-utils nvidia-open-dkms lib32-nvidia-utils nvidia-settings libxnvctrl 2>/dev/null || :)
   [[ $nvidia_before == "$nvidia_after" ]] || { echo 'A pilha NVIDIA mudou inesperadamente.' >&2; return 1; }
@@ -260,10 +275,14 @@ Description = Preparar permissões do Spotify para Spicetify do usuário Callas 
 When = PostTransaction
 Exec = /usr/local/libexec/callas-spotify-permissions
 SPOTIFY_HOOK
-  /usr/local/libexec/callas-spotify-permissions "$usuario"
+  if [[ ${2:-} != --config-update ]]; then
+    /usr/local/libexec/callas-spotify-permissions "$usuario"
+  fi
 
   /usr/local/libexec/put-update --instalar-para "$usuario"
-  /usr/local/libexec/callas-kernel-check
+  if [[ ${2:-} != --config-update ]]; then
+    /usr/local/libexec/callas-kernel-check --verify-only
+  fi
   printf '%s\n' '2026.11.11.security3' > /etc/callas-os/security-version
   printf 'Segurança aplicada. NVIDIA e senhas preservadas.\n'
 }

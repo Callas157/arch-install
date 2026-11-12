@@ -249,7 +249,7 @@ finish_installation() {
   if mountpoint -q /mnt; then
     install -d -m 0700 /mnt/var/log/callas-os/Instalacao
     install -d -m 0755 /mnt/var/lib/callas-os
-    install -m 0600 "$CALLAS_INSTALL_LOG" "/mnt/var/log/callas-os/Instalacao/$(date +%Y-%m-%d_%H-%M-%S).log"
+    install -m 0600 "$CALLAS_INSTALL_LOG" "/mnt/var/log/callas-os/Instalacao/$(date +%Y-%m-%d_%Hh%Mm%Ss).log"
     if (( code )); then
       printf 'Instalação incompleta: código %s. Veja /var/log/callas-os/Instalacao.\n' "$code" > /mnt/var/lib/callas-os/installation-failed
     else

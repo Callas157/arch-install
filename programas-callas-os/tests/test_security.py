@@ -61,7 +61,8 @@ class LogTests(unittest.TestCase):
             first = logs.write_log('Kernel Linux', b'kernel failure\n')
             second = logs.write_log('Kernel Linux', b'kernel success\n')
             self.assertNotEqual(first, second)
-            self.assertEqual(first.read_bytes(), b'kernel failure\n')
+            self.assertTrue(first.read_bytes().endswith(b'kernel failure\n'))
+            self.assertIn('Encerrado em:',first.read_text())
             self.assertEqual(first.stat().st_mode & 0o777, 0o600)
             for category in logs.CATEGORIES:
                 self.assertTrue((Path(temp) / 'Callas OS' / 'Callas OS Logs' / category).is_dir())
@@ -112,7 +113,7 @@ class ShellTests(unittest.TestCase):
             (base / 'etc/pacman.conf').write_text('[options]\nSigLevel = Never\n[core]\nSigLevel = Never\n')
             bindir = base / 'bin'; bindir.mkdir()
             fake = bindir / 'pacman'
-            fake.write_text('#!/bin/bash\n[[ $1 == -Q ]] && exit 1\nexit 23\n')
+            fake.write_text('#!/bin/bash\n[[ $1 == -Q || $1 == -Qq ]] && exit 1\nexit 23\n')
             fake.chmod(0o755)
             mount=bindir/'mountpoint'; mount.write_text('#!/bin/bash\nexit 0\n'); mount.chmod(0o755)
             function = function.replace('/etc/', str(base / 'etc') + '/')
