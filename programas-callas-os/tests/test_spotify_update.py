@@ -10,8 +10,8 @@ ROOT=Path(__file__).resolve().parents[1]
 class SpotifyUpdateTests(unittest.TestCase):
     def run_migration(self, scenario):
         text=(ROOT/'atualizador/callas-config-update.sh').read_text()
-        block=text[text.index('# Complete the native application set'):text.index('# Instala o utilitário sem modificar')]
-        block=block.replace('/usr/local/libexec/callas-aur-install','install_fixture')
+        block=text[text.index('# Complete the native application set'):text.index('# End native Spotify preparation.')]
+        block=block.replace('/usr/local/libexec/callas-aur-install','install_fixture').replace('/usr/local/libexec/callas-spotify-permissions','permissions_fixture')
         code='''set -euo pipefail
 usuario=fixture
 erro() { printf '%s\\n' "$*" >&2; exit 1; }
@@ -23,6 +23,7 @@ pacman() {
  esac
  [[ -f "$STATE/installed" ]]
 }
+permissions_fixture() { printf "PERMISSIONS\\n"; }
 install_fixture() {
  printf '%s\\n' "$*" >> "$STATE/invocations"
  [[ "$*" == 'fixture spotify' ]] || exit 91
@@ -40,12 +41,14 @@ install_fixture() {
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertEqual(calls,[])
         self.assertIn('já instalado',result.stdout)
+        self.assertIn('PERMISSIONS',result.stdout)
 
     def test_missing_spotify_is_installed_and_verified(self):
         result,calls=self.run_migration('missing')
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertEqual(calls,['fixture spotify'])
         self.assertIn('COMPLETE',result.stdout)
+        self.assertIn('PERMISSIONS',result.stdout)
 
     def test_build_failure_or_missing_result_cannot_report_completion(self):
         for scenario,message in [('build-error','Não consegui instalar'),('verify-error','não foi encontrado')]:

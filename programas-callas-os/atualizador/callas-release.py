@@ -28,6 +28,7 @@ FILES = (
     "programas-callas-os/atualizador/callas-aur-install.py",
     "programas-callas-os/atualizador/callas-config-update.sh",
     "programas-callas-os/atualizador/callas-security.sh",
+    "programas-callas-os/atualizador/callas-spotify-permissions.sh",
     "programas-callas-os/atualizador/callas-release.py",
     "programas-callas-os/atualizador/put-update.sh",
     "programas-callas-os/atualizador/callas-logs.py",

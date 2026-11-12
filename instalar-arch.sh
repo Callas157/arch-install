@@ -310,7 +310,7 @@ pacstrap -K /mnt \
   "${GPU_PACOTES[@]}" "${RISEMODE_PACOTES[@]}" plymouth \
   noto-fonts noto-fonts-emoji ttf-dejavu ttf-liberation \
   flatpak \
-  zram-generator ufw plasma-firewall rebuild-detector pacman-contrib
+  zram-generator ufw plasma-firewall rebuild-detector pacman-contrib gpu-screen-recorder-ui
 
 genfstab -U /mnt > /mnt/etc/fstab
 
@@ -1375,10 +1375,10 @@ else:
 
 gsr_id = "com.dec05eba.gpu_screen_recorder"
 gsr = shutil.which("gsr-ui")
-if flatpak(gsr_id):
-    comando_gsr = launcher("flatpak", "run", gsr_id, "gsr-ui")
-elif gsr:
+if gsr:
     comando_gsr = launcher(gsr, "launch-daemon")
+elif flatpak(gsr_id):
+    comando_gsr = launcher("flatpak", "run", gsr_id, "gsr-ui")
 else:
     comando_gsr = ""
 if comando_gsr:
@@ -2583,20 +2583,10 @@ instalar_aur() {
 }
 instalar_aur paru-bin || :
 instalar_aur brave-bin || :
-instalar_aur gpu-screen-recorder gpu-screen-recorder-gtk || :
 if (( nvidia )); then instalar_aur nvibrant-bin || :; fi
-  # A chave pública é conferida pelo fingerprint do PKGBUILD do Spotify.
-  chave_spotify=/etc/callas/spotify-aur.gpg
-  install -d /etc/callas
-  if curl -fsSL --retry 2 --max-time 45 https://download.spotify.com/debian/pubkey_5384CE82BA52C83A.gpg -o "$chave_spotify" &&
-     gpg --batch --no-options --with-colons --show-keys "$chave_spotify" |
-       awk -F: '$1 == "fpr" && $10 == "E1096BCBFF6D418796DE78515384CE82BA52C83A" {ok=1} END {exit !ok}' &&
-     como_usuario gpg --batch --import "$chave_spotify"; then
-    instalar_aur spotify || :
-  else
-    rm -f -- "$chave_spotify"
-    aviso 'A chave do Spotify não pôde ser verificada ou importada.'
-  fi
+# The AUR helper resolves the current recipe's validpgpkeys and verifies the
+# package; avoid an outdated hardcoded Spotify signing-key URL.
+instalar_aur spotify
 if instalar_aur xone-dkms xone-dongle-firmware; then
   for pkgbase in /usr/lib/modules/*/pkgbase; do
     [[ -f $pkgbase && $(< "$pkgbase") == linux ]] || continue

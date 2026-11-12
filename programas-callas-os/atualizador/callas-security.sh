@@ -8,7 +8,7 @@ usuario=${SUDO_USER:-${1:-}}
 [[ -n $usuario && $usuario != root ]] && id "$usuario" >/dev/null || exit 1
 stage=${CALLAS_RELEASE_DIR:?Arquivos de atualização não preparados}
 [[ -d $stage && ! -L $stage && $(stat -c %u "$stage") == 0 ]] || exit 1
-for name in callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
+for name in callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
   [[ -f $stage/$name && ! -L $stage/$name && $(stat -c %u "$stage/$name") == 0 ]] || {
     echo "Arquivo verificado ausente/inseguro: $name" >&2; exit 1;
   }
@@ -31,10 +31,11 @@ python "$stage/callas-storage.py" --security "$usuario"
 # No lingering passwordless pacman access, even after an interrupted old update.
 rm -f /etc/sudoers.d/put-update /etc/sudoers.d/99-callas-instalacao
 rm -f /etc/put-update-aur.sudoers /etc/put-update-paru.conf
-for name in callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
+for name in callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
   source_file="$stage/$name"
   [[ -f $source_file && ! -L $source_file && $(stat -c %u "$source_file") == 0 ]] || exit 1
   case $name in
+    callas-spotify-permissions.sh) target=callas-spotify-permissions ;;
     callas-aur-install.py) target=callas-aur-install ;;
     callas-autostart.py) target=callas-autostart ;;
     callas-version.py) target=callas-version ;;
@@ -109,7 +110,7 @@ PY
     # Full upgrade, with the user-requested NVIDIA hold kept intact.
     pacman -Syu --needed --noconfirm \
       --ignore=nvidia-utils,nvidia-open-dkms,nvidia-open,nvidia-open-lts,lib32-nvidia-utils,nvidia-settings,libxnvctrl,opencl-nvidia,lib32-opencl-nvidia \
-      linux linux-lts linux-headers linux-lts-headers ufw plasma-firewall python python-dbus python-gobject kscreen base-devel git rebuild-detector pacman-contrib
+      linux linux-lts linux-headers linux-lts-headers ufw plasma-firewall python python-dbus python-gobject kscreen base-devel git rebuild-detector pacman-contrib acl gpu-screen-recorder-ui
   fi
   nvidia_after=$(pacman -Q nvidia-utils nvidia-open-dkms lib32-nvidia-utils nvidia-settings libxnvctrl 2>/dev/null || :)
   [[ $nvidia_before == "$nvidia_after" ]] || { echo 'A pilha NVIDIA mudou inesperadamente.' >&2; return 1; }
@@ -244,6 +245,22 @@ TIMER
     systemctl daemon-reload
     systemctl enable --now callas-maintenance.timer
   fi
+
+  # Spotify upgrades replace package files and can reset their ACLs. Apply the
+  # same per-user permissions after each native package install/upgrade.
+  cat > /etc/pacman.d/hooks/95-callas-spotify-permissions.hook <<'SPOTIFY_HOOK'
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = spotify
+
+[Action]
+Description = Preparar permissões do Spotify para Spicetify do usuário Callas OS
+When = PostTransaction
+Exec = /usr/local/libexec/callas-spotify-permissions
+SPOTIFY_HOOK
+  /usr/local/libexec/callas-spotify-permissions "$usuario"
 
   /usr/local/libexec/put-update --instalar-para "$usuario"
   /usr/local/libexec/callas-kernel-check

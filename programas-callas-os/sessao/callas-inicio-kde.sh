@@ -169,10 +169,10 @@ else:
 
 gsr_id = "com.dec05eba.gpu_screen_recorder"
 gsr = shutil.which("gsr-ui")
-if flatpak(gsr_id):
-    comando_gsr = launcher("flatpak", "run", gsr_id, "gsr-ui")
-elif gsr:
+if gsr:
     comando_gsr = launcher(gsr, "launch-daemon")
+elif flatpak(gsr_id):
+    comando_gsr = launcher("flatpak", "run", gsr_id, "gsr-ui")
 else:
     comando_gsr = ""
 if comando_gsr:

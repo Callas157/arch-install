@@ -79,7 +79,7 @@ trap finalizar EXIT
 
 # Older installed launchers know a shorter file list. The verified launcher
 # staged from this same commit can fetch newly introduced helpers on first use.
-if [[ ! -f $CALLAS_RELEASE_DIR/callas-aur-install.py || ! -f $CALLAS_RELEASE_DIR/callas-autostart.py || ! -f $CALLAS_RELEASE_DIR/VERSION || ! -f $CALLAS_RELEASE_DIR/callas-version.py || ! -f $CALLAS_RELEASE_DIR/callas-nekofetch.sh || ! -f $CALLAS_RELEASE_DIR/callas-aur.py || ! -f $CALLAS_RELEASE_DIR/callas-storage.py || ! -f $CALLAS_RELEASE_DIR/callas-maintenance.py || ! -f $CALLAS_RELEASE_DIR/callas-native.py ]]; then
+if [[ ! -f $CALLAS_RELEASE_DIR/callas-spotify-permissions.sh || ! -f $CALLAS_RELEASE_DIR/callas-aur-install.py || ! -f $CALLAS_RELEASE_DIR/callas-autostart.py || ! -f $CALLAS_RELEASE_DIR/VERSION || ! -f $CALLAS_RELEASE_DIR/callas-version.py || ! -f $CALLAS_RELEASE_DIR/callas-nekofetch.sh || ! -f $CALLAS_RELEASE_DIR/callas-aur.py || ! -f $CALLAS_RELEASE_DIR/callas-storage.py || ! -f $CALLAS_RELEASE_DIR/callas-maintenance.py || ! -f $CALLAS_RELEASE_DIR/callas-native.py ]]; then
   python - "$CALLAS_RELEASE_DIR" "$CALLAS_RELEASE_REF" <<'EXPAND_STAGE'
 import importlib.util, sys
 spec=importlib.util.spec_from_file_location('callas_release', sys.argv[1]+'/callas-release.py')
@@ -94,7 +94,33 @@ export CALLAS_UPDATE_LOCK_HELD=1
 python "$CALLAS_RELEASE_DIR/callas-version.py" --begin "$CALLAS_RELEASE_DIR/VERSION" "$CALLAS_RELEASE_REF"
 migration_active=1
 python "$CALLAS_RELEASE_DIR/callas-storage.py" --config "$usuario"
+# Content comparison lets this repair run once without changing any version
+# number or asking an already-updated user to force the same release again.
+media_repair=0
+if ! cmp -s "$CALLAS_RELEASE_DIR/callas-spotify-permissions.sh" /usr/local/libexec/callas-spotify-permissions ||
+   ! cmp -s "$CALLAS_RELEASE_DIR/callas-inicio-kde.sh" /usr/local/libexec/callas-inicio-kde; then
+  media_repair=1
+fi
 /usr/bin/bash "$CALLAS_RELEASE_DIR/callas-security.sh" "$usuario"
+
+# Complete the native application set on existing installations as well.
+# The initial AUR helper keeps checksum/PGP verification enabled and builds as
+# the normal user, never via passwordless sudo. Existing Spotify is preserved.
+printf '\n==> Verificando Spotify nativo\n'
+if pacman -Q spotify >/dev/null 2>&1; then
+  printf 'Spotify nativo já instalado.\n'
+else
+  consulta_spotify=$?
+  [[ $consulta_spotify == 1 ]] || erro 'Não consegui consultar o Spotify no banco de pacotes.'
+  /usr/local/libexec/callas-aur-install "$usuario" spotify ||
+    erro 'Não consegui instalar o Spotify nativo. Consulte o log do Callas OS Update.'
+  pacman -Q spotify >/dev/null 2>&1 ||
+    erro 'O Spotify não foi encontrado após a instalação; atualização não concluída.'
+fi
+
+/usr/local/libexec/callas-spotify-permissions "$usuario"
+# End native Spotify preparation.
+
 
 # Browser extensions also apply to installations with the older boot layout.
 # Use the same extension IDs; existing profiles and extension settings stay intact.
@@ -135,7 +161,7 @@ forcar=0
 
 atual=0
 [[ -r "$VERSAO_ARQ" ]] && atual=$(<"$VERSAO_ARQ")
-if [[ "$atual" == "$VERSAO" && $forcar -eq 0 ]] && python "$CALLAS_RELEASE_DIR/callas-version.py" --is-installed "$CALLAS_RELEASE_DIR/VERSION"; then
+if [[ "$atual" == "$VERSAO" && $forcar -eq 0 && $media_repair -eq 0 ]] && python "$CALLAS_RELEASE_DIR/callas-version.py" --is-installed "$CALLAS_RELEASE_DIR/VERSION"; then
   printf 'Configurações já aplicadas: '
   /usr/local/libexec/callas-version --label
   printf '\nDeseja reaplicar esta mesma versão à força?\n'
@@ -147,21 +173,6 @@ if [[ "$atual" == "$VERSAO" && $forcar -eq 0 ]] && python "$CALLAS_RELEASE_DIR/c
     2|"") exit 0 ;;
     *) printf 'Opção inválida. Nenhuma alteração foi feita.\n'; exit 0 ;;
   esac
-fi
-
-# Complete the native application set on existing installations as well.
-# The initial AUR helper keeps checksum/PGP verification enabled and builds as
-# the normal user, never via passwordless sudo. Existing Spotify is preserved.
-printf '\n==> Verificando Spotify nativo\n'
-if pacman -Q spotify >/dev/null 2>&1; then
-  printf 'Spotify nativo já instalado.\n'
-else
-  consulta_spotify=$?
-  [[ $consulta_spotify == 1 ]] || erro 'Não consegui consultar o Spotify no banco de pacotes.'
-  /usr/local/libexec/callas-aur-install "$usuario" spotify ||
-    erro 'Não consegui instalar o Spotify nativo. Consulte o log do Callas OS Update.'
-  pacman -Q spotify >/dev/null 2>&1 ||
-    erro 'O Spotify não foi encontrado após a instalação; atualização não concluída.'
 fi
 
 # Instala o utilitário sem modificar monitores nem posições de janelas via root.
