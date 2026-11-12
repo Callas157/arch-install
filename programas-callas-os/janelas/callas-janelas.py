@@ -76,7 +76,7 @@ const windows = typeof workspace.windowList === "function" ? workspace.windowLis
 windows.forEach(function(w) {
     if (!w.normalWindow || w.transient || !w.resourceClass) return;
     const g = w.frameGeometry;
-    result.push({app: String(w.resourceClass).toLowerCase(), role: String(w.windowRole || ""), output: String(w.output ? w.output.name : ""),
+    result.push({app: String(w.resourceClass).toLowerCase(), rawClass: String(w.resourceClass), role: String(w.windowRole || ""), output: String(w.output ? w.output.name : ""),
         x: Math.round(g.x), y: Math.round(g.y), width: Math.round(g.width), height: Math.round(g.height),
         maxH: (Number(w.maximizeMode) & 2) !== 0,
         maxV: (Number(w.maximizeMode) & 1) !== 0});
@@ -126,32 +126,84 @@ def remember_windows():
         if helper.is_file():
             subprocess.run([str(helper), '--write', 'Janelas'], input=(message+'\n').encode(), check=False)
         windows = []
-    remember_rules(windows)
+    before = discord_state(windows)
+    try:
+        remember_rules(windows)
+    finally:
+        log_discord_state(before, windows)
 
 
 def repair_discord_rule(rule, sample, output_names):
-    """Let KWin remember placement instead of Discord's stale XWayland bounds.
+    """Retire the unsuccessful geometry-request override, only for our Discord rule.
 
-    Ignore client geometry requests, not interactive user moves/resizes. Seed
-    position only on this migration, from one unambiguous live normal window.
-    Never force position/size or rewrite other apps/user-authored rules.
+    Preserve learned size, position, screen and maximize state. No live window
+    coordinates are promoted over learned values during this recovery.
     """
     if rule.get('wmclass') != 'discord' or not rule.get('Description', '').startswith('Callas OS: lembrar '):
         return 0
     if rule.get('ignoregeometry') == 'true' and rule.get('ignoregeometryrule') == '2':
-        return 0
-    changes = {'ignoregeometry': 'true', 'ignoregeometryrule': '2'}
-    if sample and not sample.get('maxH') and not sample.get('maxV'):
-        changes['position'] = f"{sample['x']},{sample['y']}"
-        changes['positionrule'] = '4'
-        if sample.get('output') in output_names:
-            changes.update(screenrule='4', screen=str(output_names.index(sample['output'])))
-    changed = 0
-    for key, value in changes.items():
-        if rule.get(key) != value:
-            rule[key] = value
-            changed += 1
-    return changed
+        del rule['ignoregeometry']
+        del rule['ignoregeometryrule']
+        return 2
+    return 0
+
+
+def discord_state(windows):
+    """Only placement metadata, never account settings, titles or conversations."""
+    result = {'session': os.environ.get('XDG_SESSION_TYPE', ''), 'windows': [], 'rules': []}
+    for w in windows:
+        if 'discord' in str(w.get('app', '')).lower():
+            result['windows'].append({k:w[k] for k in ('app','rawClass','role','output','x','y','width','height','maxH','maxV') if k in w})
+    cfg = configparser.ConfigParser(interpolation=None, strict=True); cfg.optionxform = str
+    try:
+        cfg.read(CONFIG / 'kwinrulesrc')
+        order = cfg.get('General', 'rules', fallback='').split(',')
+        allowed = ('Description','wmclass','wmclassmatch','wmclasscomplete','types','windowrole','windowrolematch',
+                   'position','positionrule','size','sizerule','screen','screenrule','maximizehoriz','maximizehorizrule',
+                   'maximizevert','maximizevertrule','ignoregeometry','ignoregeometryrule')
+        for section in cfg.sections():
+            rule = cfg[section]
+            if 'discord' in rule.get('wmclass', '').lower():
+                values = {k:rule[k] for k in allowed if k in rule}
+                # Descriptions may contain personal text; only mark project ownership.
+                values['managed'] = rule.get('Description', '').startswith('Callas OS: lembrar ')
+                values.pop('Description', None)
+                values['order'] = order.index(section) if section in order else -1
+                result['rules'].append(values)
+    except (OSError, configparser.Error) as exc:
+        result['rules_error'] = str(exc)
+    try:
+        result['outputs'] = [{k:o[k] for k in ('name','id','priority','pos','scale','connected','enabled') if k in o} for o in outputs()]
+    except Exception as exc:
+        result['outputs_error'] = str(exc)
+    try:
+        path = CONFIG / 'discord/settings.json'
+        if path.is_file():
+            with path.open() as stream: settings = json.loads(stream.read(1024*1024))
+            bounds = {}
+            for key in ('WINDOW_BOUNDS', 'windowBounds'):
+                value = settings.get(key)
+                if isinstance(value, dict):
+                    bounds[key] = {k:value[k] for k in ('x','y','width','height','displayId') if isinstance(value.get(k), (int,float,str))}
+            result['discord_bounds'] = bounds
+    except (OSError, ValueError, AttributeError) as exc:
+        result['bounds_error'] = type(exc).__name__
+    return result
+
+
+def log_discord_state(before, windows):
+    helper = Path('/usr/local/libexec/callas-logs')
+    if not helper.is_file(): return
+    payload = {'before': before, 'rules_after': discord_state([])}
+    text = 'Diagnóstico do Discord — janela capturada antes; regras antes/depois\n'+json.dumps(payload, ensure_ascii=False, indent=2)+'\n'
+    try:
+        result = subprocess.run([str(helper), '--write', 'Janelas'], input=text.encode(), check=False, timeout=5)
+        if result.returncode:
+            print('Aviso: não foi possível salvar o diagnóstico do Discord.', file=sys.stderr)
+        else:
+            print('Diagnóstico do Discord salvo em Documentos/Callas OS/Callas OS Logs/Janelas.')
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print('Aviso: diagnóstico do Discord indisponível:', exc, file=sys.stderr)
 
 
 def remember_rules(windows):
