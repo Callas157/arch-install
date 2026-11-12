@@ -241,7 +241,31 @@ done
 
 # Full installation output, excluding hidden password input and without shell tracing.
 CALLAS_INSTALL_LOG=$(mktemp /var/tmp/callas-install.XXXXXXXX.log)
+finish_installation() {
+  local code=$?
+  trap - EXIT
+  exec 1>&3 2>&4
+  wait "$CALLAS_INSTALL_LOG_PID" || :
+  if mountpoint -q /mnt; then
+    install -d -m 0700 /mnt/var/log/callas-os/Instalacao
+    install -d -m 0755 /mnt/var/lib/callas-os
+    install -m 0600 "$CALLAS_INSTALL_LOG" "/mnt/var/log/callas-os/Instalacao/$(date +%Y-%m-%d_%H-%M-%S).log"
+    if (( code )); then
+      printf 'Instalação incompleta: código %s. Veja /var/log/callas-os/Instalacao.\n' "$code" > /mnt/var/lib/callas-os/installation-failed
+    else
+      rm -f /mnt/var/lib/callas-os/installation-failed
+    fi
+    if [[ -x /mnt/usr/local/libexec/callas-logs ]] && arch-chroot /mnt id "$USUARIO" >/dev/null 2>&1; then
+      arch-chroot /mnt /usr/local/libexec/callas-logs --export "$USUARIO" || :
+    fi
+  fi
+  printf 'Log desta execução na ISO: %s\n' "$CALLAS_INSTALL_LOG"
+  exit "$code"
+}
+exec 3>&1 4>&2
 exec > >(tee "$CALLAS_INSTALL_LOG") 2>&1
+CALLAS_INSTALL_LOG_PID=$!
+trap finish_installation EXIT
 
 # ---------------- Preparação da ISO ----------------
 timedatectl set-ntp true
@@ -297,6 +321,9 @@ install -d /mnt/usr/local/libexec /mnt/usr/share/plymouth/themes/callas
 install -m 0755 "$CALLAS_SECURITY_TMP/callas-monitores.py" /mnt/usr/local/libexec/callas-monitores
 install -m 0755 "$CALLAS_SECURITY_TMP/callas-janelas.py" /mnt/usr/local/libexec/callas-janelas
 install -m 0755 "$CALLAS_SECURITY_TMP/callas-autostart.py" /mnt/usr/local/libexec/callas-autostart
+install -m 0755 "$CALLAS_SECURITY_TMP/callas-aur-install.py" /mnt/usr/local/libexec/callas-aur-install
+install -m 0755 "$CALLAS_SECURITY_TMP/callas-logs.py" /mnt/usr/local/libexec/callas-logs
+install -m 0755 "$CALLAS_SECURITY_TMP/callas-version.py" /mnt/usr/local/libexec/callas-version
 rm -f -- "$CALLAS_MONITOR_TMP" "$CALLAS_WINDOW_TMP"
 install -d -m 0700 /mnt/usr/local/share/callas-os/security-stage
 for security_file in "$CALLAS_SECURITY_TMP/"*; do
@@ -2147,15 +2174,16 @@ then
 fi
 
 # ---------------- Configuração dentro do sistema ----------------
-# Create accounts and set passwords over stdin before interactive AUR review.
+# Create accounts and set passwords before the noninteractive configuration.
 arch-chroot /mnt useradd -m -U -G wheel -s /bin/bash "$USUARIO"
 printf '%s:%s\n%s:%s\n' "$USUARIO" "$SENHA" root "$SENHA" | arch-chroot /mnt chpasswd
 unset SENHA SENHA2
 
 echo ">>> Configurando o sistema"
-arch-chroot /mnt /bin/bash -s -- "$USUARIO" "$FUSO" "$LOCALE" "$TECLADO" \
-  "$HOSTNAME" "$UUID_RAIZ" "$NVIDIA" "$VM" "$BROADCOM" "$GPU_PCI" "$RISEMODE" "$AMD_GPU" "$INTEL_GPU" <<'CALLAS_CHROOT'
+cat > /mnt/usr/local/share/callas-os/install-config.sh <<'CALLAS_CHROOT'
+#!/usr/bin/bash
 set -Eeuo pipefail
+trap 'code=$?; printf "ERRO: configuração interna interrompida na linha %s (código %s).\n" "$LINENO" "$code" >&2; exit "$code"' ERR
 usuario=$1
 fuso=$2
 locale=$3
@@ -2169,6 +2197,7 @@ gpu_pci=${10}
 risemode=${11}
 amd_gpu=${12}
 intel_gpu=${13}
+asset_base=${14:?Endereço dos assets não recebido pelo chroot}
 home=/home/$usuario
 libexec=/usr/local/libexec
 avisos=/var/log/callas-instalacao-avisos.log
@@ -2539,32 +2568,17 @@ else
   aviso 'Não consegui configurar o Flathub.'
 fi
 
-# O mesmo Paru serve para a instalação inicial e para o atualizador.
-temporario_aur=$(mktemp -d)
-chown "$usuario:$usuario" "$temporario_aur"
-limpar_aur() {
-  rm -rf -- "$temporario_aur"
-}
-trap limpar_aur EXIT
-if como_usuario git clone --depth 1 https://aur.archlinux.org/paru-bin.git "$temporario_aur/paru-bin" &&
-   como_usuario bash -c '
-     cd "$1"
-     printf "\nRevise o pacote de inicialização do Paru:\n"
-     git --no-pager show HEAD:PKGBUILD
-     git --no-pager show HEAD:.SRCINFO
-     read -r -p "Instalar este PKGBUILD após a revisão? [s/N]: " resposta </dev/tty
-     [[ $resposta =~ ^[sS]$ ]] || exit 1
-     makepkg -si --needed </dev/tty
-   ' bash "$temporario_aur/paru-bin"; then
-  instalar_aur() {
-    como_usuario paru -S --needed --review "$@" </dev/tty ||
-      { aviso "Falha ao instalar via AUR: $*."; return 1; }
+# Unattended initial AUR installation. Recipes build without root/sudo;
+# the root orchestrator installs dependencies and finished packages.
+instalar_aur() {
+  /usr/local/libexec/callas-aur-install "$usuario" "$@" || {
+    aviso "Falha ao instalar via AUR: $*. Consulte o log da instalação."; return 1;
   }
-  instalar_aur brave-bin || :
-  instalar_aur gpu-screen-recorder gpu-screen-recorder-gtk || :
-  if (( nvidia )); then
-    instalar_aur nvibrant-bin || :
-  fi
+}
+instalar_aur paru-bin || :
+instalar_aur brave-bin || :
+instalar_aur gpu-screen-recorder gpu-screen-recorder-gtk || :
+if (( nvidia )); then instalar_aur nvibrant-bin || :; fi
   # A chave pública é conferida pelo fingerprint do PKGBUILD do Spotify.
   chave_spotify=/etc/callas/spotify-aur.gpg
   install -d /etc/callas
@@ -2577,27 +2591,17 @@ if como_usuario git clone --depth 1 https://aur.archlinux.org/paru-bin.git "$tem
     rm -f -- "$chave_spotify"
     aviso 'A chave do Spotify não pôde ser verificada ou importada.'
   fi
-  if instalar_aur xone-dkms xone-dongle-firmware; then
-    # O uname do chroot ainda retorna o kernel da ISO. Verifica o kernel do disco.
-    for pkgbase in /usr/lib/modules/*/pkgbase; do
-      [[ -f $pkgbase && $(< "$pkgbase") == linux ]] || continue
-      release=${pkgbase%/pkgbase}
-      release=${release##*/}
-      if ! modinfo -k "$release" xone-dongle >/dev/null; then
-        dkms autoinstall -k "$release" &&
-          modinfo -k "$release" xone-dongle >/dev/null ||
-          aviso "O DKMS não preparou o xone para o kernel $release."
-      fi
-    done
-  fi
-  if (( broadcom )); then
-    instalar_aur broadcom-wl-dkms || :
-  fi
-else
-  aviso 'Falha ao instalar o Paru. Os pacotes opcionais do AUR ficaram pendentes.'
+if instalar_aur xone-dkms xone-dongle-firmware; then
+  for pkgbase in /usr/lib/modules/*/pkgbase; do
+    [[ -f $pkgbase && $(< "$pkgbase") == linux ]] || continue
+    release=${pkgbase%/pkgbase}; release=${release##*/}
+    if ! modinfo -k "$release" xone-dongle >/dev/null; then
+      dkms autoinstall -k "$release" && modinfo -k "$release" xone-dongle >/dev/null ||
+        aviso "O DKMS não preparou o xone para o kernel $release."
+    fi
+  done
 fi
-limpar_aur
-trap - EXIT
+if (( broadcom )); then instalar_aur broadcom-wl-dkms || :; fi
 
 # ---------------- Brave + Bonjourr + SteamDB ----------------
 # Bonjourr é pré-instalado pela política do Brave. As preferências abaixo
@@ -2629,7 +2633,7 @@ cat > /etc/brave/policies/recommended/callas-defaults.json <<'CALLAS_BRAVE_DEFAU
 }
 CALLAS_BRAVE_DEFAULTS
 
-curl -fsSL --retry 2 "${CALLAS_ASSET_BASE}/bonjourr/callas-profile.json" \
+curl -fsSL --retry 2 "$asset_base/bonjourr/callas-profile.json" \
   -o /usr/share/callas-os/bonjourr-profile.json ||
   aviso 'Não consegui baixar o perfil padrão do Bonjourr.'
 
@@ -2673,6 +2677,8 @@ VIBRANCE
 fi
 chown -R "$usuario:$usuario" "$home/.local" "$home/.config"
 como_usuario env LANG="$locale" xdg-user-dirs-update || aviso 'Não consegui preparar as pastas do usuário.'
+como_usuario kwriteconfig6 --file kdeglobals --group KDE --key LookAndFeelPackage org.kde.breezedark.desktop
+como_usuario kwriteconfig6 --file kdeglobals --group General --key ColorScheme BreezeDark
 como_usuario env QT_QPA_PLATFORM=offscreen dbus-run-session -- plasma-apply-lookandfeel --apply org.kde.breezedark.desktop ||
   aviso 'Não consegui aplicar o tema Brisa Escuro.'
 
@@ -2721,13 +2727,13 @@ como_usuario "$libexec/callas-nekofetch"
 rm -rf -- "$CALLAS_RELEASE_DIR"
 
 CALLAS_CHROOT
+chmod 0700 /mnt/usr/local/share/callas-os/install-config.sh
+bash -n /mnt/usr/local/share/callas-os/install-config.sh
+arch-chroot /mnt /usr/bin/bash /usr/local/share/callas-os/install-config.sh \
+  "$USUARIO" "$FUSO" "$LOCALE" "$TECLADO" "$HOSTNAME" "$UUID_RAIZ" \
+  "$NVIDIA" "$VM" "$BROADCOM" "$GPU_PCI" "$RISEMODE" "$AMD_GPU" "$INTEL_GPU" "$CALLAS_ASSET_BASE"
 
-# Exporta o log da instalação concluída.
-install -d -m 0700 '/mnt/var/log/callas-os/Instalacao'
-install -m 0600 "$CALLAS_INSTALL_LOG" "/mnt/var/log/callas-os/Instalacao/$(date +%Y-%m-%d_%H-%M-%S).log"
-arch-chroot /mnt /usr/local/libexec/callas-logs --export "$USUARIO" ||
-  echo 'Aviso: não consegui exportar o log de instalação para Documentos.'
-
+# The EXIT handler exports the complete log on success and on failure.
 
 echo
 echo "=========================================================="

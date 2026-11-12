@@ -81,15 +81,23 @@ class FirstLoginTests(unittest.TestCase):
         self.assertIn('como_usuario "$libexec/callas-inicio-kde" --preparar-primeiro-login',installer)
         self.assertNotIn('--preparar-primeiro-login',updater)
         self.assertNotIn('first-login-',updater)
-    def test_existing_brave_preferences_are_not_rewritten_even_if_malformed(self):
+    def test_brave_visual_repair_keeps_accounts_and_rejects_malformed_profiles(self):
         updater=(ROOT/'atualizador/callas-config-update.sh').read_text()
         section=updater[updater.index('brave_pref='):updater.index('# Coleção atual de wallpapers')]
         pref=self.home/'.config/BraveSoftware/Brave-Browser/Default/Preferences'; pref.parent.mkdir(parents=True)
         for content in (b'{"account":"keep","extensions":{"settings":{"id":"keep"}}}',b'{invalid-profile'):
             for running in (True,False):
                 pref.write_bytes(content)
-                code='home="$PROFILE_HOME"\nusuario=fixture\npgrep() { return '+('0' if running else '1')+'; }\ncomo_usuario() { echo "unexpected profile writer" >&2; return 99; }\n'+section
-                subprocess.run(['bash','-eu','-c',code],env=dict(os.environ,PROFILE_HOME=str(self.home)),check=True,capture_output=True)
-                self.assertEqual(pref.read_bytes(),content)
+                code='home="$PROFILE_HOME"\nusuario=fixture\naviso() { echo "$*"; }\npgrep() { return '+('0' if running else '1')+'; }\ncomo_usuario() { "$@"; }\n'+section
+                result=subprocess.run(['bash','-eu','-c',code],env=dict(os.environ,PROFILE_HOME=str(self.home)),capture_output=True)
+                if running or content.startswith(b'{invalid'):
+                    self.assertEqual(pref.read_bytes(),content)
+                    self.assertEqual(result.returncode,0 if running else 1)
+                else:
+                    self.assertEqual(result.returncode,0,result.stderr)
+                    data=json.loads(pref.read_bytes())
+                    self.assertEqual(data['account'],'keep'); self.assertEqual(data['extensions'],{'settings':{'id':'keep'}})
+                    self.assertFalse(data['browser']['custom_chrome_frame'])
+                    self.assertIn('kActionTabSearch',data['toolbar']['pinned_actions'])
 
 if __name__=='__main__': unittest.main()

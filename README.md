@@ -2,7 +2,7 @@
   <img src="assets/logo/callas-plasma-icon.png" alt="Callas OS" width="150">
 </p>
 
-<h1 align="center">Callas OS v3.2.1</h1>
+<h1 align="center">Callas OS v3.2.2</h1>
 
 <p align="center">
   Instalador automatizado de <strong>Arch Linux + KDE Plasma Wayland</strong>, em português do Brasil, preparado para jogos, uso diário, gravação, periféricos e manutenção simplificada.
@@ -193,11 +193,19 @@ Roteiro de aceitação em instalação limpa ou atualizada:
 
 ---
 
+## Instalação automática e diagnóstico
+
+A instalação mantém as perguntas iniciais de disco, usuário e senha/confirmação. As etapas de pacotes não solicitam revisão manual de PKGBUILD, sudo ou confirmações repetidas. Os pacotes do AUR são compilados sem privilégios; o processo administrador instala dependências e os arquivos prontos. Falhas de pacotes opcionais são registradas como avisos; uma etapa obrigatória com erro interrompe a instalação e não é anunciada como concluída.
+
+O bloco interno fica em `/usr/local/share/callas-os/install-config.sh`, com mensagem de erro da linha interna. O endereço dos assets é passado explicitamente ao chroot. Logs são preservados mesmo numa interrupção em `/var/log/callas-os/Instalacao`; quando a conta e o exportador já estão disponíveis, também em `Documentos/Callas OS/Callas OS Logs/Instalacao`. A ISO informa o caminho temporário da execução. `/var/lib/callas-os/installation-failed` identifica uma instalação incompleta; uma conclusão bem-sucedida ou reparo completo pelo Update remove esse marcador.
+
+A correção da v3.2.2 passa também pela opção 5: reinstala os auxiliares, o atalho do atualizador e as integrações de monitores, além de gravar o tema Brisa Escuro e reparar as preferências visuais do Brave fechado. Isso não substitui o teste de uma instalação limpa em VM antes da máquina principal.
+
 ## Primeiro login após instalação limpa
 
 Steam e Discord não são abertos automaticamente no primeiro login. O instalador prepara um marcador independente para cada aplicativo, consumido pelo seu autostart sem abrir o programa. Os atalhos normais continuam disponíveis: o usuário pode abrir os aplicativos manualmente desde o primeiro login. Nos logins seguintes, Steam volta a iniciar com `-silent` e Discord com o comportamento habitual. Solaar e os outros autostarts mantêm suas configurações.
 
-A opção 5 e o reparo de sessão não criam nem reiniciam esses marcadores em PCs existentes. Eles não encerram Steam/Discord nem removem contas ou dados desses aplicativos. O perfil existente do Brave não é reescrito pela migração; as políticas de extensões permanecem separadas do perfil. O instalador e o atualizador não abrem Brave para instalar Bonjourr ou SteamDB. O navegador processa as políticas quando o usuário o abre; abas de boas-vindas dependem de cada extensão, sem garantia de quantidade ou ordem.
+A opção 5 e o reparo de sessão não criam nem reiniciam esses marcadores em PCs existentes. Eles não encerram Steam/Discord nem removem contas ou dados desses aplicativos. Com o Brave fechado, a migração pode reaplicar somente as preferências visuais conhecidas, preservando as demais chaves do perfil, incluindo contas e extensões. Um arquivo Preferences inválido é preservado e a migração informa o erro; não é substituído por um perfil vazio. Com o navegador aberto, a edição é adiada e o aviso orienta fechar e reaplicar a opção 5. As políticas de extensões permanecem separadas do perfil. O instalador e o atualizador não abrem Brave para instalar Bonjourr ou SteamDB. O navegador processa as políticas quando o usuário o abre; abas de boas-vindas dependem de cada extensão, sem garantia de quantidade ou ordem.
 
 O configurador de monitores continua nos favoritos; nenhuma janela de seleção de monitores foi adicionada ao primeiro login.
 
@@ -227,11 +235,11 @@ O SteamDB também é disponibilizado em instalações existentes pela opção **
 
 ## Versão do projeto
 
-A versão pública atual é **Callas OS v3.2.1**. O arquivo [`VERSION`](programas-callas-os/atualizador/VERSION) é a fonte do número publicado; o [histórico](programas-callas-os/atualizador/CHANGELOG.md) descreve os marcos anteriores e a regra para as próximas versões.
+A versão pública atual é **Callas OS v3.2.2**. O arquivo [`VERSION`](programas-callas-os/atualizador/VERSION) é a fonte do número publicado; o [histórico](programas-callas-os/atualizador/CHANGELOG.md) descreve os marcos anteriores e a regra para as próximas versões.
 
 Instalador e opção **5 — Callas OS Update** registram a versão instalada em `/etc/callas-os/release.json`. Esse arquivo contém apenas identificação e estado, é legível pelo usuário e só pode ser alterado pelo administrador. A versão avança ao concluir as etapas obrigatórias; uma falha preserva a última versão concluída e registra a tentativa incompleta. Um boot antigo incompatível não recebe uma identificação falsa de migração completa. Instalações anteriores sem registro ficam como versão não identificada até uma migração completa ou instalação nova.
 
-A linha OS do NekoFetch lê esse registro e mostra **`Callas OS v3.2.1 (Arch Linux)`**, com o estilo e a arte atuais. O número novo aparece na próxima execução, sem editar o layout a cada versão. Isso não altera `/etc/os-release` nem faz o NekoFetch aparecer dentro dos programas de manutenção. A atualização migra o layout existente; uma instalação nova prepara o layout pelo utilitário habitual.
+A linha OS do NekoFetch lê esse registro e mostra **`Callas OS v3.2.2 (Arch Linux)`**, com o estilo e a arte atuais. O número novo aparece na próxima execução, sem editar o layout a cada versão. Isso não altera `/etc/os-release` nem faz o NekoFetch aparecer dentro dos programas de manutenção. A atualização migra o layout existente; uma instalação nova prepara o layout pelo utilitário habitual.
 
 Novos logs gravados pelo utilitário incluem contexto de versão/estado. Novos arquivos de backup guardam `callas-release.json`, identificando a versão registrada e, durante uma migração, o destino pretendido. Logs e backups antigos não recebem retroativamente uma versão histórica presumida. Atualizações comuns de pacotes, kernels ou aplicativos não mudam a versão do projeto. A revisão interna por data continua existindo para compatibilidade com clientes antigos.
 
@@ -327,7 +335,7 @@ A instalação nova continua usando `grub-custom-v2`. Uma migração de seguran�
 ### Segurança implementada
 
 - Remoção das regras antigas de `pacman` sem senha. O automático oficial roda como serviço administrativo; isso é diferente de conceder ao usuário/compilador permissão irrestrita de sudo sem senha.
-- A atualização completa inclui AUR automaticamente, conforme a preferência do projeto. Paru consulta as versões e resolve a ordem de dependências; makepkg compila em uma unidade systemd com conta dedicada, sem sudo, sem novos privilégios, sem acesso às pastas pessoais e com escrita restrita à área de trabalho. O serviço administrativo instala os arquivos prontos após conferir os nomes esperados e rejeitar links simbólicos. A instalação inicial pela ISO continua tendo sua própria revisão interativa dos pacotes AUR.
+- A atualização completa inclui AUR automaticamente, conforme a preferência do projeto. Paru consulta as versões e resolve a ordem de dependências; makepkg compila em uma unidade systemd com conta dedicada, sem sudo, sem novos privilégios, sem acesso às pastas pessoais e com escrita restrita à área de trabalho. O serviço administrativo instala os arquivos prontos após conferir os nomes esperados e rejeitar links simbólicos. Na instalação limpa, o orquestrador inicial resolve dependências e instala os pacotes como administrador, enquanto makepkg executa com o usuário novo, sem sudo e sem novos privilégios. Não usa a unidade systemd do atualizador dentro do chroot. As receitas AUR são código de terceiros; checksums/PGP continuam habilitados, mas isso não certifica que um pacote seja benigno.
 - UFW com entrada bloqueada por padrão, saída permitida, IPv4/IPv6 e integração ao KDE. Regras existentes são preservadas. Outro firewall ativo é preservado para evitar regras concorrentes. Serviços que precisem receber conexões, como compartilhamentos, transmissão e portas de torrent, podem precisar de uma regra específica.
 - Pacotes dos repositórios exigem assinatura confiável; arquivos locais do AUR continuam sujeitos à política própria de pacotes locais. NVIDIA baixada do Archive na instalação nova tem sua assinatura explicitamente verificada.
 - Downloads de código de uma atualização usam um único commit imutável. Os IDs dos blobs são conferidos antes da execução, e o estágio é privado e pertence a root. A opção 5 nova executa somente o lançador instalado de propriedade de root, sem executar com sudo um arquivo temporário gravável pelo usuário.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.11.21"
+VERSAO="2026.11.11.22"
 export PATH=/usr/bin:/bin
 umask 077
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/${CALLAS_RELEASE_REF:-main}"
@@ -79,7 +79,7 @@ trap finalizar EXIT
 
 # Older installed launchers know a shorter file list. The verified launcher
 # staged from this same commit can fetch newly introduced helpers on first use.
-if [[ ! -f $CALLAS_RELEASE_DIR/callas-autostart.py || ! -f $CALLAS_RELEASE_DIR/VERSION || ! -f $CALLAS_RELEASE_DIR/callas-version.py || ! -f $CALLAS_RELEASE_DIR/callas-nekofetch.sh || ! -f $CALLAS_RELEASE_DIR/callas-aur.py || ! -f $CALLAS_RELEASE_DIR/callas-storage.py || ! -f $CALLAS_RELEASE_DIR/callas-maintenance.py || ! -f $CALLAS_RELEASE_DIR/callas-native.py ]]; then
+if [[ ! -f $CALLAS_RELEASE_DIR/callas-aur-install.py || ! -f $CALLAS_RELEASE_DIR/callas-autostart.py || ! -f $CALLAS_RELEASE_DIR/VERSION || ! -f $CALLAS_RELEASE_DIR/callas-version.py || ! -f $CALLAS_RELEASE_DIR/callas-nekofetch.sh || ! -f $CALLAS_RELEASE_DIR/callas-aur.py || ! -f $CALLAS_RELEASE_DIR/callas-storage.py || ! -f $CALLAS_RELEASE_DIR/callas-maintenance.py || ! -f $CALLAS_RELEASE_DIR/callas-native.py ]]; then
   python - "$CALLAS_RELEASE_DIR" "$CALLAS_RELEASE_REF" <<'EXPAND_STAGE'
 import importlib.util, sys
 spec=importlib.util.spec_from_file_location('callas_release', sys.argv[1]+'/callas-release.py')
@@ -303,12 +303,41 @@ EOF
 curl -fsSL --retry 2 "$ASSET_BASE/bonjourr/callas-profile.json"   -o /usr/share/callas-os/bonjourr-profile.json ||
   aviso "Não consegui atualizar o perfil padrão do Bonjourr."
 
-# Perfis existentes ficam intactos, com o Brave aberto ou fechado. Somente o
-# arquivo de preferências iniciais para futuros perfis recebe os padrões visuais.
+# Reaplica apenas as preferências visuais conhecidas, sem recriar o perfil.
+# Com o navegador aberto, preserva Preferences para evitar concorrência.
 brave_pref="$home/.config/BraveSoftware/Brave-Browser/Default/Preferences"
 if ! pgrep -u "$usuario" -f '(^|/)(brave|brave-browser)( |$)' >/dev/null 2>&1; then
   if [[ -f "$brave_pref" ]]; then
-    printf 'Perfil existente do Brave preservado; extensões serão processadas pelo navegador quando ele for aberto.\n'
+    como_usuario python3 - "$brave_pref" <<'BRAVE_REPAIR'
+import json, os, sys, tempfile
+from pathlib import Path
+path = Path(sys.argv[1])
+# Never substitute an empty object for an unreadable/corrupt existing profile.
+before = path.stat()
+with path.open(encoding='utf-8') as stream: data = json.load(stream)
+if not isinstance(data, dict): raise ValueError('Preferences não contém objeto JSON; arquivo preservado')
+data.setdefault('browser', {})['custom_chrome_frame'] = False
+data['browser']['show_home_button'] = True
+data['homepage_is_newtabpage'] = True
+data.setdefault('bookmark_bar', {})['show_on_all_tabs'] = True
+data.setdefault('intl', {})['accept_languages'] = 'pt-BR,pt,en-US,en'
+data['intl']['selected_languages'] = 'pt-BR,pt,en-US,en'
+data.setdefault('tab_search', {})['pinned_to_tabstrip'] = True
+data.setdefault('everything_menu', {})['pinned_to_tabstrip'] = True
+actions = data.setdefault('toolbar', {}).setdefault('pinned_actions', [])
+if 'kActionTabSearch' not in actions: actions.append('kActionTabSearch')
+fd, temp = tempfile.mkstemp(prefix='.callas-preferences-', dir=path.parent)
+try:
+    with os.fdopen(fd, 'w') as stream:
+        json.dump(data, stream, ensure_ascii=False, separators=(',', ':'))
+        stream.flush(); os.fsync(stream.fileno())
+    after = path.stat()
+    if (before.st_ino, before.st_mtime_ns, before.st_size) != (after.st_ino, after.st_mtime_ns, after.st_size):
+        raise RuntimeError('Preferences mudou durante a migração; arquivo preservado')
+    os.replace(temp, path)
+finally:
+    if os.path.exists(temp): os.unlink(temp)
+BRAVE_REPAIR
   elif [[ -d /opt/brave-bin ]]; then
     initial=/opt/brave-bin/initial_preferences
     python3 - "$initial" <<'EOF'
@@ -336,7 +365,7 @@ with open(path, "w", encoding="utf-8") as f:
 EOF
   fi
 else
-  printf 'Brave aberto: perfil preservado; políticas disponíveis para o navegador.\n'
+  aviso 'Brave aberto: perfil preservado. Feche o navegador e reaplique a opção 5 para reparar as preferências visuais.'
 fi
 
 # Coleção atual de wallpapers do Callas OS.
@@ -418,6 +447,10 @@ NoDisplay=true
 StartupNotify=false
 EOF
 
+# Repair the persistent theme without depending on a running graphical session.
+como_usuario kwriteconfig6 --file kdeglobals --group KDE --key LookAndFeelPackage org.kde.breezedark.desktop
+como_usuario kwriteconfig6 --file kdeglobals --group General --key ColorScheme BreezeDark
+
 # Reaplica somente os ajustes seguros de sessão já existentes na instalação.
 if [[ -x /usr/local/libexec/callas-inicio-kde ]]; then
   como_usuario /usr/local/libexec/callas-inicio-kde || aviso "Alguns ajustes de sessão KDE não puderam ser reaplicados."
@@ -451,6 +484,7 @@ como_usuario kbuildsycoca6 --noincremental || aviso 'O menu será atualizado no 
 printf '%s\n' "$VERSAO" > "$VERSAO_ARQ"
 /usr/local/libexec/callas-version --complete "$CALLAS_RELEASE_DIR/VERSION" "$CALLAS_RELEASE_REF"
 migration_closed=1
+rm -f /var/lib/callas-os/installation-failed
 
 printf '\nConfigurações atualizadas: '
 /usr/local/libexec/callas-version --label

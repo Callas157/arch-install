@@ -25,6 +25,7 @@ FILES = (
     "programas-callas-os/atualizador/callas-maintenance.py",
     "programas-callas-os/atualizador/callas-native.py",
     "programas-callas-os/atualizador/callas-aur.py",
+    "programas-callas-os/atualizador/callas-aur-install.py",
     "programas-callas-os/atualizador/callas-config-update.sh",
     "programas-callas-os/atualizador/callas-security.sh",
     "programas-callas-os/atualizador/callas-release.py",
