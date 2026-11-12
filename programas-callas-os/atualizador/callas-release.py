@@ -65,6 +65,27 @@ def verify_blob(data, expected):
     if actual != expected:
         raise ValueError("Conteúdo diferente do blob publicado")
 
+def stage_complete(destination, expected_owner=0):
+    """Check the current release's entire file list, including future helpers.
+
+    Old installed launchers can download this verified module but still stage
+    only their old FILES tuple. Never infer completeness from a fixed subset.
+    """
+    destination = Path(destination)
+    complete = True
+    for name in ('update-assets.json', *(Path(p).name for p in FILES)):
+        target = destination / name
+        if target.is_symlink():
+            raise ValueError('Arquivo simbólico na preparação: ' + name)
+        if not target.exists():
+            complete = False
+            continue
+        info = target.stat()
+        if not target.is_file() or info.st_uid != expected_owner or info.st_mode & 0o022:
+            raise ValueError('Arquivo inseguro na preparação: ' + name)
+    return complete
+
+
 def stage_files(destination, ref):
     if not re.fullmatch(r"[0-9a-f]{40}", ref):
         raise ValueError("Commit inválido")

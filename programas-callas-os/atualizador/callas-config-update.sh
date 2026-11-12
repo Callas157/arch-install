@@ -79,7 +79,23 @@ trap finalizar EXIT
 
 # Older installed launchers know a shorter file list. The verified launcher
 # staged from this same commit can fetch newly introduced helpers on first use.
-if [[ ! -f $CALLAS_RELEASE_DIR/callas-update-state.py || ! -f $CALLAS_RELEASE_DIR/update-assets.json || ! -f $CALLAS_RELEASE_DIR/callas-spotify-permissions.sh || ! -f $CALLAS_RELEASE_DIR/callas-aur-install.py || ! -f $CALLAS_RELEASE_DIR/callas-autostart.py || ! -f $CALLAS_RELEASE_DIR/VERSION || ! -f $CALLAS_RELEASE_DIR/callas-version.py || ! -f $CALLAS_RELEASE_DIR/callas-nekofetch.sh || ! -f $CALLAS_RELEASE_DIR/callas-aur.py || ! -f $CALLAS_RELEASE_DIR/callas-storage.py || ! -f $CALLAS_RELEASE_DIR/callas-maintenance.py || ! -f $CALLAS_RELEASE_DIR/callas-native.py ]]; then
+if python - "$CALLAS_RELEASE_DIR" <<'CHECK_STAGE'
+import importlib.util, sys
+try:
+    spec=importlib.util.spec_from_file_location('callas_release', sys.argv[1]+'/callas-release.py')
+    module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+    complete=module.stage_complete(sys.argv[1])
+except Exception as exc:
+    print('Falha ao verificar arquivos preparados: '+str(exc), file=sys.stderr)
+    sys.exit(2)
+sys.exit(0 if complete else 1)
+CHECK_STAGE
+then
+  : # Current release is fully staged; no repeated downloads.
+else
+  stage_status=$?
+  [[ $stage_status == 1 ]] || erro 'Preparação insegura ou inválida; atualização interrompida.'
+  printf 'Completando arquivos da atualização para o lançador instalado.\n'
   python - "$CALLAS_RELEASE_DIR" "$CALLAS_RELEASE_REF" <<'EXPAND_STAGE'
 import importlib.util, sys
 spec=importlib.util.spec_from_file_location('callas_release', sys.argv[1]+'/callas-release.py')
