@@ -129,6 +129,31 @@ def remember_windows():
     remember_rules(windows)
 
 
+def repair_discord_rule(rule, sample, output_names):
+    """Let KWin remember placement instead of Discord's stale XWayland bounds.
+
+    Ignore client geometry requests, not interactive user moves/resizes. Seed
+    position only on this migration, from one unambiguous live normal window.
+    Never force position/size or rewrite other apps/user-authored rules.
+    """
+    if rule.get('wmclass') != 'discord' or not rule.get('Description', '').startswith('Callas OS: lembrar '):
+        return 0
+    if rule.get('ignoregeometry') == 'true' and rule.get('ignoregeometryrule') == '2':
+        return 0
+    changes = {'ignoregeometry': 'true', 'ignoregeometryrule': '2'}
+    if sample and not sample.get('maxH') and not sample.get('maxV'):
+        changes['position'] = f"{sample['x']},{sample['y']}"
+        changes['positionrule'] = '4'
+        if sample.get('output') in output_names:
+            changes.update(screenrule='4', screen=str(output_names.index(sample['output'])))
+    changed = 0
+    for key, value in changes.items():
+        if rule.get(key) != value:
+            rule[key] = value
+            changed += 1
+    return changed
+
+
 def remember_rules(windows):
     import dbus
     path = CONFIG / 'kwinrulesrc'
@@ -159,6 +184,8 @@ def remember_rules(windows):
             # Do not overwrite learned values on updates or later invocations.
             existing = next((cfg[s] for s in cfg.sections() if cfg[s].get('Description', '').startswith('Callas OS: lembrar ') and cfg[s].get('wmclass') == app), None)
             if existing is not None:
+                added += repair_discord_rule(existing,
+                    sample if counts.get((app, role), 0) == 1 else None, names)
                 # Bootstrap attributes for apps that were closed during installation.
                 # Existing learned coordinates and state always take precedence.
                 if sample and counts.get((app, role), 0) == 1:
@@ -195,6 +222,7 @@ def remember_rules(windows):
                 rule['maximizevertrule'] = '4'
                 rule['maximizehoriz'] = str(sample['maxH']).lower()
                 rule['maximizevert'] = str(sample['maxV']).lower()
+            repair_discord_rule(rule, sample, names)
             ids.append(ident)
             added += 1
     if not added:
