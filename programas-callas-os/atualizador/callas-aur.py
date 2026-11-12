@@ -115,6 +115,9 @@ exit "$code"
         invocation += ['--setenv=' + key + '=' + value for key, value in self.env.items()]
         return command(invocation + ['--', *args], capture=capture)
 
+    def prepare_dependencies(self, base, metadata):
+        pass
+
     def build(self, base, expected):
         checkout = self.work / ('src-' + base)
         # Fresh source tree; no cached user modifications are accepted.
@@ -124,6 +127,7 @@ exit "$code"
         fd = os.open(checkout / '.SRCINFO', os.O_RDONLY | os.O_NOFOLLOW)
         with os.fdopen(fd) as stream:
             metadata = stream.read(1024 * 1024)
+        self.prepare_dependencies(base, metadata)
         keys = []
         for line in metadata.splitlines():
             key, sep, value = line.strip().partition(' = ')
@@ -209,7 +213,77 @@ def run_update(apps_only=False):
             raise ValueError('Ainda há pacotes sinalizados após recompilar: ' + ', '.join(sorted(remaining)))
         print('Atualização e recompilações necessárias do AUR concluídas.')
 
+class InstallationBuilder(Builder):
+    """Chroot has no systemd manager. Build with a dedicated unprivileged UID.
+
+    Installed-system maintenance keeps the stronger systemd sandbox above.
+    Never grant sudo or execute PKGBUILDs as root in the ISO installation.
+    """
+    def prepare_dependencies(self, base, metadata):
+        if base != 'paru-bin':
+            return
+        dependencies = []
+        for line in metadata.splitlines():
+            key, sep, value = line.strip().partition(' = ')
+            if sep and key in ('depends', 'depends_x86_64', 'makedepends', 'makedepends_x86_64'):
+                if not re.fullmatch(r'[a-zA-Z0-9@_+][a-zA-Z0-9@_.+<>=:\-]*', value):
+                    raise ValueError('Dependência de bootstrap inválida')
+                dependencies.append(value)
+        if not dependencies:
+            raise ValueError('Metadados do Paru sem dependências')
+        command(['/usr/bin/pacman', '-S', '--needed', '--asdeps', '--noconfirm', *dependencies])
+
+    def run(self, args, capture=False, cwd=None, empty_ok=False):
+        account = pwd.getpwnam(BUILD_USER)
+        invocation = ['/usr/bin/setpriv', '--reuid=' + str(account.pw_uid),
+                      '--regid=' + str(account.pw_gid), '--clear-groups',
+                      '--no-new-privs', '/usr/bin/env', '-i']
+        invocation += [key + '=' + value for key, value in self.env.items()]
+        return command(invocation + ['/usr/bin/bash', '-c',
+                       'cd -- "$1" && shift && exec "$@"', 'callas-build',
+                       str(cwd or self.work), *args], capture=capture, empty_ok=empty_ok)
+
+
+def run_install(targets):
+    targets = [name(target) for target in targets]
+    if not targets or set(targets) & PINNED:
+        raise ValueError('Pacotes de instalação inválidos')
+    try:
+        pwd.getpwnam(BUILD_USER)
+    except KeyError:
+        command(['/usr/bin/useradd', '--system', '--no-create-home',
+                 '--shell', '/usr/bin/nologin', BUILD_USER])
+    BUILDS_ROOT.mkdir(mode=0o711, parents=True, exist_ok=True)
+    os.chmod(BUILDS_ROOT, 0o711)
+    with tempfile.TemporaryDirectory(prefix='installation-', dir=BUILDS_ROOT) as temp:
+        os.chmod(temp, 0o711)
+        builder = InstallationBuilder(temp)
+        if targets == ['paru-bin']:
+            actions = [('AUR', 'TARGET', 'paru-bin', ['paru-bin'])]
+        else:
+            actions = plan(builder.run(['/usr/bin/paru', '-Po', '--aur', '--noconfirm',
+                                        '--color', 'never', *targets], capture=True).stdout)
+            planned = {pkg for kind, _, _, pkgs in actions if kind == 'AUR' for pkg in pkgs}
+            installed = {pkg for pkg in set(targets) - planned if subprocess.run(
+                ['/usr/bin/pacman', '-Q', pkg], stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0}
+            if not set(targets) <= planned | installed:
+                raise ValueError('O plano não inclui todos os aplicativos solicitados')
+        for kind, reason, source, pkgs in actions:
+            if kind == 'INSTALL':
+                command(['/usr/bin/pacman', '-S', '--needed', '--asdeps', '--noconfirm', source + '/' + pkgs[0]])
+            else:
+                archives = builder.build(source, pkgs)
+                command(['/usr/bin/pacman', '-U', '--noconfirm', *archives])
+                if reason != 'TARGET':
+                    command(['/usr/bin/pacman', '-D', '--asdeps', *pkgs])
+
+
 def main():
+    if os.geteuid() == 0 and sys.argv[1:2] == ['--install']:
+        os.umask(0o077)
+        run_install(sys.argv[2:])
+        return
     if os.geteuid() != 0 or sys.argv[1:] not in ([], ['--apps-only']):
         raise SystemExit('Uso interno do Atualizador do sistema.')
     os.umask(0o077)

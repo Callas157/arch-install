@@ -2,7 +2,7 @@
   <img src="assets/logo/callas-plasma-icon.png" alt="Callas OS" width="150">
 </p>
 
-<h1 align="center">Callas OS v3.2.1</h1>
+<h1 align="center">Callas OS v3.2.2</h1>
 
 <p align="center">
   Instalador automatizado de <strong>Arch Linux + KDE Plasma Wayland</strong>, em português do Brasil, preparado para jogos, uso diário, gravação, periféricos e manutenção simplificada.
@@ -48,7 +48,9 @@ bash <(curl -fsSL https://raw.githubusercontent.com/Callas157/arch-install/main/
 
 Em máquinas virtuais, habilite **EFI/UEFI** antes de iniciar a ISO.
 
-O instalador solicitará o disco de destino, usuário e senhas necessárias. Quando a instalação terminar, remova a mídia de instalação e reinicie o computador.
+O instalador solicita somente o disco de destino, nome de usuário, senha do usuário e senha root (cada senha com confirmação). Depois dessas entradas, a instalação segue automaticamente, inclusive os pacotes AUR, sem revisão manual nem novos pedidos de senha. Em caso de erro, o log é preservado em `/var/tmp/callas-install.*.log` na ISO e, quando a raiz já está montada, em `/var/log/callas-os/Instalacao` no disco instalado. O erro dentro do chroot informa o comando e a linha interna.
+
+Quando a instalação terminar, remova a mídia de instalação e reinicie o computador.
 
 ---
 
@@ -227,11 +229,11 @@ O SteamDB também é disponibilizado em instalações existentes pela opção **
 
 ## Versão do projeto
 
-A versão pública atual é **Callas OS v3.2.1**. O arquivo [`VERSION`](programas-callas-os/atualizador/VERSION) é a fonte do número publicado; o [histórico](programas-callas-os/atualizador/CHANGELOG.md) descreve os marcos anteriores e a regra para as próximas versões.
+A versão pública atual é **Callas OS v3.2.2**. O arquivo [`VERSION`](programas-callas-os/atualizador/VERSION) é a fonte do número publicado; o [histórico](programas-callas-os/atualizador/CHANGELOG.md) descreve os marcos anteriores e a regra para as próximas versões.
 
 Instalador e opção **5 — Callas OS Update** registram a versão instalada em `/etc/callas-os/release.json`. Esse arquivo contém apenas identificação e estado, é legível pelo usuário e só pode ser alterado pelo administrador. A versão avança ao concluir as etapas obrigatórias; uma falha preserva a última versão concluída e registra a tentativa incompleta. Um boot antigo incompatível não recebe uma identificação falsa de migração completa. Instalações anteriores sem registro ficam como versão não identificada até uma migração completa ou instalação nova.
 
-A linha OS do NekoFetch lê esse registro e mostra **`Callas OS v3.2.1 (Arch Linux)`**, com o estilo e a arte atuais. O número novo aparece na próxima execução, sem editar o layout a cada versão. Isso não altera `/etc/os-release` nem faz o NekoFetch aparecer dentro dos programas de manutenção. A atualização migra o layout existente; uma instalação nova prepara o layout pelo utilitário habitual.
+A linha OS do NekoFetch lê esse registro e mostra **`Callas OS v3.2.2 (Arch Linux)`**, com o estilo e a arte atuais. O número novo aparece na próxima execução, sem editar o layout a cada versão. Isso não altera `/etc/os-release` nem faz o NekoFetch aparecer dentro dos programas de manutenção. A atualização migra o layout existente; uma instalação nova prepara o layout pelo utilitário habitual.
 
 Novos logs gravados pelo utilitário incluem contexto de versão/estado. Novos arquivos de backup guardam `callas-release.json`, identificando a versão registrada e, durante uma migração, o destino pretendido. Logs e backups antigos não recebem retroativamente uma versão histórica presumida. Atualizações comuns de pacotes, kernels ou aplicativos não mudam a versão do projeto. A revisão interna por data continua existindo para compatibilidade com clientes antigos.
 
@@ -327,14 +329,14 @@ A instalação nova continua usando `grub-custom-v2`. Uma migração de seguran�
 ### Segurança implementada
 
 - Remoção das regras antigas de `pacman` sem senha. O automático oficial roda como serviço administrativo; isso é diferente de conceder ao usuário/compilador permissão irrestrita de sudo sem senha.
-- A atualização completa inclui AUR automaticamente, conforme a preferência do projeto. Paru consulta as versões e resolve a ordem de dependências; makepkg compila em uma unidade systemd com conta dedicada, sem sudo, sem novos privilégios, sem acesso às pastas pessoais e com escrita restrita à área de trabalho. O serviço administrativo instala os arquivos prontos após conferir os nomes esperados e rejeitar links simbólicos. A instalação inicial pela ISO continua tendo sua própria revisão interativa dos pacotes AUR.
+- A atualização completa inclui AUR automaticamente, conforme a preferência do projeto. Paru consulta as versões e resolve a ordem de dependências; makepkg compila em uma unidade systemd com conta dedicada, sem sudo, sem novos privilégios, sem acesso às pastas pessoais e com escrita restrita à área de trabalho. O serviço administrativo instala os arquivos prontos após conferir os nomes esperados e rejeitar links simbólicos. Na instalação pela ISO, o AUR também é automático: uma conta dedicada compila sem sudo e sem novos privilégios; o processo administrativo instala os pacotes. Como o chroot não tem um gerenciador systemd ativo, essa compilação não usa o isolamento adicional das unidades de manutenção.
 - UFW com entrada bloqueada por padrão, saída permitida, IPv4/IPv6 e integração ao KDE. Regras existentes são preservadas. Outro firewall ativo é preservado para evitar regras concorrentes. Serviços que precisem receber conexões, como compartilhamentos, transmissão e portas de torrent, podem precisar de uma regra específica.
 - Pacotes dos repositórios exigem assinatura confiável; arquivos locais do AUR continuam sujeitos à política própria de pacotes locais. NVIDIA baixada do Archive na instalação nova tem sua assinatura explicitamente verificada.
 - Downloads de código de uma atualização usam um único commit imutável. Os IDs dos blobs são conferidos antes da execução, e o estágio é privado e pertence a root. A opção 5 nova executa somente o lançador instalado de propriedade de root, sem executar com sudo um arquivo temporário gravável pelo usuário.
 - Proteções conservadoras de links/arquivos temporários e ocultação de endereços/mensagens do kernel para usuários comuns; sudo usa terminal dedicado e cache de autenticação de cinco minutos.
 - Caso SSH esteja instalado, o acesso direto como root é desabilitado. Nenhum servidor SSH é habilitado pela migração.
 - Driver opcional do Rise Mode passa a usar conta dedicada, permissões de dispositivo restritas e isolamento do serviço, se esse hardware estiver configurado.
-- Senhas existentes e versão NVIDIA preservadas. A senha de usuário/root continua compartilhada conforme a preferência do projeto. Senhas curtas continuam fracas; essas proteções não aumentam sua entropia.
+- Senhas existentes e versão NVIDIA preservadas. Instalações novas solicitam separadamente a senha de usuário e a senha root; a atualização mantém as senhas existentes. Senhas curtas continuam fracas; essas proteções não aumentam sua entropia.
 
 **Limite de confiança:** GitHub e as contas com permissão de escrita continuam sendo a autoridade da atualização. Commit imutável e verificação de blob não são assinatura independente e não protegem contra uma publicação maliciosa feita por uma conta autorizada comprometida. Uma assinatura independente precisa de uma chave administrada separadamente do repositório. Assinatura independente, proteção da conta/repositório e criptografia de um disco já instalado exigem configuração adicional; não estão sendo anunciadas como concluídas.
 

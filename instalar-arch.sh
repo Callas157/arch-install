@@ -232,16 +232,42 @@ echo "=========================================================="
 read -rp "Nome do usuário (minúsculas, sem espaços): " USUARIO
 [[ "$USUARIO" =~ ^[a-z_][a-z0-9_-]{0,31}$ && "$USUARIO" != root && "$USUARIO" != put-aur ]] || { echo "Nome de usuário inválido."; exit 1; }
 
-while true; do
-  read -rsp "Senha do usuário (e do root): " SENHA; echo
-  read -rsp "Repita a senha: " SENHA2; echo
-  [[ -n "$SENHA" && "$SENHA" == "$SENHA2" ]] && break
-  echo "As senhas não conferem, tente de novo."
+for conta in usuario root; do
+  while true; do
+    read -rsp "Senha de $conta: " senha; echo
+    read -rsp "Repita a senha de $conta: " repetida; echo
+    [[ -n "$senha" && "$senha" == "$repetida" ]] && break
+    echo "As senhas não conferem, tente de novo."
+  done
+  if [[ $conta == usuario ]]; then SENHA=$senha; else SENHA_ROOT=$senha; fi
 done
+unset senha repetida
 
 # Full installation output, excluding hidden password input and without shell tracing.
 CALLAS_INSTALL_LOG=$(mktemp /var/tmp/callas-install.XXXXXXXX.log)
+exec 3>&1 4>&2
 exec > >(tee "$CALLAS_INSTALL_LOG") 2>&1
+CALLAS_LOG_PID=$!
+salvar_log_instalacao() {
+  local codigo=$?
+  trap - EXIT
+  exec 1>&3 2>&4
+  wait "$CALLAS_LOG_PID" || :
+  [[ -z ${CALLAS_CHROOT_SCRIPT:-} ]] || rm -f -- "$CALLAS_CHROOT_SCRIPT"
+  set +e
+  if mountpoint -q /mnt && [[ -d /mnt/etc ]]; then
+    install -d -m 0700 '/mnt/var/log/callas-os/Instalacao'
+    install -m 0600 "$CALLAS_INSTALL_LOG" "/mnt/var/log/callas-os/Instalacao/$(date +%Y-%m-%d_%H-%M-%S).log" || :
+    if [[ -x /mnt/usr/local/libexec/callas-logs ]]; then
+      arch-chroot /mnt /usr/local/libexec/callas-logs --export "$USUARIO" || :
+    fi
+  fi
+  printf 'Log da instalação (código %s): %s\n' "$codigo" "$CALLAS_INSTALL_LOG"
+  exit "$codigo"
+}
+trap salvar_log_instalacao EXIT
+# Depois das entradas iniciais, nenhum subprocesso deve consumir o teclado.
+exec </dev/null
 
 # ---------------- Preparação da ISO ----------------
 timedatectl set-ntp true
@@ -2147,15 +2173,16 @@ then
 fi
 
 # ---------------- Configuração dentro do sistema ----------------
-# Create accounts and set passwords over stdin before interactive AUR review.
+# Cria as contas e aplica as senhas pela entrada padrão, sem registrá-las no log.
 arch-chroot /mnt useradd -m -U -G wheel -s /bin/bash "$USUARIO"
-printf '%s:%s\n%s:%s\n' "$USUARIO" "$SENHA" root "$SENHA" | arch-chroot /mnt chpasswd
-unset SENHA SENHA2
+printf '%s:%s\n%s:%s\n' "$USUARIO" "$SENHA" root "$SENHA_ROOT" | arch-chroot /mnt chpasswd
+unset SENHA SENHA_ROOT
 
 echo ">>> Configurando o sistema"
-arch-chroot /mnt /bin/bash -s -- "$USUARIO" "$FUSO" "$LOCALE" "$TECLADO" \
-  "$HOSTNAME" "$UUID_RAIZ" "$NVIDIA" "$VM" "$BROADCOM" "$GPU_PCI" "$RISEMODE" "$AMD_GPU" "$INTEL_GPU" <<'CALLAS_CHROOT'
+CALLAS_CHROOT_SCRIPT=$(mktemp /mnt/root/callas-install.XXXXXXXX.sh)
+cat > "$CALLAS_CHROOT_SCRIPT" <<'CALLAS_CHROOT'
 set -Eeuo pipefail
+trap 'codigo=$?; printf "ERRO no sistema instalado: linha %s, comando: %s (código %s).\n" "$LINENO" "$BASH_COMMAND" "$codigo" >&2; exit "$codigo"' ERR
 usuario=$1
 fuso=$2
 locale=$3
@@ -2539,27 +2566,13 @@ else
   aviso 'Não consegui configurar o Flathub.'
 fi
 
-# O mesmo Paru serve para a instalação inicial e para o atualizador.
-temporario_aur=$(mktemp -d)
-chown "$usuario:$usuario" "$temporario_aur"
-limpar_aur() {
-  rm -rf -- "$temporario_aur"
+# Compila sem root/sudo; só o processo administrativo instala os pacotes.
+aur_helper=/usr/local/share/callas-os/security-stage/callas-aur.py
+instalar_aur() {
+  python "$aur_helper" --install "$@" </dev/null ||
+    { aviso "Falha ao instalar via AUR: $*."; return 1; }
 }
-trap limpar_aur EXIT
-if como_usuario git clone --depth 1 https://aur.archlinux.org/paru-bin.git "$temporario_aur/paru-bin" &&
-   como_usuario bash -c '
-     cd "$1"
-     printf "\nRevise o pacote de inicialização do Paru:\n"
-     git --no-pager show HEAD:PKGBUILD
-     git --no-pager show HEAD:.SRCINFO
-     read -r -p "Instalar este PKGBUILD após a revisão? [s/N]: " resposta </dev/tty
-     [[ $resposta =~ ^[sS]$ ]] || exit 1
-     makepkg -si --needed </dev/tty
-   ' bash "$temporario_aur/paru-bin"; then
-  instalar_aur() {
-    como_usuario paru -S --needed --review "$@" </dev/tty ||
-      { aviso "Falha ao instalar via AUR: $*."; return 1; }
-  }
+if instalar_aur paru-bin; then
   instalar_aur brave-bin || :
   instalar_aur gpu-screen-recorder gpu-screen-recorder-gtk || :
   if (( nvidia )); then
@@ -2596,9 +2609,6 @@ if como_usuario git clone --depth 1 https://aur.archlinux.org/paru-bin.git "$tem
 else
   aviso 'Falha ao instalar o Paru. Os pacotes opcionais do AUR ficaram pendentes.'
 fi
-limpar_aur
-trap - EXIT
-
 # ---------------- Brave + Bonjourr + SteamDB ----------------
 # Bonjourr é pré-instalado pela política do Brave. As preferências abaixo
 # funcionam como padrão do Callas OS e continuam alteráveis pelo usuário.
@@ -2721,12 +2731,10 @@ como_usuario "$libexec/callas-nekofetch"
 rm -rf -- "$CALLAS_RELEASE_DIR"
 
 CALLAS_CHROOT
-
-# Exporta o log da instalação concluída.
-install -d -m 0700 '/mnt/var/log/callas-os/Instalacao'
-install -m 0600 "$CALLAS_INSTALL_LOG" "/mnt/var/log/callas-os/Instalacao/$(date +%Y-%m-%d_%H-%M-%S).log"
-arch-chroot /mnt /usr/local/libexec/callas-logs --export "$USUARIO" ||
-  echo 'Aviso: não consegui exportar o log de instalação para Documentos.'
+arch-chroot /mnt /bin/bash "${CALLAS_CHROOT_SCRIPT#/mnt}" \
+  "$USUARIO" "$FUSO" "$LOCALE" "$TECLADO" "$HOSTNAME" "$UUID_RAIZ" \
+  "$NVIDIA" "$VM" "$BROADCOM" "$GPU_PCI" "$RISEMODE" "$AMD_GPU" "$INTEL_GPU"
+rm -f -- "$CALLAS_CHROOT_SCRIPT"
 
 
 echo

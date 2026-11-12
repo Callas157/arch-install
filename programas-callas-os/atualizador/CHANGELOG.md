@@ -1,5 +1,14 @@
 # Histórico do Callas OS
 
+## 3.2.2 — 2026-11-11
+
+- Restaura instalação automática do AUR, sem revisão no terminal, prompts de pacote ou sudo durante a compilação. A conta dedicada compila sem privilégios; root instala os artefatos conferidos. A manutenção existente mantém seu isolamento systemd.
+- Instalação nova solicita senhas separadas de usuário e root, com confirmação; não altera senhas em atualizações.
+- Após as entradas iniciais, fecha a entrada interativa. Falhas no chroot informam linha, comando e código; o log também é preservado após interrupção.
+- Mantém os aplicativos, personalizações, NVIDIA fixada e rotinas de atualização existentes.
+
+Validação: 105 testes offline e sintaxe Bash/Python aprovados; instalação real em VM e boot ainda pendentes. Sem o log original, a causa exata da interrupção relatada na linha externa 2156 permanece desconhecida.
+
 ## 3.2.1 — 2026-11-11
 
 - Instalação limpa pula somente o primeiro início automático de Steam e Discord; abertura manual continua disponível e os próximos logins mantêm o autostart habitual.
