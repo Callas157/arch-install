@@ -224,6 +224,113 @@ def backup_rules(path):
     shutil.copy2(path, dest / 'kwinrulesrc')
 
 
+def steam_dialog_script(output_name):
+    """Route Steam's launch/progress dialogs only; never route game windows."""
+    return r'''const preferredOutput = OUTPUT_NAME;
+const watched = new WeakSet();
+const moved = new WeakMap();
+const reported = new WeakSet();
+function steamClient(w) {
+    const cls = String(w.resourceClass || "").toLowerCase();
+    return cls === "steam" || cls === "steamwebhelper" || cls === "com.valvesoftware.steam";
+}
+function launchDialog(w) {
+    if (!steamClient(w) || w.fullScreen) return false;
+    const role = String(w.windowRole || "");
+    const title = String(w.captionNormal || w.caption || "");
+    return /^(?:(?:c?steam|c)[-_ ]?)?(?:game[-_ ]?launch|launch[-_ ]?game)(?:[-_ ]?(?:dialog|window|progress))?(?:[-_ :]*[0-9]+)?$/i.test(role)
+        || /^(?:Steam\s*[-–:]\s*)?(?:Launching(?:\s+(?:game|a game))?|Iniciando\s+(?:o\s+)?jogo|Preparing\s+to\s+launch|Preparando\s+para\s+iniciar)(?:\s|[:.…-]|$)/i.test(title);
+}
+function route(w) {
+    try {
+        if (!w || !steamClient(w)) return;
+        if (!reported.has(w)) {
+            reported.add(w);
+            print("CallasSteamDialog: " + JSON.stringify({app:String(w.resourceClass), role:String(w.windowRole || ""), title:String(w.captionNormal || w.caption || "").slice(0,160)}));
+        }
+        if (!launchDialog(w)) return;
+        const outputs = workspace.screenOrder || workspace.screens || [];
+        let target = null;
+        for (let i=0; i<outputs.length; ++i) {
+            if (String(outputs[i].name) === preferredOutput) target = outputs[i];
+        }
+        // KWin's screenOrder follows the configured primary ordering. Fall back
+        // to its first active output if the saved connector was unplugged.
+        if (!target && outputs.length) target = outputs[0];
+        if (!target || (w.output && String(w.output.name) === String(target.name))) return;
+        const count = moved.get(w) || 0;
+        if (count >= 8) return; // Bound misbehaving-client reposition loops.
+        moved.set(w,count+1);
+        workspace.sendClientToScreen(w,target);
+    } catch (error) {
+        print("CallasSteamDialog: erro ao posicionar diálogo: " + String(error));
+    }
+}
+function watch(w) {
+    if (!w || watched.has(w)) return;
+    watched.add(w);
+    // Steam/CEF can set identity, caption and placement after windowAdded.
+    [w.windowClassChanged,w.windowRoleChanged,w.captionChanged,w.outputChanged].forEach(function(signal) {
+        if (signal && typeof signal.connect === "function") signal.connect(function(){route(w);});
+    });
+    route(w);
+}
+workspace.windowAdded.connect(watch);
+const existing = typeof workspace.windowList === "function" ? workspace.windowList() : workspace.stackingOrder;
+(existing || []).forEach(watch);
+'''.replace('OUTPUT_NAME', json.dumps(output_name))
+
+
+def start_steam_dialogs():
+    if os.geteuid() == 0:
+        raise RuntimeError('Diálogos Steam devem ser ajustados pelo usuário da sessão.')
+    import fcntl
+    STATE.mkdir(parents=True, exist_ok=True)
+    with (STATE / 'steam-dialogs.lock').open('w') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        _load_steam_dialogs()
+
+
+def _load_steam_dialogs():
+    import dbus
+    preferred = ''
+    try:
+        preferred = json.loads((STATE / 'monitors.json').read_text()).get('primary', '')
+    except FileNotFoundError:
+        pass
+    if not isinstance(preferred, str):
+        raise ValueError('Monitor principal salvo inválido.')
+    code = steam_dialog_script(preferred)
+    path = STATE / 'steam-dialogs.js'
+    session = bus()
+    scripting = dbus.Interface(session.get_object('org.kde.KWin', '/Scripting'), 'org.kde.kwin.Scripting')
+    name = 'callas-steam-launch-dialogs'
+    loaded = bool(scripting.isScriptLoaded(name))
+    if loaded and path.is_file() and path.read_text() == code:
+        return
+    if loaded and not scripting.unloadScript(name):
+        raise RuntimeError('KWin não descarregou o ajuste anterior de diálogos Steam.')
+    atomic(path, code)
+    number = int(scripting.loadScript(str(path), name))
+    if number < 0:
+        raise RuntimeError('KWin não carregou o ajuste dos diálogos Steam.')
+    script = dbus.Interface(session.get_object('org.kde.KWin', '/Scripting/Script' + str(number)), 'org.kde.kwin.Script')
+    script.run()
+    print('Diálogos de inicialização da Steam: direcionamento ao monitor principal ativado.')
+    # Keep a bounded diagnostic of Steam's actual window identity. A screenshot
+    # alone cannot reveal class/role/caption variants from future Steam builds.
+    try:
+        diagnostic = subprocess.run(['journalctl', '--user', '-b', '--since=-2min',
+            '--grep=CallasSteamDialog:', '-n', '20', '--no-pager', '-o', 'cat'],
+            capture_output=True, text=True, timeout=3)
+        logger = Path('/usr/local/libexec/callas-logs')
+        if diagnostic.returncode == 0 and diagnostic.stdout and logger.is_file():
+            subprocess.run([str(logger), '--write', 'Janelas'],
+                input=diagnostic.stdout.encode(), check=False, timeout=3)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
 def activate():
     # Runs in the user's graphical session, including when started by the updater.
     # Does not choose a primary output, move a panel, or change autostart preferences.
@@ -234,6 +341,7 @@ def activate():
     fd = os.open(STATE / 'window-memory.lock', os.O_WRONLY | os.O_CREAT, 0o600)
     with os.fdopen(fd, 'w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
+        start_steam_dialogs()
         remember_windows()
 
 
@@ -251,9 +359,14 @@ def main():
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--install-system', action='store_true')
     group.add_argument('--activate', action='store_true')
+    group.add_argument('--steam-dialogs', action='store_true')
     args = parser.parse_args()
     if args.install_system:
         install_system()
+    elif args.steam_dialogs:
+        if os.geteuid() == 0:
+            raise RuntimeError('Diálogos Steam devem ser ajustados pelo usuário da sessão.')
+        start_steam_dialogs()
     else:
         activate()
 

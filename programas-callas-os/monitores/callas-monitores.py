@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Callas OS: output priority, Plasma desktop and login display.
-Never forces application windows onto the primary output. No display mode changes.
+Only Steam launch dialogs are routed to the primary output. No display mode changes.
 """
 import argparse
 import configparser
@@ -164,6 +164,7 @@ def choose():
     atomic(STATE / 'monitors.json', json.dumps({'primary': chosen['name']}, indent=2) + '\n')
     # KScreen saves output geometry asynchronously. The login helper validates its input.
     apply_desktop()
+    subprocess.run([str(LIBEXEC / 'callas-janelas'), '--steam-dialogs'], check=True)
     subprocess.run([str(LIBEXEC / 'callas-kde-desligamento-login'), '--monitor', chosen['name']], check=True)
     print('Principal:', chosen['name'], '— confira o formulário no próximo login.')
     print('Resolução, frequência, escala e disposição física dos monitores foram mantidas.')

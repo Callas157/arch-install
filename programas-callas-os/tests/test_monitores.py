@@ -258,7 +258,7 @@ if(ps[0].screen!==0 || !logs.includes('CALLAS_OK')) throw Error('panel');
         self.assertNotIn('callas-monitores --first', installer)
 
     def test_automatic_activation_is_serialized_and_never_calls_monitor_setup(self):
-        with patch.object(win.os, 'geteuid', return_value=1000), patch.object(win, 'remember_windows') as remember, \
+        with patch.object(win.os, 'geteuid', return_value=1000), patch.object(win, 'remember_windows') as remember, patch.object(win, 'start_steam_dialogs'), \
              patch.object(m, 'choose') as choose:
             win.activate()
             win.activate()
