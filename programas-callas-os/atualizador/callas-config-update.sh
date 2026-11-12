@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.12.01"
+VERSAO="2026.11.12.02"
 export PATH=/usr/bin:/bin
 umask 077
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/${CALLAS_RELEASE_REF:-main}"
@@ -147,6 +147,21 @@ if [[ "$atual" == "$VERSAO" && $forcar -eq 0 ]] && python "$CALLAS_RELEASE_DIR/c
     2|"") exit 0 ;;
     *) printf 'Opção inválida. Nenhuma alteração foi feita.\n'; exit 0 ;;
   esac
+fi
+
+# Complete the native application set on existing installations as well.
+# The initial AUR helper keeps checksum/PGP verification enabled and builds as
+# the normal user, never via passwordless sudo. Existing Spotify is preserved.
+printf '\n==> Verificando Spotify nativo\n'
+if pacman -Q spotify >/dev/null 2>&1; then
+  printf 'Spotify nativo já instalado.\n'
+else
+  consulta_spotify=$?
+  [[ $consulta_spotify == 1 ]] || erro 'Não consegui consultar o Spotify no banco de pacotes.'
+  /usr/local/libexec/callas-aur-install "$usuario" spotify ||
+    erro 'Não consegui instalar o Spotify nativo. Consulte o log do Callas OS Update.'
+  pacman -Q spotify >/dev/null 2>&1 ||
+    erro 'O Spotify não foi encontrado após a instalação; atualização não concluída.'
 fi
 
 # Instala o utilitário sem modificar monitores nem posições de janelas via root.
