@@ -72,13 +72,21 @@ exec 3>&1 4>&2
         if probe.returncode: self.skipTest('user namespace unavailable')
         with tempfile.TemporaryDirectory() as temp:
             base=Path(temp)
-            for name in ('etc','etc/sudoers.d','etc/systemd','etc/default','var/tmp','var/log','boot/grub','home/fixture/.config','home/fixture/.local/bin','opt/brave-bin','share/callas-os/grub','share/plymouth/themes','local/bin','local/libexec','local/share/callas-os/security-stage','fakebin'):
+            for name in ('etc','etc/sudoers.d','etc/systemd','etc/default','var/tmp','var/log','boot/grub','home/fixture/.config','home/fixture/.local/bin','opt/brave-bin','share/callas-os/grub','share/plymouth/themes','local/bin','local/libexec','local/share/callas-os/security-stage','fakebin','modules/main','modules/lts'):
                 (base/name).mkdir(parents=True,exist_ok=True)
             for name,content in {'etc/locale.gen':'#pt_BR.UTF-8 UTF-8\n#en_US.UTF-8 UTF-8\n','etc/pacman.conf':'[options]\n#[multilib]\n#Include = /etc/pacman.d/mirrorlist\n','etc/pam.d/sddm':'pam_kwallet\n','etc/mkinitcpio.conf':'HOOKS=()\nMODULES=()\n','etc/grub.d/10_linux':'placeholder','share/callas-os/grub/theme.txt':'theme','share/callas-os/grub/background.png':'image'}.items():
                 path=base/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(content)
             (base/'etc/passwd').write_text('root:x:0:0:root:/root:/bin/bash\nfixture:x:0:0:test:/home/fixture:/bin/bash\nsddm:x:0:0:test:/var/lib/sddm:/bin/bash\n')
             (base/'etc/group').write_text('root:x:0:\nfixture:x:0:\nsddm:x:0:\n')
             for name in ('vmlinuz-linux','vmlinuz-linux-lts','initramfs-linux.img','initramfs-linux-lts.img'): (base/'boot'/name).write_text('data')
+            for folder, package in (('main','linux'),('lts','linux-lts')):
+                (base/'modules'/folder/'pkgbase').write_text(package)
+                (base/'modules'/folder/'vmlinuz').write_text('kernel')
+            checker=(UPDATER/'callas-kernel-check.sh').read_text().replace('/usr/lib/modules','/callas-test-modules').replace('export PATH=/usr/bin:/bin','export PATH=/callas-test-bin:/usr/bin:/bin')
+            (base/'local/libexec/callas-kernel-check').write_text(checker)
+            (base/'local/libexec/callas-kernel-check').chmod(0o755)
+            (base/'local/libexec/callas-logs').write_text('#!/bin/sh\ncat >> /var/log/kernel-recorded.log\n')
+            (base/'local/libexec/callas-logs').chmod(0o755)
             fake='''#!/usr/bin/python3
 import os,sys,json
 from pathlib import Path
@@ -86,11 +94,14 @@ name=Path(sys.argv[0]).name;a=sys.argv[1:]
 with open('/var/log/events','a') as f: f.write(name+' '+repr(a)+'\\n')
 if name=='runuser': os.execvp(a[a.index('--')+1],a[a.index('--')+1:])
 if name=='findmnt': print('vfat' if 'FSTYPE' in a else 'EFI-UUID')
+elif name=='dkms':
+ if a not in (['autoinstall','-k','main'],['autoinstall','-k','lts']):
+  print('Missing ISO headers: DKMS targeted the running ISO kernel',file=sys.stderr);sys.exit(1)
 elif name=='gpg' and '--show-keys' in a: print('fpr:::::::::E1096BCBFF6D418796DE78515384CE82BA52C83A:')
 elif name=='curl' and '-o' in a:
  p=Path(a[a.index('-o')+1]);p.parent.mkdir(parents=True,exist_ok=True);p.write_text('{}')
 elif name=='grub-mkconfig':
- p=Path(a[a.index('-o')+1]);p.write_text("menuentry 'Callas OS Linux' {}\\nmenuentry 'Callas OS (kernel LTS - recuperação)' {}\\nmenuentry 'Callas OS (diagnóstico sem splash)' {}\\n")
+ p=Path(a[a.index('-o')+1]);p.write_text("menuentry 'Callas OS Linux' { linux /vmlinuz-linux root=UUID=rootuuid }\\nmenuentry 'Callas OS (kernel LTS - recuperação)' { linux /vmlinuz-linux-lts root=UUID=rootuuid }\\nmenuentry 'Callas OS (diagnóstico sem splash)' {}\\n")
 elif name=='grub-install':
  for name in ('/boot/grub/x86_64-efi/normal.mod','/boot/EFI/BOOT/BOOTX64.EFI'):
   p=Path(name);p.parent.mkdir(parents=True,exist_ok=True);p.write_text('boot')
@@ -99,7 +110,7 @@ elif name=='kwriteconfig6':
  p=Path(os.environ['HOME'])/'.config'/a[a.index('--file')+1];p.parent.mkdir(parents=True,exist_ok=True)
  with p.open('a') as f: f.write(' '.join(a)+'\\n')
 '''
-            for command in ('pacman','pacman-key','locale-gen','hwclock','visudo','chown','systemctl','udevadm','runuser','flatpak','findmnt','grub-mkconfig','grub-install','grub-script-check','plymouth-set-default-theme','mkinitcpio','modinfo','dkms','curl','gpg','xdg-user-dirs-update','plasma-apply-lookandfeel','kwriteconfig6','kreadconfig6','steam','discord','solaar','dbus-run-session'):
+            for command in ('pacman','pacman-key','locale-gen','hwclock','visudo','chown','systemctl','udevadm','runuser','flatpak','findmnt','grub-mkconfig','grub-install','grub-script-check','plymouth-set-default-theme','mkinitcpio','modinfo','dkms','mountpoint','curl','gpg','xdg-user-dirs-update','plasma-apply-lookandfeel','kwriteconfig6','kreadconfig6','steam','discord','solaar','dbus-run-session'):
                 path=base/'fakebin'/command;path.write_text(fake);path.chmod(0o755)
             (base/'fakebin/python').symlink_to('/usr/bin/python3')
             (base/'fakebin/awk').symlink_to('/usr/bin/mawk')
@@ -114,10 +125,10 @@ elif name=='kwriteconfig6':
             shutil.copy(UPDATER/'callas-version.py',stage/'callas-version.py')
             shutil.copy(UPDATER/'callas-version.py',base/'local/libexec/callas-version');(base/'local/libexec/callas-version').chmod(0o755)
             (stage/'VERSION').write_text('3.2.2\n');(stage/'commit').write_text('a'*40+'\n')
-            (stage/'callas-security.sh').write_text('mkdir -p /usr/local/share/applications\nprintf "[Desktop Entry]\\nExec=/usr/local/libexec/put-update --menu\\n" > /usr/local/share/applications/io.github.Callas157.AtualizadorDoSistema.desktop\n')
+            (stage/'callas-security.sh').write_text('mkdir -p /usr/local/share/applications\nprintf "[Desktop Entry]\\nExec=/usr/local/libexec/put-update --menu\\n" > /usr/local/share/applications/io.github.Callas157.AtualizadorDoSistema.desktop\n/usr/local/libexec/callas-kernel-check\n')
             (base/'child.sh').write_text(child_script())
             invocation=['bwrap','--unshare-user','--uid','0','--gid','0','--unshare-pid','--unshare-ipc','--unshare-uts','--die-with-parent','--tmpfs','/','--ro-bind','/usr','/usr','--symlink','usr/bin','/bin','--ro-bind','/lib','/lib','--ro-bind','/lib64','/lib64','--tmpfs','/tmp','--dir','/root','--dir','/run','--proc','/proc','--dev','/dev']
-            for source,target in [('etc','/etc'),('var','/var'),('boot','/boot'),('home','/home'),('opt','/opt'),('share','/usr/share'),('local','/usr/local'),('fakebin','/callas-test-bin')]:
+            for source,target in [('etc','/etc'),('var','/var'),('boot','/boot'),('home','/home'),('opt','/opt'),('share','/usr/share'),('local','/usr/local'),('fakebin','/callas-test-bin'),('modules','/callas-test-modules')]:
                 invocation+=['--bind',str(base/source),target]
             invocation+=['--ro-bind',str(base/'child.sh'),'/child.sh','--setenv','PATH','/callas-test-bin:/usr/bin:/bin','--setenv','XDG_CONFIG_HOME','/home/fixture/.config','--setenv','HOME','/root','--','/usr/bin/bash','/child.sh','fixture','UTC','pt_BR.UTF-8','us','host','rootuuid','0','kvm','0','1af4:1050','0','0','0','https://example.org/assets']
             # Reproduce the reported interruption at the old unexported asset
@@ -131,8 +142,25 @@ elif name=='kwriteconfig6':
             # Namespace root cannot override host-inode DAC on this replay.
             (base/'etc/sudoers.d/10-wheel').chmod(0o640)
             (base/'child.sh').write_text(child_script())
+            # Replay the second reported failure with the old unqualified DKMS
+            # call. Then execute the same complete child with the real fixed
+            # checker; only package/hardware commands remain simulated.
+            checker_path=base/'local/libexec/callas-kernel-check'
+            checker_path.write_text(checker.replace('dkms autoinstall -k "$release"','dkms autoinstall'))
+            broken_kernel=subprocess.run(invocation,capture_output=True,text=True,timeout=30)
+            self.assertNotEqual(broken_kernel.returncode,0,broken_kernel.stdout+broken_kernel.stderr)
+            self.assertIn('Missing ISO headers',broken_kernel.stdout+broken_kernel.stderr)
+            self.assertIn('configuração interna interrompida',broken_kernel.stderr)
+            self.assertNotEqual(json.loads((base/'etc/callas-os/release.json').read_text())['status'],'complete')
+            (base/'etc/sudoers.d/10-wheel').chmod(0o640)
+            checker_path.write_text(checker)
             result=subprocess.run(invocation,capture_output=True,text=True,timeout=30)
             self.assertEqual(result.returncode,0,result.stdout+'\n'+result.stderr)
+            self.assertIn('Kernels padrão e LTS, initramfs e boot verificados.',result.stdout)
+            events=(base/'var/log/events').read_text()
+            self.assertIn("dkms ['autoinstall', '-k', 'main']",events)
+            self.assertIn("dkms ['autoinstall', '-k', 'lts']",events)
+            self.assertFalse((base/'var/lib/callas-os/kernel-check-failed').exists())
             self.assertIn('BreezeDark',(base/'home/fixture/.config/kdeglobals').read_text())
             preferences=json.loads((base/'opt/brave-bin/initial_preferences').read_text())
             self.assertFalse(preferences['browser']['custom_chrome_frame'])

@@ -586,7 +586,6 @@ atualizar_arch() {
         # Antes de considerar a atualização concluída, garante que o NVIDIA
         # fixado ainda foi compilado para todos os kernels linux/linux-lts.
         local pkgbase release falhou_modulo=0
-        dkms autoinstall || falhou_modulo=1
         for pkgbase in /usr/lib/modules/*/pkgbase; do
             [[ -f $pkgbase ]] || continue
             case $(<"$pkgbase") in
@@ -595,6 +594,10 @@ atualizar_arch() {
             esac
             release=${pkgbase%/pkgbase}
             release=${release##*/}
+            if ! dkms autoinstall -k "$release"; then
+                printf 'DKMS falhou para o kernel instalado %s. Não reinicie antes de corrigir.\n' "$release" >&2
+                falhou_modulo=1
+            fi
             if ! modinfo -k "$release" nvidia >/dev/null 2>&1; then
                 printf 'NVIDIA %s não está disponível para o kernel %s. Não reinicie antes de corrigir.\n'                     "$(< /etc/callas-nvidia-version)" "$release" >&2
                 falhou_modulo=1
@@ -2458,6 +2461,9 @@ trap 'rm -f "$tmp"' EXIT
 
 grub-mkconfig -o "$tmp"
 [[ -s "$tmp" ]]
+grub-script-check "$tmp"
+grep -Eq '(^|[[:space:]/])vmlinuz-linux([[:space:]]|$)' "$tmp"
+grep -Eq '(^|[[:space:]/])vmlinuz-linux-lts([[:space:]]|$)' "$tmp"
 grep -q "menuentry 'Callas OS Linux'" "$tmp"
 grep -q "menuentry 'Callas OS (kernel LTS - recuperação)'" "$tmp"
 grep -q "menuentry 'Callas OS (diagnóstico sem splash)'" "$tmp"

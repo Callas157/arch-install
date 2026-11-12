@@ -2,6 +2,7 @@
 
 - Keep the repository root limited to the existing `assets/`, `programas-callas-os/`, `instalar-arch.sh`, `README.md` and legacy updater bridge. New programs, metadata, docs and tests belong inside `programas-callas-os/`; visual resources belong inside `assets/`. Do not create extra top-level files.
 
+- Do not edit README files unless the user explicitly requests a README change. This overrides the README synchronization instruction below.
 - Preserve `instalar-arch.sh`, repository paths, existing short links and the root updater compatibility bridge.
 - The public project version has one source: `/programas-callas-os/atualizador/VERSION`. The installed identity is maintained by `callas-version`; do not change Arch's `os-release` to display the project version.
 - Bump the public version only for changes to delivered functionality: patch for behavioral fixes, minor for new features, major for incompatible structural changes. Repository organization, file moves and documentation-only changes retain the current public version. For a functional release, update `atualizador/VERSION`, `atualizador/CHANGELOG.md` and current-version references in README together. The initial adoption of this scheme is `3.2.0`.

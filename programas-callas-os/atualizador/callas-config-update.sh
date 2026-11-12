@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.11.22"
+VERSAO="2026.11.12.01"
 export PATH=/usr/bin:/bin
 umask 077
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/${CALLAS_RELEASE_REF:-main}"
@@ -202,7 +202,10 @@ rm -f /etc/pacman.d/hooks/99-callas-grub-silencioso.hook
 
 grub_tmp=$(mktemp /boot/grub/.grub.cfg.callas.XXXXXX)
 if grub-mkconfig -o "$grub_tmp" && [[ -s "$grub_tmp" ]] &&
-   grep -q 'menuentry ' "$grub_tmp"; then
+   grub-script-check "$grub_tmp" &&
+   grep -q 'menuentry ' "$grub_tmp" &&
+   grep -Eq '(^|[[:space:]/])vmlinuz-linux([[:space:]]|$)' "$grub_tmp" &&
+   grep -Eq '(^|[[:space:]/])vmlinuz-linux-lts([[:space:]]|$)' "$grub_tmp"; then
   chmod 0600 "$grub_tmp"
   mv -f "$grub_tmp" /boot/grub/grub.cfg
 else
