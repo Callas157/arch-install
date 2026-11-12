@@ -211,6 +211,8 @@ install -m 0755 "$monitor_stage/callas-monitores.py" /usr/local/libexec/callas-m
 /usr/local/libexec/callas-monitores --install-system
 install -m 0755 "$monitor_stage/callas-janelas.py" /usr/local/libexec/callas-janelas
 /usr/local/libexec/callas-janelas --install-system
+# Organiza os acessos do usuário sem alterar o caminho do menu e do agendador.
+como_usuario /usr/local/libexec/put-update --instalar-atalhos
 # O atualizador já usa System; garante a categoria também em instalações existentes.
 updater_desktop=/usr/local/share/applications/io.github.Callas157.AtualizadorDoSistema.desktop
 if [[ -f $updater_desktop ]]; then

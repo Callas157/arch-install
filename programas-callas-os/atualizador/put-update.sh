@@ -468,12 +468,39 @@ notificar_falha_usuario() {
 }
 
 instalar_atalhos() {
-    local documentos
+    local documentos pasta temporario antigo
     documentos=$(pasta_de_documentos)
-    mkdir -p -- "$documentos"
-    install -m 0755 -T -- "$program" "$documentos/atualizador-do-sistema.sh"
-    install -m 0755 -T -- "$atalho_menu" "$documentos/Atualizador do sistema.desktop"
-    printf 'Atalho criado em %s/Atualizador do sistema.desktop\n' "$documentos"
+    pasta="$documentos/Callas OS"
+    [[ ! -L "$pasta" ]] || erro 'A pasta Callas OS não pode ser um link simbólico.'
+    mkdir -p -- "$pasta"
+    for antigo in "$pasta/atualizador-do-sistema.sh" "$pasta/Atualizador do sistema.desktop"; do
+        [[ ! -L "$antigo" && ( ! -e "$antigo" || -f "$antigo" ) ]] ||
+            erro "Destino de atalho inválido: $antigo"
+    done
+    # Prepare both copies before replacing them or retiring the old locations.
+    temporario=$(mktemp -d "$pasta/.atalhos.XXXXXXXX")
+    if ! install -m 0755 -T -- "$program" "$temporario/atualizador-do-sistema.sh" ||
+       ! install -m 0755 -T -- "$atalho_menu" "$temporario/Atualizador do sistema.desktop"; then
+        rm -rf -- "$temporario"
+        erro 'Não foi possível preparar os atalhos; arquivos antigos preservados.'
+    fi
+    mv -fT -- "$temporario/atualizador-do-sistema.sh" "$pasta/atualizador-do-sistema.sh"
+    mv -fT -- "$temporario/Atualizador do sistema.desktop" "$pasta/Atualizador do sistema.desktop"
+    rmdir -- "$temporario"
+    # Retire only recognized generated files; preserve custom files and symlinks.
+    antigo="$documentos/atualizador-do-sistema.sh"
+    if [[ -f "$antigo" && ! -L "$antigo" ]] &&
+       grep -Fxq 'program=/usr/local/libexec/put-update' "$antigo" &&
+       grep -Fxq 'servico_check=put-update-check.service' "$antigo"; then
+        rm -- "$antigo"
+    fi
+    antigo="$documentos/Atualizador do sistema.desktop"
+    if [[ -f "$antigo" && ! -L "$antigo" ]] &&
+       grep -Fxq 'Type=Application' "$antigo" &&
+       grep -Fxq 'Exec=/usr/local/libexec/put-update --menu' "$antigo"; then
+        rm -- "$antigo"
+    fi
+    printf 'Atalho criado em %s/Atualizador do sistema.desktop\n' "$pasta"
 }
 
 instalar_entrada_menu() {
