@@ -1082,15 +1082,16 @@ menu_manutencao() {
     while true; do
         printf '\n=== Limpeza e manutenção ===\n'
         printf '%s\n' '1. Limpeza segura agora' '2. Ver espaço, backups e arquivos de VMs' \
-            '3. Verificar pacotes órfãos' '4. Reparar agendamento automático' '5. Voltar'
-        read -r -p 'Escolha [1-5]: ' escolha || return 0
-        [[ $escolha == 5 || -z $escolha ]] || printf 'É necessária autorização administrativa para esta ação.\n'
+            '3. Verificar pacotes órfãos' '4. Reparar agendamento automático' '5. Coletar diagnóstico de jogo' '6. Voltar'
+        read -r -p 'Escolha [1-6]: ' escolha || return 0
+        [[ $escolha == 6 || -z $escolha ]] || printf 'É necessária autorização administrativa para esta ação.\n'
         case $escolha in
           1) sudo /usr/local/libexec/callas-maintenance --clean "$USER" || printf 'A limpeza registrou uma falha; consulte os logs.\n' ;;
           2) sudo /usr/local/libexec/callas-maintenance --report "$USER" || printf 'Não consegui concluir o relatório.\n' ;;
           3) sudo /usr/local/libexec/callas-maintenance --orphans "$USER" || printf 'Não consegui concluir a verificação de órfãos.\n' ;;
           4) sudo "$program" --instalar || printf 'Falha ao reparar o agendamento.\n' ;;
-          5|"") return 0 ;;
+          5) sudo /usr/local/libexec/callas-game-logs --collect "$USER" || printf 'Não consegui concluir o diagnóstico do jogo.\n' ;;
+          6|"") return 0 ;;
           *) printf 'Opção inválida.\n' ;;
         esac
     done

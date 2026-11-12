@@ -12,19 +12,19 @@ import urllib.request
 
 STATE=Path('/var/lib/callas-os')
 DEPENDENCIES={
-    'security':('callas-security.sh',),
+    'security':('callas-security.sh','callas-game-logs.py'),
     'apps':('callas-spotify-permissions.sh','callas-aur-install.py'),
     'tools':('callas-monitores.py','callas-janelas.py','callas-inicio-kde.sh','callas-kde-desligamento-login.sh'),
     'boot':('callas.script','callas.plymouth'),
     'flatpaks':(), 'browser':(), 'desktop':(),
-    'session':('callas-inicio-kde.sh','callas-janelas.py','callas-nekofetch.sh','callas-version.py'),
+    'session':('callas-game-logs.py','callas-inicio-kde.sh','callas-janelas.py','callas-nekofetch.sh','callas-version.py'),
 }
 REQUIRED={
-    'security':('/etc/callas-os/security-version','/etc/sudoers.d/20-callas-security'),
+    'security':('/etc/callas-os/security-version','/etc/systemd/system/callas-game-events.service','/etc/sudoers.d/20-callas-security'),
     'apps':('/opt/spotify/Apps',),
     'tools':('/usr/local/share/applications/io.github.Callas157.Monitores.desktop','/etc/systemd/user/callas-janelas.service'),
     'boot':('/boot/grub/grub.cfg','/boot/initramfs-linux.img','/boot/initramfs-linux-lts.img'),
-    'flatpaks':(), 'browser':('/etc/brave/policies/managed/callas-bonjourr.json',), 'desktop':('/etc/xdg/kicker-extra-favoritesrc',), 'session':(),
+    'flatpaks':(), 'browser':('/etc/brave/policies/managed/callas-bonjourr.json',), 'desktop':('/etc/xdg/kicker-extra-favoritesrc',), 'session':('/etc/systemd/user/callas-game-logs.service',),
 }
 
 def atomic(path,data,mode=0o600):

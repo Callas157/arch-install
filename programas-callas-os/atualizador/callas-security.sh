@@ -8,7 +8,7 @@ usuario=${SUDO_USER:-${1:-}}
 [[ -n $usuario && $usuario != root ]] && id "$usuario" >/dev/null || exit 1
 stage=${CALLAS_RELEASE_DIR:?Arquivos de atualização não preparados}
 [[ -d $stage && ! -L $stage && $(stat -c %u "$stage") == 0 ]] || exit 1
-for name in callas-update-state.py callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
+for name in callas-game-logs.py callas-update-state.py callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
   [[ -f $stage/$name && ! -L $stage/$name && $(stat -c %u "$stage/$name") == 0 ]] || {
     echo "Arquivo verificado ausente/inseguro: $name" >&2; exit 1;
   }
@@ -33,10 +33,11 @@ fi
 # No lingering passwordless pacman access, even after an interrupted old update.
 rm -f /etc/sudoers.d/put-update /etc/sudoers.d/99-callas-instalacao
 rm -f /etc/put-update-aur.sudoers /etc/put-update-paru.conf
-for name in callas-update-state.py callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
+for name in callas-game-logs.py callas-update-state.py callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
   source_file="$stage/$name"
   [[ -f $source_file && ! -L $source_file && $(stat -c %u "$source_file") == 0 ]] || exit 1
   case $name in
+    callas-game-logs.py) target=callas-game-logs ;;
     callas-update-state.py) target=callas-update-state ;;
     callas-spotify-permissions.sh) target=callas-spotify-permissions ;;
     callas-aur-install.py) target=callas-aur-install ;;
@@ -279,6 +280,7 @@ SPOTIFY_HOOK
     /usr/local/libexec/callas-spotify-permissions "$usuario"
   fi
 
+  /usr/local/libexec/callas-game-logs --install-system
   /usr/local/libexec/put-update --instalar-para "$usuario"
   if [[ ${2:-} != --config-update ]]; then
     /usr/local/libexec/callas-kernel-check --verify-only

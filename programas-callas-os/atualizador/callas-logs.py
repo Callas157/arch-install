@@ -12,7 +12,7 @@ import sys
 import time
 
 CATEGORIES = ('Callas OS Update', 'Sistema e Pacman', 'Kernel Linux', 'Driver NVIDIA',
-              'Aplicativos', 'AUR', 'Seguranca e Firewall', 'Instalacao', 'Manutencao', 'Janelas')
+              'Aplicativos', 'AUR', 'Seguranca e Firewall', 'Instalacao', 'Manutencao', 'Janelas', 'Jogos')
 MAX_FILE = 2 * 1024**2
 MAX_TOTAL = 128 * 1024**2
 MAX_AGE = 30 * 86400

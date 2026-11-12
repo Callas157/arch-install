@@ -583,6 +583,9 @@ if [[ -S "$runtime_sessao/bus" ]]; then
       journalctl --user -u callas-janelas.service -n 40 --no-pager || :
     erro 'A memória de janelas falhou; o diagnóstico foi incluído neste log. As etapas concluídas não serão repetidas na próxima tentativa.'
   fi
+  if ! "${sessao_systemctl[@]}" restart callas-game-logs.service; then
+    erro 'O monitor de diagnósticos de jogos não iniciou; a etapa ficará pendente.'
+  fi
   printf 'Memória de janelas ativada automaticamente. Não depende do configurador de monitores.\n'
 else
   session_pending=1

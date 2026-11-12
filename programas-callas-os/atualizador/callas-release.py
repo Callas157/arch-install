@@ -33,6 +33,7 @@ FILES = (
     "programas-callas-os/atualizador/callas-release.py",
     "programas-callas-os/atualizador/put-update.sh",
     "programas-callas-os/atualizador/callas-logs.py",
+    "programas-callas-os/atualizador/callas-game-logs.py",
     "programas-callas-os/atualizador/callas-kernel-check.sh",
     "programas-callas-os/monitores/callas-monitores.py",
     "programas-callas-os/janelas/callas-janelas.py",
