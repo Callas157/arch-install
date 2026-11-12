@@ -81,13 +81,14 @@ class VersionTests(unittest.TestCase):
         body = installer.split("<<'CALLAS_NEKO'\n", 1)[1].split('\nCALLAS_NEKO\n', 1)[0]
         self.assertEqual(body + '\n', (UPDATER / 'callas-nekofetch.sh').read_text())
         self.assertRegex((UPDATER / 'VERSION').read_text().strip(), version.SEMVER)
-    def test_metadata_stays_inside_programs_with_original_root_entrypoints(self):
+    def test_metadata_stays_inside_programs_after_bridge_retirement(self):
         for name in ('VERSION', 'CHANGELOG.md', 'AGENTS.md'):
             self.assertFalse((ROOT / name).exists(), name)
         self.assertTrue((UPDATER / 'VERSION').is_file())
         self.assertTrue((UPDATER / 'CHANGELOG.md').is_file())
         self.assertTrue((ROOT / 'programas-callas-os/AGENTS.md').is_file())
-        self.assertTrue((ROOT / 'callas-config-update.sh').is_file())
+        self.assertFalse((ROOT / 'callas-config-update.sh').exists())
+        self.assertTrue((UPDATER / 'callas-config-update.sh').is_file())
         self.assertTrue((ROOT / 'instalar-arch.sh').is_file())
 
 class FolderTests(unittest.TestCase):

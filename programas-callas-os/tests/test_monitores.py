@@ -287,33 +287,6 @@ if(ps[0].screen!==0 || !logs.includes('CALLAS_OK')) throw Error('panel');
             self.assertEqual(rule['maximizehorizrule'], '4')
             self.assertTrue(list((win.STATE / 'window-backups').glob('*/kwinrulesrc')))
 
-    def test_old_url_bridge_forwards_arguments_and_cleans_download(self):
-        import os
-        bindir = self.base / 'bin'
-        bindir.mkdir()
-        fake_curl = bindir / 'curl'
-        fake_curl.write_text('#!/usr/bin/env python3\nimport json,os,sys\nfrom pathlib import Path\na=sys.argv[1:]\nPath(os.environ["TEST_CURL_LOG"]).write_text(json.dumps(a))\nPath(a[a.index("-o")+1]).write_text(os.environ["TEST_CURL_BODY"])\n')
-        fake_curl.chmod(0o755)
-        log = self.base / 'curl.json'
-        args = self.base / 'args.txt'
-        env = dict(os.environ, PATH=str(bindir)+os.pathsep+os.environ['PATH'],
-                   TEST_CURL_LOG=str(log), TEST_ARGS=str(args),
-                   TEST_CURL_BODY='printf "%s\\n" "$@" > "$TEST_ARGS"\nexit 7\n')
-        result = subprocess.run(['bash', str(REPO / 'callas-config-update.sh'), '--force', 'argument with spaces'], env=env)
-        self.assertEqual(result.returncode, 7)
-        self.assertEqual(args.read_text().splitlines(), ['--force', 'argument with spaces'])
-        call = json.loads(log.read_text())
-        self.assertIn('/programas-callas-os/atualizador/callas-config-update.sh', next(x for x in call if x.startswith('https://')))
-        self.assertFalse(Path(call[call.index('-o')+1]).exists())
-        # A malformed downloaded script is rejected before execution.
-        args.unlink()
-        env['TEST_CURL_BODY'] = 'if then\nprintf bad > "$TEST_ARGS"\n'
-        result = subprocess.run(['bash', str(REPO / 'callas-config-update.sh')], env=env, capture_output=True)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertFalse(args.exists())
-        call = json.loads(log.read_text())
-        self.assertFalse(Path(call[call.index('-o')+1]).exists())
-
     def test_update_migrates_installed_updater_to_new_url(self):
         # Migration replaces the complete root-owned updater, rather than
         # editing downloaded/user-controlled shell code with text substitutions.
@@ -327,8 +300,7 @@ if(ps[0].screen!==0 || !logs.includes('CALLAS_OK')) throw Error('panel');
         self.assertIn('sudo /usr/local/libexec/callas-release', program)
         subprocess.run(['bash', '-n'], input=program, text=True, check=True)
 
-    def test_program_sources_are_organized_and_version_matches_bridge(self):
-        import re
+    def test_program_sources_use_canonical_updater_after_bridge_retirement(self):
         expected = ['monitores/callas-monitores.py', 'monitores/callas-kde-desligamento-login.sh',
                     'janelas/callas-janelas.py', 'sessao/callas-inicio-kde.sh',
                     'atualizador/callas-config-update.sh', 'tests/test_monitores.py']
@@ -336,10 +308,13 @@ if(ps[0].screen!==0 || !logs.includes('CALLAS_OK')) throw Error('panel');
             self.assertTrue((ROOT / relative).is_file(), relative)
         for name in ['callas-monitores.py', 'callas-janelas.py', 'callas-inicio-kde.sh', 'callas-kde-desligamento-login.sh', 'tests']:
             self.assertFalse((REPO / name).exists(), name)
-        bridge = (REPO / 'callas-config-update.sh').read_text()
+        self.assertFalse((REPO / 'callas-config-update.sh').exists())
         canonical = (ROOT / 'atualizador/callas-config-update.sh').read_text()
-        self.assertEqual(re.search(r'^VERSAO="([^"]+)"', bridge, re.M)[1],
-                         re.search(r'^VERSAO="([^"]+)"', canonical, re.M)[1])
+        self.assertRegex(canonical, r'(?m)^VERSAO="[^"]+"')
+        launcher = (ROOT / 'atualizador/put-update.sh').read_text()
+        self.assertIn('sudo /usr/local/libexec/callas-release', launcher)
+        self.assertIn('main/programas-callas-os/atualizador/callas-config-update.sh', launcher)
+        self.assertNotIn('main/callas-config-update.sh', launcher)
         installer = (REPO / 'instalar-arch.sh').read_text()
         self.assertIn('$CALLAS_PROGRAMAS_BASE/monitores/callas-monitores.py', installer)
         self.assertIn('$CALLAS_PROGRAMAS_BASE/janelas/callas-janelas.py', installer)
