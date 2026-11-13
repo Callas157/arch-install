@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.13.02"
+VERSAO="2026.11.13.03"
 export PATH=/usr/bin:/bin
 umask 077
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/${CALLAS_RELEASE_REF:-main}"
@@ -202,7 +202,7 @@ fi
 pacman -Q gnome-boxes >/dev/null 2>&1 ||
   erro 'GNOME Boxes nativo não encontrado após a instalação; o Flatpak foi preservado.'
 /usr/local/libexec/callas-kernel-check --verify-only ||
-  erro 'A verificação de kernel/boot falhou. Flatpak preservado; não reinicie antes de corrigir.'
+  erro 'A verificação de kernel/boot falhou. A remoção do Flatpak não será executada nesta tentativa; não reinicie antes de corrigir.'
 
 # Remove only the application, never --delete-data or VM disks/configurations.
 # Per-user Flatpaks must be queried/removed as the desktop user, not as root.

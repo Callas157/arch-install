@@ -2,7 +2,7 @@
   <img src="assets/logo/callas-plasma-icon.png" alt="Callas OS" width="150">
 </p>
 
-<h1 align="center">Callas OS v3.3.3</h1>
+<h1 align="center">Callas OS v3.3.5</h1>
 
 <p align="center">
   <strong>Seu próximo jogo começa aqui.</strong><br>
@@ -57,6 +57,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/Callas157/arch-install/main/
 
 **Em máquina virtual:** habilite EFI/UEFI antes de iniciar a ISO.
 
+O instalador usa auxiliares compartilhados de `programas-callas-os/`, obtidos de um mesmo commit da `main` e verificados antes do uso. Ele não executa a interface do Callas OS Update durante a instalação. Correções nos auxiliares também atendem instalações novas, mesmo quando o arquivo principal não muda.
+
 ## Aplicativos
 
 | Para quê | O que vem no Callas OS |
@@ -85,7 +87,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/Callas157/arch-install/main/
 | Acessórios Logitech compatíveis | Gerenciamento pelo Solaar |
 | Rise Mode Aura Ice Black `aa88:8666` | Driver preparado quando o dispositivo é detectado |
 
-A versão NVIDIA é mantida fixa pelo projeto. O sistema inclui os kernels **Linux e Linux LTS**, com opção de recuperação no GRUB. O funcionamento de cada periférico também depende do modelo e do jogo.
+A NVIDIA **610.57.04** é mantida fixa pelo projeto. O sistema inclui os kernels **Linux e Linux LTS**, com opção de recuperação no GRUB. A compilação do driver precisa ser compatível com os kernels; a instalação não deve ser considerada concluída se essa verificação falhar. O funcionamento de cada periférico também depende do modelo e do jogo.
 
 ## Identidade visual
 
@@ -113,12 +115,16 @@ Abra **Atualizador do sistema** no menu do KDE:
 | Opção | O que faz |
 | --- | --- |
 | **1. Limpeza e manutenção** | Limpeza, espaço em disco e backups |
-| **2. Atualizar aplicativos nativos** | Aplicativos compatíveis com a base já instalada |
-| **3. Atualizar Discord** | Atualização dedicada do Discord |
-| **4. Atualizar geral** | Arch, AUR, Flatpaks, Discord e verificação dos kernels e boot |
-| **5. Callas OS Update** | Configurações, ferramentas e correções do projeto |
+| **2. Atualizar aplicativos nativos** | Aplicativos compatíveis com a base já instalada; preserva kernels |
+| **3. Atualizar Discord** | Atualização dedicada do Discord; preserva kernels |
+| **4. Atualizar geral** | Arch, AUR, Flatpaks e Discord; único fluxo que autoriza atualizar kernels, com teste prévio da NVIDIA fixada e validação final de boot |
+| **5. Callas OS Update** | Configurações, ferramentas e correções do projeto; preserva kernels e a versão NVIDIA |
 
 O agendamento padrão verifica atualizações gerais **mensais** e de aplicativos nativos **semanais**. Se o PC estiver desligado, a pendência é retomada numa verificação posterior.
+
+Antes de trocar kernel e headers pela opção 4, o sistema tenta compilar a NVIDIA fixada em área temporária isolada com o par candidato. Se falhar ou não for possível verificar com segurança — inclusive se as ferramentas de compilação também forem mudar — a transação inteira é interrompida antes de alterar os pacotes. O kernel anterior e a NVIDIA são preservados; não há troca automática do driver nem atualização parcial como alternativa. A validação final de módulos, initramfs e GRUB continua obrigatória após uma transação aprovada. Máquinas existentes recebem essa proteção pela opção 5.
+
+Uma transação bloqueada pode continuar pendente nas próximas tentativas. O diagnóstico informa o motivo; a proteção não é desativada automaticamente para liberar a atualização.
 
 Depois de uma atualização geral concluída com sucesso, você pode **reiniciar ou deixar para depois**. Logs e backups de configurações ficam em **Documentos → Callas OS**.
 
@@ -130,7 +136,7 @@ Antes da atualização, desligue as VMs e feche o Boxes. A remoção preserva os
 
 ---
 
-**Versão atual: 3.3.3** · [VERSION](programas-callas-os/atualizador/VERSION) · [Histórico de mudanças](programas-callas-os/atualizador/CHANGELOG.md)
+**Versão atual: 3.3.5** · [VERSION](programas-callas-os/atualizador/VERSION) · [Histórico de mudanças](programas-callas-os/atualizador/CHANGELOG.md)
 
 Projeto em desenvolvimento. Mantenha seus backups em dia.
 

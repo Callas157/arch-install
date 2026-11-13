@@ -564,7 +564,7 @@ atualizar_arch() {
         pacman -Qq git >/dev/null 2>&1 || dependencias+=(git)
     fi
     if [[ -r /etc/callas-nvidia-version ]]; then
-        pacman -Syu --needed --ignore=nvidia-utils,nvidia-open-dkms,nvidia-open,nvidia-open-lts,lib32-nvidia-utils,nvidia-settings,libxnvctrl,opencl-nvidia,lib32-opencl-nvidia "${confirmacao[@]}" "${dependencias[@]}" || return
+        CALLAS_KERNEL_UPDATE_CONTEXT=general pacman -Syu --needed --ignore=nvidia-utils,nvidia-open-dkms,nvidia-open,nvidia-open-lts,lib32-nvidia-utils,nvidia-settings,libxnvctrl,opencl-nvidia,lib32-opencl-nvidia "${confirmacao[@]}" "${dependencias[@]}" || return
 
         # Antes de considerar a atualização concluída, garante que o NVIDIA
         # fixado ainda foi compilado para todos os kernels linux/linux-lts.
@@ -588,7 +588,7 @@ atualizar_arch() {
         done
         (( falhou_modulo == 0 )) || return 1
     else
-        pacman -Syu --needed "${confirmacao[@]}" "${dependencias[@]}"
+        CALLAS_KERNEL_UPDATE_CONTEXT=general pacman -Syu --needed "${confirmacao[@]}" "${dependencias[@]}"
     fi
 }
 
@@ -667,7 +667,7 @@ atualizar_discord_integrado() (
 
     if [[ $acao == pacman ]]; then
         pacman -Q discord >/dev/null || falhar 'O pacote discord não está instalado pelo pacman.'
-        sudo pacman -Syu --needed discord || falhar 'Falha ao atualizar o Discord pelo pacman.'
+        sudo /usr/local/libexec/callas-native --install discord || falhar 'Falha na instalação pontual do Discord; nenhuma atualização geral foi iniciada.'
     fi
 
     bootstrap=

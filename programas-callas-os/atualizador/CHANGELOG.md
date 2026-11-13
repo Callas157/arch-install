@@ -1,5 +1,16 @@
 # Histórico do Callas OS
 
+## 3.3.5 — 2026-11-13
+
+- Restringe mudanças de kernel/headers em máquinas instaladas à opção 4 — Atualizar geral, incluindo o agendamento mensal existente, sem antecipá-lo. O caminho opcional Discord `--pacman` passa a usar instalação pontual protegida, sem atualização geral.
+- Instala hooks PreTransaction com AbortOnFail antes dos hooks que removem módulos. Fora da opção 4, mudanças de kernel são bloqueadas; a NVIDIA fixada não pode ser substituída/removida pela transação. Remoção de kernel tem bloqueio separado.
+- Com NVIDIA fixada, exige pares oficiais completos e candidatos da mesma versão, em cache após validação do pacman. Testa a compilação com a fonte instalada do driver em namespace de montagem privado e árvore DKMS temporária, sem instalar módulos. Confere versão e vermagic dos quatro módulos NVIDIA produzidos.
+- Falha de build, isolamento indisponível, cache/fonte ausente, par incompleto ou alteração simultânea das ferramentas de compilação/assinatura abortam a transação inteira antes de mudar pacotes. Não troca a NVIDIA, não força build e não faz atualização parcial como alternativa. A validação final de boot continua necessária após um teste prévio aprovado.
+- Sincroniza o atualizador embutido no instalador e inclui o novo auxiliar no estágio verificado, implantação e checkpoints compartilhados. Registra a política em AGENTS.md e `instrucoes/atualizacao-kernel.md`; revisa o README, mantendo a tabela de aplicativos.
+- Corrige mensagem de falha do Boxes para não afirmar que um Flatpak já removido em tentativa anterior foi preservado/reinstalado.
+
+Validação: 204 testes offline aprovados e um ignorado por user namespace indisponível; sintaxe Bash/Python, cópias embutidas e preparação verificada da instalação conferidas. Testes cobrem contextos proibidos, driver fixado, pares incompletos, locale português, mudanças de toolchain, arquivos candidatos extraídos, falha de isolamento e versão/vermagic dos módulos; comandos pacman/DKMS/namespace são simulados. Build NVIDIA contra um kernel candidato real, instalação Arch e boot não foram executados neste ambiente. O usuário confirmou a recuperação anterior no kernel 7.2.15 com NVIDIA 610.57.04; isso não equivale a validar o novo preflight em hardware real. Transações com kernel e toolchain podem permanecer bloqueadas por esta política conservadora.
+
 ## 3.3.4 — 2026-11-13
 
 - Corrige a instalação do Boxes na opção 5: instala apenas os alvos e suas dependências usando o banco existente, sem sincronização de repositórios ou atualização geral. Um hook PreTransaction com AbortOnFail bloqueia a transação inteira se ela tentar alterar kernel, NVIDIA, boot ou componentes protegidos da base. Falha ou dependência incompatível interrompe a etapa, sem executar uma atualização geral como alternativa.

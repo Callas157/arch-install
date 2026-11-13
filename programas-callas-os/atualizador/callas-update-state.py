@@ -12,7 +12,7 @@ import urllib.request
 
 STATE=Path('/var/lib/callas-os')
 DEPENDENCIES={
-    'security':('callas-security.sh','callas-game-logs.py','callas-native.py'),
+    'security':('callas-security.sh','callas-game-logs.py','callas-native.py','callas-kernel-policy.py'),
     'apps':('callas-spotify-permissions.sh','callas-aur-install.py','callas-native.py','callas-kernel-check.sh'),
     'tools':('callas-monitores.py','callas-janelas.py','callas-inicio-kde.sh','callas-kde-desligamento-login.sh'),
     'boot':('callas.script','callas.plymouth'),
@@ -20,7 +20,7 @@ DEPENDENCIES={
     'session':('callas-game-logs.py','callas-inicio-kde.sh','callas-janelas.py','callas-nekofetch.sh','callas-version.py'),
 }
 REQUIRED={
-    'security':('/etc/callas-os/security-version','/etc/systemd/system/callas-game-events.service','/etc/sudoers.d/20-callas-security','/etc/udev/rules.d/70-callas-g920.rules'),
+    'security':('/etc/callas-os/security-version','/etc/systemd/system/callas-game-events.service','/etc/sudoers.d/20-callas-security','/etc/udev/rules.d/70-callas-g920.rules','/etc/pacman.d/hooks/00-callas-kernel-policy.hook','/etc/pacman.d/hooks/00-callas-kernel-deny-remove.hook'),
     'apps':('/opt/spotify/Apps','/usr/bin/gnome-boxes'),
     'tools':('/usr/local/share/applications/io.github.Callas157.Monitores.desktop','/etc/systemd/user/callas-janelas.service'),
     'boot':('/boot/grub/grub.cfg','/boot/initramfs-linux.img','/boot/initramfs-linux-lts.img'),

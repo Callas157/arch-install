@@ -36,6 +36,7 @@ FILES = (
     "programas-callas-os/atualizador/callas-logs.py",
     "programas-callas-os/atualizador/callas-game-logs.py",
     "programas-callas-os/atualizador/callas-kernel-check.sh",
+    "programas-callas-os/atualizador/callas-kernel-policy.py",
     "programas-callas-os/monitores/callas-monitores.py",
     "programas-callas-os/janelas/callas-janelas.py",
     "programas-callas-os/sessao/callas-inicio-kde.sh",

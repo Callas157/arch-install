@@ -71,3 +71,15 @@ Esta é uma autorização permanente do usuário para realizar o backup e a rete
 8. Mudanças somente nas instruções/documentação, sem alteração do instalador, não exigem uma cópia idêntica adicional nem incremento de versão. Esses backups no Drive não substituem nem alteram a política de backups locais do sistema.
 
 O procedimento completo está em [instrucoes/versionamento.md](instrucoes/versionamento.md).
+
+## Kernel e NVIDIA: limites obrigatórios das atualizações
+
+- Em máquinas já instaladas, kernel e headers só podem ser atualizados pela opção **4 — Atualizar geral**, incluindo seu agendamento mensal existente. Não antecipe o agendamento nem transforme atualização de aplicativo, Discord, AUR, configuração ou opção 5 em atualização geral.
+- Preserve a NVIDIA fixada pelo usuário, atualmente **610.57.04**. Não atualize, substitua ou remova o driver para fazer um kernel novo funcionar sem pedido explícito.
+- Antes de substituir kernel/headers, valide o par candidato e teste a compilação da NVIDIA fixada em área temporária isolada. O teste deve ocorrer após a validação dos pacotes e antes de hooks removerem módulos atuais; não instale o candidato para descobrir depois se compila.
+- Falha de compilação, par incompleto, pacote/fonte ausente, falta de isolamento, ferramentas de compilação que também seriam alteradas ou qualquer impossibilidade de confirmar compatibilidade deve interromper a transação inteira antes de alterar pacotes. Preserve kernel, headers e driver anteriores. Não force o build, desative verificações ou faça atualização parcial como alternativa.
+- O teste prévio não dispensa validar módulos, initramfs e GRUB depois da transação. Falhas posteriores não podem anunciar sucesso nem sugerir reinício. Testes offline não comprovam boot real.
+- Preserve as proteções PreTransaction no fluxo oficial, AUR, instalações pontuais e cópias embutidas. Não propague a autorização de kernel da opção 4 para outras etapas ou processos.
+- Instalação limpa provisiona os kernels iniciais, mas só registra conclusão após validar a NVIDIA fixada e o boot. Isso não autoriza trocar kernels de sistemas existentes pela opção 5.
+- Recuperações manuais são exceções específicas, exigem diagnóstico real e instrução explícita do usuário; não automatize upgrades/downgrades como recuperação.
+- Consulte [instrucoes/atualizacao-kernel.md](instrucoes/atualizacao-kernel.md) ao revisar qualquer caminho de atualização.

@@ -8,7 +8,7 @@ usuario=${SUDO_USER:-${1:-}}
 [[ -n $usuario && $usuario != root ]] && id "$usuario" >/dev/null || exit 1
 stage=${CALLAS_RELEASE_DIR:?Arquivos de atualização não preparados}
 [[ -d $stage && ! -L $stage && $(stat -c %u "$stage") == 0 ]] || exit 1
-for name in callas-game-logs.py callas-update-state.py callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
+for name in callas-kernel-policy.py callas-game-logs.py callas-update-state.py callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
   [[ -f $stage/$name && ! -L $stage/$name && $(stat -c %u "$stage/$name") == 0 ]] || {
     echo "Arquivo verificado ausente/inseguro: $name" >&2; exit 1;
   }
@@ -33,10 +33,11 @@ fi
 # No lingering passwordless pacman access, even after an interrupted old update.
 rm -f /etc/sudoers.d/put-update /etc/sudoers.d/99-callas-instalacao
 rm -f /etc/put-update-aur.sudoers /etc/put-update-paru.conf
-for name in callas-game-logs.py callas-update-state.py callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
+for name in callas-kernel-policy.py callas-game-logs.py callas-update-state.py callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
   source_file="$stage/$name"
   [[ -f $source_file && ! -L $source_file && $(stat -c %u "$source_file") == 0 ]] || exit 1
   case $name in
+    callas-kernel-policy.py) target=callas-kernel-policy ;;
     callas-game-logs.py) target=callas-game-logs ;;
     callas-update-state.py) target=callas-update-state ;;
     callas-spotify-permissions.sh) target=callas-spotify-permissions ;;
@@ -221,6 +222,42 @@ UDEV
       if systemctl is-active --quiet risemode-driver; then systemctl restart risemode-driver; fi
     fi
   fi
+
+  # Runs before the distribution's DKMS removal hook. Failure aborts the entire
+  # transaction while the working kernels/modules are still installed.
+  cat > /etc/pacman.d/hooks/00-callas-kernel-deny-remove.hook <<'KERNEL_REMOVE_HOOK'
+[Trigger]
+Operation = Remove
+Type = Package
+Target = linux*
+Target = nvidia*
+Target = lib32-nvidia*
+Target = libxnvctrl
+Target = opencl-nvidia
+Target = lib32-opencl-nvidia
+
+[Action]
+Description = Impedir remocao automatica dos kernels e driver preservados
+When = PreTransaction
+NeedsTargets
+AbortOnFail
+Exec = /usr/local/libexec/callas-kernel-policy --remove
+KERNEL_REMOVE_HOOK
+
+  cat > /etc/pacman.d/hooks/00-callas-kernel-policy.hook <<'KERNEL_POLICY_HOOK'
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = *
+
+[Action]
+Description = Preservar kernel e NVIDIA ate validar compilacao candidata
+When = PreTransaction
+NeedsTargets
+AbortOnFail
+Exec = /usr/local/libexec/callas-kernel-policy
+KERNEL_POLICY_HOOK
 
   cat > /etc/pacman.d/hooks/99-zz-callas-kernels.hook <<'HOOK'
 [Trigger]
