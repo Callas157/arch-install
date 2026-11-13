@@ -1,5 +1,15 @@
 # Histórico do Callas OS
 
+## 3.3.4 — 2026-11-13
+
+- Corrige a instalação do Boxes na opção 5: instala apenas os alvos e suas dependências usando o banco existente, sem sincronização de repositórios ou atualização geral. Um hook PreTransaction com AbortOnFail bloqueia a transação inteira se ela tentar alterar kernel, NVIDIA, boot ou componentes protegidos da base. Falha ou dependência incompatível interrompe a etapa, sem executar uma atualização geral como alternativa.
+- Aplica a mesma proteção à preparação de pacotes ausentes do suporte G920/segurança na opção 5. O instalador limpo continua recebendo esses pacotes pelo pacstrap e os mesmos auxiliares pelo estágio verificado.
+- Antes de remover o Boxes Flatpak e antes de concluir a entrega, verifica módulos, imagens e boot em modo somente de verificação. Uma falha em hook PostTransaction do pacman não pode mais resultar em anúncio de sucesso do Callas OS Update.
+- Preserva a captura temporária e mostra seu caminho se gravar/exportar o log falhar. Não atualiza drivers, não faz downgrade automático de kernel e não tenta reparar a máquina do usuário sem diagnóstico.
+- Revisão dos 14 logs e limites da recuperação documentados em `programas-callas-os/diagnosticos/2026-11-13-boxes-kernel.md`. README preservado conforme instrução do projeto.
+
+Validação: 192 testes offline aprovados e um ignorado por user namespace indisponível; sintaxe Bash/Python e cópias embutidas conferidas. Regressões exercitam bloqueio de dependências da base antes da transação, falha de boot impedindo conclusão, imagens antigas rejeitadas e preservação da captura quando o exportador falha. Instalação Arch real, boot e recuperação do computador afetado não foram executados neste ambiente.
+
 ## 3.3.3 — 2026-11-13
 
 - Inclui GNOME Boxes nativo na instalação limpa, com suporte a redirecionamento USB.

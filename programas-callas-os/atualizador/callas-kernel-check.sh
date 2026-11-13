@@ -8,6 +8,7 @@ verify_only=0
 [[ ${1:-} != --verify-only ]] || verify_only=1
 stage=$(mktemp -d /var/tmp/callas-kernel.XXXXXXXX)
 status=0
+declare -A installed_releases
 exec 3>&1 4>&2
 # Keep diagnostics even when an unexpected command aborts the check. The
 # root-only last log also survives a failure of the normal log exporter.
@@ -60,6 +61,7 @@ falha() {
       [[ -f $pkgbase && $(< "$pkgbase") == "$kernel" ]] || continue
       found=1
       release=${pkgbase%/pkgbase}; release=${release##*/}
+      installed_releases[$kernel]=$release
       printf '%s: %s\n' "$kernel" "$release"
       [[ -s /usr/lib/modules/$release/vmlinuz ]] || falha "Imagem do kernel $kernel ($release) ausente em /usr/lib/modules."
       # uname reports the ISO kernel inside arch-chroot, and the old running
@@ -82,6 +84,17 @@ falha() {
   for kernel in linux linux-lts; do
     [[ -s /boot/initramfs-$kernel.img ]] || falha "Initramfs de $kernel ausente ou vazio em /boot."
     [[ -s /boot/vmlinuz-$kernel ]] || falha "Imagem de $kernel ausente ou vazia em /boot."
+    release=${installed_releases[$kernel]:-}
+    if [[ -n $release ]]; then
+      cmp -s "/usr/lib/modules/$release/vmlinuz" "/boot/vmlinuz-$kernel" ||
+        falha "A imagem de boot de $kernel não corresponde ao kernel instalado ($release)."
+      if lsinitcpio -l "/boot/initramfs-$kernel.img" > "$stage/$kernel.contents"; then
+        grep -Fq "usr/lib/modules/$release/" "$stage/$kernel.contents" ||
+          falha "O initramfs de $kernel não contém módulos do kernel instalado ($release)."
+      else
+        falha "Não consegui ler/verificar o initramfs de $kernel."
+      fi
+    fi
   done
   if (( ! verify_only )); then
   if [[ -x /usr/local/libexec/callas-grub-custom ]]; then

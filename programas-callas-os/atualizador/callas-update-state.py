@@ -12,8 +12,8 @@ import urllib.request
 
 STATE=Path('/var/lib/callas-os')
 DEPENDENCIES={
-    'security':('callas-security.sh','callas-game-logs.py'),
-    'apps':('callas-spotify-permissions.sh','callas-aur-install.py'),
+    'security':('callas-security.sh','callas-game-logs.py','callas-native.py'),
+    'apps':('callas-spotify-permissions.sh','callas-aur-install.py','callas-native.py','callas-kernel-check.sh'),
     'tools':('callas-monitores.py','callas-janelas.py','callas-inicio-kde.sh','callas-kde-desligamento-login.sh'),
     'boot':('callas.script','callas.plymouth'),
     'flatpaks':(), 'browser':(), 'desktop':(),

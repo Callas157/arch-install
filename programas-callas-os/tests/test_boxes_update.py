@@ -33,13 +33,18 @@ pacman() {
     '-Q gnome-boxes')
       [[ $SCENARIO != query-error ]] || return 2
       [[ -f $STATE/native ]] ;;
-    '-Syu --needed --noconfirm gnome-boxes')
+    '-S --needed --noconfirm gnome-boxes')
       [[ $SCENARIO != existing ]] || return 94
       [[ $SCENARIO != install-error ]] || return 1
       [[ $SCENARIO == verify-error ]] || touch "$STATE/native" ;;
     *) return 90 ;;
   esac
 }
+native_fixture() {
+  [[ "$*" == '--install gnome-boxes' ]] || return 95
+  pacman -S --needed --noconfirm gnome-boxes
+}
+kernel_fixture() { [[ "$*" == '--verify-only' && $SCENARIO != boot-error ]]; }
 flatpak() {
   local scope=system
   [[ ${USER_SCOPE:-0} != 1 ]] || scope=user
@@ -56,6 +61,7 @@ flatpak() {
   esac
 }
 '''
+            block = block.replace('/usr/local/libexec/callas-native', 'native_fixture').replace('/usr/local/libexec/callas-kernel-check', 'kernel_fixture')
             if scenario == 'repeat':
                 block += '\n' + block
             result = subprocess.run(['bash', '-c', code + block + '\necho COMPLETE\n'],
@@ -98,7 +104,7 @@ pacstrap() { printf '%s\\n' "$@"; }
         self.assertIn('gnome-boxes', result.stdout.splitlines())
 
     def test_package_failure_never_removes_flatpak_or_claims_success(self):
-        for scenario in ('query-error', 'install-error', 'verify-error'):
+        for scenario in ('query-error', 'install-error', 'verify-error', 'boot-error'):
             with self.subTest(scenario=scenario):
                 result, _, scopes, _ = self.migrate(scenario)
                 self.assertNotEqual(result.returncode, 0)

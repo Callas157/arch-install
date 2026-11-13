@@ -115,8 +115,10 @@ class ShellTests(unittest.TestCase):
             fake = bindir / 'pacman'
             fake.write_text('#!/bin/bash\n[[ $1 == -Q || $1 == -Qq ]] && exit 1\nexit 23\n')
             fake.chmod(0o755)
+            native=bindir/'native'; native.write_text('#!/bin/bash\nexit 23\n'); native.chmod(0o755)
             mount=bindir/'mountpoint'; mount.write_text('#!/bin/bash\nexit 0\n'); mount.chmod(0o755)
             function = function.replace('/etc/', str(base / 'etc') + '/')
+            function = function.replace('/usr/local/libexec/callas-native', str(native))
             env = dict(os.environ, PATH=str(bindir) + ':' + os.environ['PATH'])
             result = subprocess.run(['bash', '-c', 'set -Eeuo pipefail\n' + function + '\nseguranca tester\nprintf reached'], env=env, capture_output=True, text=True)
             self.assertEqual(result.returncode, 23, result.stderr)
@@ -142,6 +144,7 @@ class ShellTests(unittest.TestCase):
                 (base / 'boot/grub/grub.cfg').write_text('menuentry Callas\nvmlinuz-linux\nvmlinuz-linux-lts\n')
                 for cmd, body in {'mountpoint':'exit 0', 'pacman':'exit 0', 'dkms':'exit 0',
                                   'modinfo': 'exit ' + ('1' if fail else '0'), 'mkinitcpio':'exit 0',
+                                  'lsinitcpio': 'printf "usr/lib/modules/main/kernel/module.ko\\nusr/lib/modules/lts/kernel/module.ko\\n"',
                                   'grub-script-check':'exit 0',
                                   'grub-mkconfig': 'while [[ $# -gt 0 ]]; do if [[ $1 == -o ]]; then cp "$FAKE_ROOT/boot/grub/grub.cfg" "$2"; exit; fi; shift; done'}.items():
                     script = base / 'bin' / cmd; script.write_text('#!/bin/bash\n' + body + '\n'); script.chmod(0o755)

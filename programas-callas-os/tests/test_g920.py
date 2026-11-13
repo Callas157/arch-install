@@ -28,8 +28,12 @@ pacman() {
   return "$TRANSACTION_STATUS"
 }
 mountpoint() { return 0; }
+native_fixture() {
+  printf '%s\\n' "$*" >> "$TEST_ROOT/transactions"
+  return "$TRANSACTION_STATUS"
+}
 provision() {
-''' + block + '}\nprovision fixture --config-update\n'
+''' + block.replace('/usr/local/libexec/callas-native', 'native_fixture') + '}\nprovision fixture --config-update\n'
                 result = subprocess.run(['bash', '-c', code], env=dict(os.environ, TEST_ROOT=temp,
                     QUERY_STATUS=str(query), TRANSACTION_STATUS=str(transaction)), capture_output=True, text=True)
                 self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
@@ -37,9 +41,7 @@ provision() {
                 if query == 1:
                     self.assertEqual(len(calls.read_text().splitlines()), 1)
                     args = shlex.split(calls.read_text())
-                    self.assertEqual(args[:3], ['-Syu', '--needed', '--noconfirm'])
-                    self.assertEqual(args[-1], 'usb_modeswitch')
-                    self.assertIn('--ignore=nvidia-utils,', calls.read_text())
+                    self.assertEqual(args, ['--install', 'usb_modeswitch'])
                 else:
                     self.assertFalse(calls.exists())
 

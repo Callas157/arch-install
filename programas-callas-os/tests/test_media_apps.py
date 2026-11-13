@@ -83,7 +83,6 @@ class MediaAppsTests(unittest.TestCase):
         self.assertIn('\ninstalar_aur spotify\n',installer)
         self.assertNotIn('pubkey_5384CE82BA52C83A.gpg',installer)
         security=(UPDATER/'callas-security.sh').read_text()
-        upgrade=security.split('pacman -Syu --needed --noconfirm',1)[1].split('\n  fi',1)[0]
         self.assertIn('gpu-screen-recorder-ui',security[security.index('for package in '):security.index('missing+=("$package")')])
         self.assertIn('acl',security[security.index('for package in '):security.index('missing+=("$package")')])
         updater=(UPDATER/'callas-config-update.sh').read_text()

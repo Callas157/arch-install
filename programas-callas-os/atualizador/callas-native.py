@@ -7,6 +7,7 @@ guards against repository changes between the check and pacman's refresh.
 """
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -27,6 +28,39 @@ if blocked:
     print('Esta transação exige Atualizar geral: ' + ', '.join(blocked), file=sys.stderr)
     sys.exit(1)
 '''
+
+def install_packages(packages):
+    """Option 5 installs explicit apps from the existing database, never -y/-u.
+
+    Abort the entire transaction if dependency resolution would touch the base.
+    No selective upgrade against freshly synchronized repositories is attempted.
+    """
+    if not packages or any(not re.fullmatch(r'[a-zA-Z0-9@_+][a-zA-Z0-9@_.+\-]*', p) or frozen(p) for p in packages):
+        raise ValueError('Instalação pontual inválida ou exige alteração da base; nenhuma transação iniciada.')
+    with tempfile.TemporaryDirectory(prefix='callas-install-', dir='/var/tmp') as temp:
+        guard = Path(temp) / 'guard.py'
+        guard.write_text(pretransaction_code())
+        guard.chmod(0o600)
+        hooks = Path(temp) / 'hooks'
+        hooks.mkdir()
+        (hooks / '00-callas-targeted-guard.hook').write_text('''[Trigger]
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Type = Package
+Target = *
+
+[Action]
+Description = Impedir alteracoes de kernel, driver, boot e base na opcao 5
+When = PreTransaction
+NeedsTargets
+AbortOnFail
+Exec = /usr/bin/python3 ''' + str(guard) + '\n')
+        result = subprocess.run(['/usr/bin/pacman', '--hookdir', '/etc/pacman.d/hooks', '--hookdir', str(hooks),
+                                 '-S', '--needed', '--noconfirm', *packages], stdin=subprocess.DEVNULL)
+        if result.returncode:
+            print('Instalação pontual não concluída. Nenhuma atualização geral será iniciada automaticamente.', file=sys.stderr)
+        return result.returncode
 
 def update():
     with tempfile.TemporaryDirectory(prefix='callas-native-', dir='/var/tmp') as temp:
@@ -70,5 +104,9 @@ Exec = /usr/bin/python3 ''' + str(guard) + '\n')
         return 0
 
 if __name__ == '__main__':
-    if os.geteuid() != 0 or len(sys.argv) != 1: raise SystemExit('Uso interno do atualizador')
-    sys.exit(update())
+    if os.geteuid() != 0: raise SystemExit('Uso interno do atualizador')
+    if len(sys.argv) == 1:
+        sys.exit(update())
+    if len(sys.argv) > 2 and sys.argv[1] == '--install':
+        sys.exit(install_packages(sys.argv[2:]))
+    raise SystemExit('Uso interno do atualizador')

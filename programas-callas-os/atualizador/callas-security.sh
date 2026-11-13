@@ -122,8 +122,7 @@ PY
     done
     if (( ${#missing[@]} )); then
       mountpoint -q /boot || { echo '/boot não está montado; pacman não foi executado.' >&2; return 1; }
-      pacman -Syu --needed --noconfirm \
-        --ignore=nvidia-utils,nvidia-open-dkms,nvidia-open,nvidia-open-lts,lib32-nvidia-utils,nvidia-settings,libxnvctrl,opencl-nvidia,lib32-opencl-nvidia "${missing[@]}"
+      /usr/local/libexec/callas-native --install "${missing[@]}"
     else
       printf 'Dependências já instaladas; atualização geral do Arch não executada.\n'
     fi

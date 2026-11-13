@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.13.01"
+VERSAO="2026.11.13.02"
 export PATH=/usr/bin:/bin
 umask 077
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/${CALLAS_RELEASE_REF:-main}"
@@ -61,17 +61,25 @@ exec > >(tee "$logstage/update.log") 2>&1
 logpid=$!
 finalizar() {
   local codigo=$?
+  local log_failed=0
   trap - EXIT
   exec 1>&3 2>&4
   if [[ ${migration_active:-0} == 1 && ${migration_closed:-0} != 1 ]]; then
     python "$CALLAS_RELEASE_DIR/callas-version.py" --fail "$CALLAS_RELEASE_DIR/VERSION" "$CALLAS_RELEASE_REF" || :
   fi
-  wait "$logpid" || :
+  wait "$logpid" || log_failed=1
   if [[ -x /usr/local/libexec/callas-logs ]]; then
-    /usr/local/libexec/callas-logs --record 'Callas OS Update' < "$logstage/update.log" || :
-    /usr/local/libexec/callas-logs --export "$usuario" || :
+    /usr/local/libexec/callas-logs --record 'Callas OS Update' < "$logstage/update.log" || log_failed=1
+    /usr/local/libexec/callas-logs --export "$usuario" || log_failed=1
+  else
+    log_failed=1
   fi
-  rm -rf -- "$logstage"
+  if (( log_failed )); then
+    aviso "Falha ao gravar/exportar o log. Captura preservada em $logstage/update.log (leitura com sudo)."
+    (( codigo != 0 )) || codigo=1
+  else
+    rm -rf -- "$logstage"
+  fi
   [[ -z ${monitor_stage:-} ]] || rm -rf -- "$monitor_stage"
   exit "$codigo"
 }
@@ -188,11 +196,13 @@ if pacman -Q gnome-boxes >/dev/null 2>&1; then
 else
   consulta_boxes=$?
   [[ $consulta_boxes == 1 ]] || erro 'Não consegui consultar o GNOME Boxes no banco de pacotes.'
-  pacman -Syu --needed --noconfirm gnome-boxes ||
+  /usr/local/libexec/callas-native --install gnome-boxes ||
     erro 'Não consegui instalar o GNOME Boxes nativo; o Flatpak foi preservado.'
 fi
 pacman -Q gnome-boxes >/dev/null 2>&1 ||
   erro 'GNOME Boxes nativo não encontrado após a instalação; o Flatpak foi preservado.'
+/usr/local/libexec/callas-kernel-check --verify-only ||
+  erro 'A verificação de kernel/boot falhou. Flatpak preservado; não reinicie antes de corrigir.'
 
 # Remove only the application, never --delete-data or VM disks/configurations.
 # Per-user Flatpaks must be queried/removed as the desktop user, not as root.
@@ -662,6 +672,12 @@ for phase in security apps tools boot flatpaks browser desktop session; do
   fi
 done
 
+# BEGIN completion boot gate
+# Pacman can return success after a failed PostTransaction hook. Always verify
+# installed modules/images read-only before advancing the project identity.
+/usr/local/libexec/callas-kernel-check --verify-only ||
+  erro 'Kernel/boot com falha; atualização não concluída. Não reinicie antes de corrigir.'
+# END completion boot gate
 printf '%s\n' "$VERSAO" > "$VERSAO_ARQ"
 /usr/local/libexec/callas-version --complete "$CALLAS_RELEASE_DIR/VERSION" "$CALLAS_RELEASE_REF"
 migration_closed=1

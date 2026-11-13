@@ -30,6 +30,10 @@ class KernelCheckTests(unittest.TestCase):
 '''+('exit 1' if failure=='dkms' else 'exit 0'),
             'modinfo': 'exit 1' if failure=='module' else 'exit 0',
             'mkinitcpio': 'exit 1' if failure=='initramfs' else 'exit 0',
+            'lsinitcpio': '''case "$*" in
+*linux-lts.img*) echo 'usr/lib/modules/installed-lts/kernel/module.ko' ;;
+*) echo 'usr/lib/modules/installed-main/kernel/module.ko' ;;
+esac''',
             'grub-script-check': 'exit 1' if failure=='grub-syntax' else 'exit 0',
             'grub-mkconfig': '''while [[ $# -gt 0 ]]; do
 if [[ $1 == -o ]]; then
@@ -114,6 +118,18 @@ done''',
                 self.assertNotEqual(result.returncode,0)
                 self.assertIn('ERRO:',result.stdout)
                 self.assertNotIn('boot verificados.',result.stdout)
+
+    def test_verify_only_rejects_stale_kernel_and_initramfs(self):
+        for stale in ('vmlinuz', 'initramfs'):
+            with self.subTest(stale=stale), tempfile.TemporaryDirectory() as temp:
+                root=Path(temp); source=self.fixture(root)
+                if stale=='vmlinuz':
+                    (root/'boot/vmlinuz-linux').write_text('previous kernel')
+                else:
+                    (root/'bin/lsinitcpio').write_text('#!/bin/bash\necho usr/lib/modules/previous/kernel/module.ko\n')
+                result=self.run_check(root,'set -- --verify-only\n'+source)
+                self.assertNotEqual(result.returncode,0,result.stdout+result.stderr)
+                self.assertTrue((root/'var/lib/callas-os/kernel-check-failed').exists())
 
     def test_general_update_targets_installed_kernels_after_pacman(self):
         with tempfile.TemporaryDirectory() as temp:
