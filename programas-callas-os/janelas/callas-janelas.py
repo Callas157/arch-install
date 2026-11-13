@@ -89,7 +89,9 @@ callDBus(SERVICE, "/Snapshot", "io.github.Callas157.Snapshot", "accept", JSON.st
     try:
         with os.fdopen(fd, 'w') as stream:
             stream.write(js)
-        number = scripting.loadScript(name, script_name)
+        # Qt exports both loadScript(s) and loadScript(ss); dbus-python may
+        # cache the one-argument overload during introspection.
+        number = scripting.loadScript(name, script_name, signature='ss')
         if number < 0:
             raise RuntimeError('KWin não carregou a captura das janelas.')
         script = dbus.Interface(session.get_object('org.kde.KWin', '/Scripting/Script' + str(number)), 'org.kde.kwin.Script')
@@ -391,7 +393,7 @@ def _load_steam_dialogs():
     if loaded and not scripting.unloadScript(name):
         raise RuntimeError('KWin não descarregou o ajuste anterior de diálogos Steam.')
     atomic(path, code)
-    number = int(scripting.loadScript(str(path), name))
+    number = int(scripting.loadScript(str(path), name, signature='ss'))
     if number < 0:
         raise RuntimeError('KWin não carregou o ajuste dos diálogos Steam.')
     script = dbus.Interface(session.get_object('org.kde.KWin', '/Scripting/Script' + str(number)), 'org.kde.kwin.Script')

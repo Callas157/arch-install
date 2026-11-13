@@ -330,7 +330,7 @@ def watch_user():
     scripting = dbus.Interface(session.get_object('org.kde.KWin', '/Scripting'), 'org.kde.kwin.Scripting')
     name = 'callas-game-diagnostics'
     if scripting.isScriptLoaded(name): scripting.unloadScript(name)
-    number = scripting.loadScript(str(path), name)
+    number = scripting.loadScript(str(path), name, signature='ss')
     if number < 0: raise RuntimeError('KWin não carregou o monitor de jogos')
     script = dbus.Interface(session.get_object('org.kde.KWin', '/Scripting/Script'+str(number)), 'org.kde.kwin.Script')
     loop = GLib.MainLoop()

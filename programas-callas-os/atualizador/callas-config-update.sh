@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.12.03"
+VERSAO="2026.11.12.04"
 export PATH=/usr/bin:/bin
 umask 077
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/${CALLAS_RELEASE_REF:-main}"
@@ -105,7 +105,10 @@ EXPAND_STAGE
 fi
 
 exec 8>/run/put-update.lock
-flock -x 8
+if ! flock -n -x 8; then
+  printf 'Outra atualização está em andamento; aguardando sua conclusão...\n'
+  flock -x 8
+fi
 export CALLAS_UPDATE_LOCK_HELD=1
 python "$CALLAS_RELEASE_DIR/callas-version.py" --begin "$CALLAS_RELEASE_DIR/VERSION" "$CALLAS_RELEASE_REF"
 migration_active=1
@@ -118,6 +121,7 @@ force_args=()
 (( ! forcar )) || force_args=(--force)
 declare -A execute
 has_work=0
+printf 'Verificando etapas alteradas e pendências; etapas concluídas serão preservadas.\n'
 for phase in security apps tools boot flatpaks browser desktop session; do
   if "${state_helper[@]}" --needed "$phase" "$CALLAS_RELEASE_DIR" "$usuario" "${force_args[@]}"; then
     execute[$phase]=1; has_work=1

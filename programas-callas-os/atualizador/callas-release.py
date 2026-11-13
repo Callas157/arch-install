@@ -5,6 +5,7 @@ One immutable commit per operation; verify Git blob IDs before execution.
 This is transport/content verification, NOT an independent release signature.
 """
 import hashlib
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
 from pathlib import Path
@@ -46,7 +47,7 @@ FILES = (
 
 def request(url):
     req = urllib.request.Request(url, headers={"User-Agent": "CallasOS-Updater", "Accept": "application/vnd.github+json"})
-    with urllib.request.urlopen(req, timeout=120) as response:
+    with urllib.request.urlopen(req, timeout=30) as response:
         if not response.url.startswith("https://"):
             raise ValueError("Redirecionamento sem HTTPS")
         data = response.read(4 * 1024 * 1024 + 1)
@@ -89,25 +90,38 @@ def stage_complete(destination, expected_owner=0):
 def stage_files(destination, ref):
     if not re.fullmatch(r"[0-9a-f]{40}", ref):
         raise ValueError("Commit inválido")
+    print('Preparando Callas OS Update: consultando arquivos da versão verificada...', flush=True)
     tree = json.loads(request(API + "/git/trees/" + ref + "?recursive=1"))
     if tree.get("truncated"):
         raise ValueError("Árvore incompleta")
     blobs = {item["path"]: item for item in tree["tree"] if item["type"] == "blob"}
     manifest={'commit':ref,'assets':{name.removeprefix('assets/'):item['sha'] for name,item in blobs.items() if name.startswith('assets/')}}
     (Path(destination)/'update-assets.json').write_text(json.dumps(manifest,sort_keys=True)+'\n')
+    # Reject unsafe entries before starting any file download.
     for name in FILES:
         item = blobs[name]
         if item["mode"] not in ("100644", "100755"):
             raise ValueError("Tipo de arquivo não permitido")
-        data = request(RAW + "/" + ref + "/" + name)
-        verify_blob(data, item["sha"])
-        target = Path(destination) / Path(name).name
-        target.write_bytes(data)
-        target.chmod(0o600)
-        if name.endswith(".sh"):
-            subprocess.run(["/usr/bin/bash", "-n", str(target)], check=True)
-        elif name.endswith(".py"):
-            compile(data, name, "exec")
+    print(f'Baixando e verificando {len(FILES)} arquivos (até 4 por vez)...', flush=True)
+    with ThreadPoolExecutor(max_workers=4) as downloads:
+        pending = {downloads.submit(request, RAW + "/" + ref + "/" + name): name for name in FILES}
+        try:
+            for count, future in enumerate(as_completed(pending), 1):
+                name = pending[future]
+                data = future.result()
+                verify_blob(data, blobs[name]["sha"])
+                target = Path(destination) / Path(name).name
+                target.write_bytes(data)
+                target.chmod(0o600)
+                if name.endswith(".sh"):
+                    subprocess.run(["/usr/bin/bash", "-n", str(target)], check=True)
+                elif name.endswith(".py"):
+                    compile(data, name, "exec")
+                print(f'  [{count}/{len(FILES)}] Verificado: {Path(name).name}', flush=True)
+        except Exception:
+            for future in pending:
+                future.cancel()
+            raise
 
 def main():
     if os.geteuid() != 0:
@@ -119,6 +133,7 @@ def main():
         raise SystemExit("Argumento inválido")
     os.umask(0o077)
     try:
+        print('Callas OS Update: verificando atualizações no GitHub...', flush=True)
         ref = resolve_ref()
         if not sys.argv[1:]:
             try:
@@ -134,6 +149,7 @@ def main():
                    "CALLAS_RELEASE_REF": ref, "CALLAS_RELEASE_DIR": stage}
             if os.environ.get("SSH_CONNECTION"):
                 env["SSH_CONNECTION"] = os.environ["SSH_CONNECTION"]
+            print('Preparação concluída. Iniciando atualização das configurações...', flush=True)
             result = subprocess.run(["/usr/bin/bash", stage + "/callas-config-update.sh", *sys.argv[1:]], env=env)
             return result.returncode
     except Exception as error:

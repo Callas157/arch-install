@@ -16,6 +16,26 @@ spec=importlib.util.spec_from_file_location('steamwindows',ROOT/'janelas/callas-
 win=importlib.util.module_from_spec(spec);spec.loader.exec_module(win)
 
 class SteamDialogTests(unittest.TestCase):
+    def test_loader_selects_two_string_signature_when_introspection_picks_one(self):
+        # Qt exports both loadScript(s) and loadScript(ss). dbus-python's
+        # introspection cache can select s; an explicit signature bypasses it.
+        with tempfile.TemporaryDirectory() as temp:
+            scripting = MagicMock()
+            scripting.isScriptLoaded.return_value = False
+            def load(path, name, **kwargs):
+                if kwargs.get('signature', 's') != 'ss':
+                    raise TypeError('Fewer items found in D-Bus signature than in Python arguments')
+                self.assertTrue(Path(path).is_file())
+                self.assertEqual(name, 'callas-steam-launch-dialogs')
+                return 7
+            scripting.loadScript.side_effect = load
+            script = MagicMock()
+            fake = types.SimpleNamespace(Interface=lambda obj, interface:
+                scripting if interface == 'org.kde.kwin.Scripting' else script)
+            with patch.object(win, 'STATE', Path(temp)), patch.object(win, 'bus', return_value=MagicMock()), patch.dict(sys.modules, {'dbus': fake}), patch.object(win.subprocess, 'run', return_value=types.SimpleNamespace(returncode=1, stdout='')):
+                win.start_steam_dialogs()
+            script.run.assert_called_once()
+
     def run_js(self,scenario,preferred='DP-3'):
         if not shutil.which('node'):self.skipTest('node unavailable')
         harness='''const moves=[],diagnostics=[];
