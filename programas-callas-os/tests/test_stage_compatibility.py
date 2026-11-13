@@ -7,12 +7,84 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from collections import Counter
 
 ROOT=Path(__file__).resolve().parents[1];UP=ROOT/'atualizador'
 spec=importlib.util.spec_from_file_location('stagingcompat',UP/'callas-release.py')
 release=importlib.util.module_from_spec(spec);spec.loader.exec_module(release)
 
 class StageCompatibilityTests(unittest.TestCase):
+    def run_installer_preparation(self, tamper=False):
+        """Real installer staging/copy blocks; only HTTP is served locally."""
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);source=root/'source';source.mkdir()
+            counter=root/'requests';target=root/'target'
+            bodies={path:(ROOT.parent/path).read_bytes() for path in release.FILES}
+            module=bodies['programas-callas-os/atualizador/callas-release.py'].decode()
+            module+='''
+# Test transport only: execute real staging, hashes, syntax checks and copies.
+def request(url):
+    from pathlib import Path
+    import os
+    if '/git/trees/' in url:return Path(os.environ['FIXTURE_TREE']).read_bytes()
+    name=url.rsplit('/',1)[-1]
+    with open(os.environ['FIXTURE_REQUESTS'],'a') as stream:stream.write(name+'\\n')
+    data=(Path(os.environ['FIXTURE_SOURCE'])/name).read_bytes()
+    if os.environ.get('FIXTURE_TAMPER')=='1' and name=='callas-janelas.py':data+=b'\\n# tampered'
+    return data
+'''
+            bodies['programas-callas-os/atualizador/callas-release.py']=module.encode()
+            tree={'tree':[]}
+            for path,data in bodies.items():
+                (source/Path(path).name).write_bytes(data)
+                sha=hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
+                tree['tree'].append({'path':path,'type':'blob','mode':'100644','sha':sha})
+            (root/'tree.json').write_text(json.dumps(tree))
+            installer=(ROOT.parent/'instalar-arch.sh').read_text()
+            prepare=installer.split('# Valida a ferramenta adicional antes de apagar o disco.\n',1)[1].split('# ---------------- Escolha do disco ----------------',1)[0]
+            copy=installer.split('# ---------------- Arquivos integrados ----------------\n',1)[1].split('install -d /mnt/usr/share/icons',1)[0]
+            transport='''set -Eeuo pipefail
+curl() {
+    local url= destination= argument
+    while (( $# )); do
+        argument=$1; shift
+        case $argument in
+            -o) destination=$1; shift ;;
+            https://*) url=$argument ;;
+        esac
+    done
+    printf '%s\\n' "${url##*/}" >> "$FIXTURE_REQUESTS"
+    cp "$FIXTURE_SOURCE/${url##*/}" "$destination"
+}
+'''
+            code=transport+prepare+copy.replace('/mnt/',str(target)+'/')
+            env=dict(os.environ,TMPDIR=str(root),CALLAS_ASSET_REF='a'*40,
+                CALLAS_PROGRAMAS_BASE='https://fixture/'+'a'*40+'/programas-callas-os',
+                FIXTURE_TREE=str(root/'tree.json'),FIXTURE_SOURCE=str(source),
+                FIXTURE_REQUESTS=str(counter),FIXTURE_TAMPER='1' if tamper else '0')
+            result=subprocess.run(['bash','-c',code],env=env,capture_output=True,text=True)
+            if tamper:
+                self.assertNotEqual(result.returncode,0)
+                self.assertIn('blob',result.stderr)
+                self.assertFalse((target/'usr/local/libexec/callas-janelas').exists())
+                return
+            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+            installed=target/'usr/local/libexec'
+            self.assertEqual((installed/'callas-janelas').read_bytes(),(ROOT/'janelas/callas-janelas.py').read_bytes())
+            self.assertEqual((installed/'callas-monitores').read_bytes(),(ROOT/'monitores/callas-monitores.py').read_bytes())
+            stage=target/'usr/local/share/callas-os/security-stage'
+            for name in ('callas-release.py','callas-game-logs.py','put-update.sh','VERSION'):
+                self.assertEqual((stage/name).read_bytes(),(source/name).read_bytes())
+            counts=Counter(counter.read_text().splitlines())
+            self.assertEqual(counts['callas-janelas.py'],1,'window helper downloaded twice')
+            self.assertEqual(counts['callas-monitores.py'],1,'monitor helper downloaded twice')
+
+    def test_installer_prepares_current_shared_helpers_without_duplicate_downloads(self):
+        self.run_installer_preparation()
+
+    def test_installer_rejects_tampered_shared_helper_before_installing(self):
+        self.run_installer_preparation(tamper=True)
+
     def test_complete_checks_every_current_file_and_rejects_insecure_files(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp)

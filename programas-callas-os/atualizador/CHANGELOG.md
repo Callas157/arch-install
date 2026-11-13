@@ -6,6 +6,9 @@
 - Prepara a atualização com até quatro downloads simultâneos, mantendo commit imutável, conferência de cada blob e validação Bash/Python antes de executar a migração. Mostra consulta, contagem de arquivos verificados e início das configurações; reduz o timeout de cada requisição de 120 para 30 segundos.
 - Informa quando aguarda outra atualização e quando verifica as etapas pendentes. Preserva checkpoints, preferências do Brave aberto e a trava da NVIDIA.
 - O lançador antigo ainda prepara esta primeira migração com seu código instalado; os downloads simultâneos ficam disponíveis após instalar o novo lançador.
+- Instalação nova recebe os mesmos auxiliares corrigidos pela preparação compartilhada. Remove downloads redundantes de monitores/janelas no instalador e testa a cópia dos arquivos atuais, incluindo a rejeição de conteúdo adulterado antes da instalação. Complemento da mesma entrega 3.3.1, sem novo incremento.
+
+Validação adicional do instalador: 176 testes offline aprovados e um ignorado por user namespace indisponível. A preparação/cópia dos auxiliares foi executada em diretório temporário com transporte HTTP simulado; hashes e validação de sintaxe reais. Nenhum particionamento, instalação Arch ou teste de hardware foi executado.
 
 Validação: 174 testes offline aprovados e um teste de configuração completa ignorado por indisponibilidade de user namespace neste ambiente; sintaxe Bash/Python e identidade do atualizador embutido conferidas. Regressão reproduz a exceção D-Bus do log antes da correção. Em uma medição de preparação do mesmo commit no ambiente de desenvolvimento, o fluxo sequencial levou 6,41 s e o paralelo 1,54 s; o tempo no computador do usuário depende da conexão. Sessão KDE real, atualização Arch e hardware não foram executados aqui.
 

@@ -315,9 +315,8 @@ if(ps[0].screen!==0 || !logs.includes('CALLAS_OK')) throw Error('panel');
         self.assertIn('sudo /usr/local/libexec/callas-release', launcher)
         self.assertIn('main/programas-callas-os/atualizador/callas-config-update.sh', launcher)
         self.assertNotIn('main/callas-config-update.sh', launcher)
-        installer = (REPO / 'instalar-arch.sh').read_text()
-        self.assertIn('$CALLAS_PROGRAMAS_BASE/monitores/callas-monitores.py', installer)
-        self.assertIn('$CALLAS_PROGRAMAS_BASE/janelas/callas-janelas.py', installer)
+        # Installer downloads/copies are exercised by test_stage_compatibility;
+        # do not require the retired redundant direct-download expressions.
         self.assertIn('$CALLAS_RELEASE_DIR/$nome', canonical)
 
 

@@ -158,24 +158,9 @@ fi
 
 # Valida a ferramenta adicional antes de apagar o disco.
 command -v python >/dev/null || { echo "ERRO: Python ausente na ISO. Instale com pacman -Sy python antes de continuar."; exit 1; }
-CALLAS_MONITOR_TMP=$(mktemp)
-curl -fsSL --retry 2 --connect-timeout 10 --max-time 120 \
-  "$CALLAS_PROGRAMAS_BASE/monitores/callas-monitores.py" \
-  -o "$CALLAS_MONITOR_TMP"
-python - "$CALLAS_MONITOR_TMP" <<'CALLAS_MONITOR_CHECK'
-import ast, sys
-ast.parse(open(sys.argv[1], encoding="utf-8").read())
-CALLAS_MONITOR_CHECK
-CALLAS_WINDOW_TMP=$(mktemp)
-curl -fsSL --retry 2 --connect-timeout 10 --max-time 120 \
-  "$CALLAS_PROGRAMAS_BASE/janelas/callas-janelas.py" \
-  -o "$CALLAS_WINDOW_TMP"
-python - "$CALLAS_WINDOW_TMP" <<'CALLAS_WINDOW_CHECK'
-import ast, sys
-ast.parse(open(sys.argv[1], encoding="utf-8").read())
-CALLAS_WINDOW_CHECK
 
-# Security helpers are staged before the destructive installation starts.
+# The same immutable, verified release serves installation and option 5.
+# stage_files validates monitors/windows too; do not download extra copies.
 CALLAS_SECURITY_TMP=$(mktemp -d)
 curl --proto '=https' --proto-redir '=https' -fsSL --retry 2 \
   "https://raw.githubusercontent.com/Callas157/arch-install/$CALLAS_ASSET_REF/programas-callas-os/atualizador/callas-release.py" \
@@ -324,7 +309,6 @@ install -m 0755 "$CALLAS_SECURITY_TMP/callas-autostart.py" /mnt/usr/local/libexe
 install -m 0755 "$CALLAS_SECURITY_TMP/callas-aur-install.py" /mnt/usr/local/libexec/callas-aur-install
 install -m 0755 "$CALLAS_SECURITY_TMP/callas-logs.py" /mnt/usr/local/libexec/callas-logs
 install -m 0755 "$CALLAS_SECURITY_TMP/callas-version.py" /mnt/usr/local/libexec/callas-version
-rm -f -- "$CALLAS_MONITOR_TMP" "$CALLAS_WINDOW_TMP"
 install -d -m 0700 /mnt/usr/local/share/callas-os/security-stage
 for security_file in "$CALLAS_SECURITY_TMP/"*; do
   [[ -f $security_file ]] || continue
