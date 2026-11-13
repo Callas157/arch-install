@@ -1,5 +1,13 @@
 # Histórico do Callas OS
 
+## 3.3.2 — 2026-11-12
+
+- Restaura a sequência inicial do instalador: detecção do hardware, escolha do disco e credenciais, antes da preparação de arquivos. Essa preparação integra a fase automática, com mensagem de instalação e sem banner/lista de arquivos do Callas OS Update.
+- O preparador compartilhado admite progresso desativado apenas para a instalação; a opção 5 mantém o progresso detalhado e os downloads simultâneos. Hashes e sintaxe continuam validados antes de apagar o disco. As configurações atuais continuam sendo aplicadas automaticamente na instalação limpa.
+- Preserva perguntas de usuário/senha (a mesma senha para usuário e root), link do instalador, organização e versão NVIDIA. Registra o contrato do fluxo inicial em AGENTS.md.
+
+Validação: 179 testes offline aprovados e um ignorado por user namespace indisponível; sintaxe de todos os arquivos Bash/Python e cópias embutidas conferidas. Regressões reproduzem o download antes da pergunta do disco e o banner do Update na instalação; o fluxo corrigido também foi executado com entradas de disco/usuário/senha e falha simulada de preparação, sem particionar. Transporte HTTP e hardware simulados; instalação Arch e sessão KDE reais não executadas.
+
 ## 3.3.1 — 2026-11-12
 
 - Corrige a seleção da assinatura D-Bus de `loadScript` no KWin, que interrompia a opção 5 na memória de janelas ao enviar dois argumentos para a assinatura de um. Aplica a mesma correção à captura de janelas e ao monitor de jogos.

@@ -87,10 +87,11 @@ def stage_complete(destination, expected_owner=0):
     return complete
 
 
-def stage_files(destination, ref):
+def stage_files(destination, ref, *, progress=True):
     if not re.fullmatch(r"[0-9a-f]{40}", ref):
         raise ValueError("Commit inválido")
-    print('Preparando Callas OS Update: consultando arquivos da versão verificada...', flush=True)
+    if progress:
+        print('Preparando Callas OS Update: consultando arquivos da versão verificada...', flush=True)
     tree = json.loads(request(API + "/git/trees/" + ref + "?recursive=1"))
     if tree.get("truncated"):
         raise ValueError("Árvore incompleta")
@@ -102,7 +103,8 @@ def stage_files(destination, ref):
         item = blobs[name]
         if item["mode"] not in ("100644", "100755"):
             raise ValueError("Tipo de arquivo não permitido")
-    print(f'Baixando e verificando {len(FILES)} arquivos (até 4 por vez)...', flush=True)
+    if progress:
+        print(f'Baixando e verificando {len(FILES)} arquivos (até 4 por vez)...', flush=True)
     with ThreadPoolExecutor(max_workers=4) as downloads:
         pending = {downloads.submit(request, RAW + "/" + ref + "/" + name): name for name in FILES}
         try:
@@ -117,7 +119,8 @@ def stage_files(destination, ref):
                     subprocess.run(["/usr/bin/bash", "-n", str(target)], check=True)
                 elif name.endswith(".py"):
                     compile(data, name, "exec")
-                print(f'  [{count}/{len(FILES)}] Verificado: {Path(name).name}', flush=True)
+                if progress:
+                    print(f'  [{count}/{len(FILES)}] Verificado: {Path(name).name}', flush=True)
         except Exception:
             for future in pending:
                 future.cancel()

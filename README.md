@@ -2,7 +2,7 @@
   <img src="assets/logo/callas-plasma-icon.png" alt="Callas OS" width="150">
 </p>
 
-<h1 align="center">Callas OS v3.3.1</h1>
+<h1 align="center">Callas OS v3.3.2</h1>
 
 <p align="center">
   <strong>Seu próximo jogo começa aqui.</strong><br>
@@ -123,7 +123,7 @@ Feche o Brave antes da opção 5 para permitir a aplicação das preferências v
 
 ---
 
-**Versão atual: 3.3.1** · [VERSION](programas-callas-os/atualizador/VERSION) · [Histórico de mudanças](programas-callas-os/atualizador/CHANGELOG.md)
+**Versão atual: 3.3.2** · [VERSION](programas-callas-os/atualizador/VERSION) · [Histórico de mudanças](programas-callas-os/atualizador/CHANGELOG.md)
 
 Projeto em desenvolvimento. Mantenha seus backups em dia.
 

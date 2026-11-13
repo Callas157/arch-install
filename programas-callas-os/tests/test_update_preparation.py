@@ -17,6 +17,27 @@ spec.loader.exec_module(release)
 
 
 class PreparationTests(unittest.TestCase):
+    def test_installation_can_prepare_silently_without_disabling_blob_verification(self):
+        name='programas-callas-os/a.py'
+        body=b'# verified fixture\n'
+        sha=hashlib.sha1(b'blob 19\0'+body).hexdigest()
+        tree={'tree':[{'path':name,'type':'blob','mode':'100644','sha':sha}]}
+        for corrupt in (False,True):
+            with self.subTest(corrupt=corrupt),tempfile.TemporaryDirectory() as temp:
+                output=io.StringIO()
+                def request(url):
+                    if '/git/trees/' in url:return json.dumps(tree).encode()
+                    return b'# tampered\n' if corrupt else body
+                with patch.object(release,'FILES',(name,)),patch.object(release,'request',request),redirect_stdout(output):
+                    if corrupt:
+                        with self.assertRaisesRegex(ValueError,'blob'):
+                            release.stage_files(temp,'a'*40,progress=False)
+                        self.assertFalse((Path(temp)/'a.py').exists())
+                    else:
+                        release.stage_files(temp,'a'*40,progress=False)
+                        self.assertEqual((Path(temp)/'a.py').read_bytes(),body)
+                self.assertEqual(output.getvalue(),'')
+
     def test_downloads_overlap_and_report_progress_before_waiting(self):
         names = ('programas-callas-os/a.py', 'programas-callas-os/b.py')
         barrier = threading.Barrier(2)

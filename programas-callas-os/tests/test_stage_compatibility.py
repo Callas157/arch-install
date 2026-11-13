@@ -14,6 +14,73 @@ spec=importlib.util.spec_from_file_location('stagingcompat',UP/'callas-release.p
 release=importlib.util.module_from_spec(spec);spec.loader.exec_module(release)
 
 class StageCompatibilityTests(unittest.TestCase):
+    def test_preparation_waits_for_credentials_and_failure_stops_before_partitioning(self):
+        installer=(ROOT.parent/'instalar-arch.sh').read_text()
+        flow=installer.split('# ---------------- Pré-verificação NVIDIA ----------------\n',1)[1].split('# ---------------- Particionamento ----------------',1)[0]
+        # Only replace the hardware type probe: the disposable disk fixture is
+        # a regular file. All prompt and credential handling remains real Bash.
+        flow=flow.replace('[[ ! -b "$DISCO"','[[ ! -e "$DISCO"')
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);disk=root/'disk';disk.write_bytes(b'untouched')
+            fake='''set -Eeuo pipefail
+NVIDIA=0
+DISCO=
+findmnt() { return 0; }
+lsblk() {
+    case "$*" in
+        '-dpno NAME,TYPE,RO') printf '%s disk 0\\n' "$FIXTURE_DISK" ;;
+        '-dno SIZE,MODEL '*) echo '30G fixture' ;;
+        '-dnro TYPE,RO '*) echo 'disk 0' ;;
+        '-nr -o MOUNTPOINTS '*) return 0 ;;
+        *) printf '%s\\n' "$FIXTURE_DISK" ;;
+    esac
+}
+timedatectl() { return 0; }
+sed() { return 0; }
+pacman() { return 0; }
+mountpoint() { return 1; }
+mktemp() {
+    if [[ ${1:-} == /var/tmp/* ]]; then
+        command mktemp "$TMPDIR/install.XXXXXXXX.log"
+    else
+        command mktemp "$@"
+    fi
+}
+curl() {
+    [[ ${USUARIO:-} == fixture && ${SENHA:-} == sample && ${SENHA2:-} == sample ]] || return 98
+    echo 'Preparação após credenciais: OK'
+    return 99
+}
+'''
+            env=dict(os.environ,TMPDIR=str(root),FIXTURE_DISK=str(disk),CALLAS_ASSET_REF='a'*40)
+            result=subprocess.run(['bash','-c',fake+flow],input='1\nfixture\nsample\nsample\n',text=True,capture_output=True,env=env)
+            self.assertEqual(result.returncode,99,result.stdout+result.stderr)
+            self.assertIn('Preparação após credenciais: OK',result.stdout)
+            self.assertNotIn('Callas OS Update',result.stdout)
+            self.assertEqual(disk.read_bytes(),b'untouched')
+
+    def test_disk_question_is_reached_before_release_downloads(self):
+        installer=(ROOT.parent/'instalar-arch.sh').read_text()
+        # Run the real pre-install flow up to partitioning. An invalid disk
+        # answer must exit before any download, log setup or disk operation.
+        flow=installer.split('# ---------------- Pré-verificação NVIDIA ----------------\n',1)[1].split('# ---------------- Particionamento ----------------',1)[0]
+        with tempfile.TemporaryDirectory() as temp:
+            requests=Path(temp)/'requests'
+            fake='''set -Eeuo pipefail
+NVIDIA=0
+DISCO=
+findmnt() { return 0; }
+lsblk() { printf '/dev/fixture disk 0\\n'; }
+curl() { echo unexpected-download >> "$FIXTURE_REQUESTS"; return 1; }
+'''
+            result=subprocess.run(['bash','-c',fake+flow],input='0\n',text=True,capture_output=True,
+                env=dict(os.environ,FIXTURE_REQUESTS=str(requests)))
+            self.assertIn('Discos encontrados:',result.stdout)
+            self.assertIn('Opção inválida.',result.stdout)
+            self.assertEqual(result.returncode,1,result.stderr)
+            self.assertFalse(requests.exists(),'release was downloaded before disk selection')
+            self.assertNotIn('Callas OS Update',result.stdout)
+
     def run_installer_preparation(self, tamper=False):
         """Real installer staging/copy blocks; only HTTP is served locally."""
         with tempfile.TemporaryDirectory() as temp:
@@ -41,7 +108,7 @@ def request(url):
                 tree['tree'].append({'path':path,'type':'blob','mode':'100644','sha':sha})
             (root/'tree.json').write_text(json.dumps(tree))
             installer=(ROOT.parent/'instalar-arch.sh').read_text()
-            prepare=installer.split('# Valida a ferramenta adicional antes de apagar o disco.\n',1)[1].split('# ---------------- Escolha do disco ----------------',1)[0]
+            prepare=installer.split('# Valida a ferramenta adicional antes de apagar o disco.\n',1)[1].split('\nCALLAS_STAGE\n',1)[0]+'\nCALLAS_STAGE\n'
             copy=installer.split('# ---------------- Arquivos integrados ----------------\n',1)[1].split('install -d /mnt/usr/share/icons',1)[0]
             transport='''set -Eeuo pipefail
 curl() {
@@ -69,6 +136,8 @@ curl() {
                 self.assertFalse((target/'usr/local/libexec/callas-janelas').exists())
                 return
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+            self.assertNotIn('Callas OS Update',result.stdout)
+            self.assertNotIn('Verificado:',result.stdout)
             installed=target/'usr/local/libexec'
             self.assertEqual((installed/'callas-janelas').read_bytes(),(ROOT/'janelas/callas-janelas.py').read_bytes())
             self.assertEqual((installed/'callas-monitores').read_bytes(),(ROOT/'monitores/callas-monitores.py').read_bytes())

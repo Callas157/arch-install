@@ -156,22 +156,6 @@ if (( NVIDIA )); then
   echo "NVIDIA 610.57.04 disponível e pronta para a instalação."
 fi
 
-# Valida a ferramenta adicional antes de apagar o disco.
-command -v python >/dev/null || { echo "ERRO: Python ausente na ISO. Instale com pacman -Sy python antes de continuar."; exit 1; }
-
-# The same immutable, verified release serves installation and option 5.
-# stage_files validates monitors/windows too; do not download extra copies.
-CALLAS_SECURITY_TMP=$(mktemp -d)
-curl --proto '=https' --proto-redir '=https' -fsSL --retry 2 \
-  "https://raw.githubusercontent.com/Callas157/arch-install/$CALLAS_ASSET_REF/programas-callas-os/atualizador/callas-release.py" \
-  -o "$CALLAS_SECURITY_TMP/callas-release.py"
-python - "$CALLAS_SECURITY_TMP" "$CALLAS_ASSET_REF" <<'CALLAS_STAGE'
-import importlib.util, sys
-spec=importlib.util.spec_from_file_location('callas_release', sys.argv[1]+'/callas-release.py')
-module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
-module.stage_files(sys.argv[1], sys.argv[2])
-CALLAS_STAGE
-
 # ---------------- Escolha do disco ----------------
 BOOTPART="$(findmnt -no SOURCE /run/archiso/bootmnt 2>/dev/null || true)"
 BOOTDISK=""
@@ -256,6 +240,21 @@ trap finish_installation EXIT
 timedatectl set-ntp true
 sed -i 's/^#ParallelDownloads.*/ParallelDownloads = 10/' /etc/pacman.conf
 pacman -Sy --noconfirm archlinux-keyring
+
+# Valida a ferramenta adicional antes de apagar o disco.
+# The installation prepares its files after the disk/account prompts. Reusing
+# verified helpers does not run option 5 or its installed-system interface.
+echo ">>> Preparando arquivos da instalação"
+CALLAS_SECURITY_TMP=$(mktemp -d)
+curl --proto '=https' --proto-redir '=https' -fsSL --retry 2 \
+  "https://raw.githubusercontent.com/Callas157/arch-install/$CALLAS_ASSET_REF/programas-callas-os/atualizador/callas-release.py" \
+  -o "$CALLAS_SECURITY_TMP/callas-release.py"
+python - "$CALLAS_SECURITY_TMP" "$CALLAS_ASSET_REF" <<'CALLAS_STAGE'
+import importlib.util, sys
+spec=importlib.util.spec_from_file_location('callas_release', sys.argv[1]+'/callas-release.py')
+module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+module.stage_files(sys.argv[1], sys.argv[2], progress=False)
+CALLAS_STAGE
 
 # ---------------- Particionamento ----------------
 echo ">>> Particionando $DISCO"
