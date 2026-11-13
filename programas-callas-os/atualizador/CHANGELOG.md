@@ -1,6 +1,6 @@
 # Histórico do Callas OS
 
-## 3.4.0 — 2026-11-13
+## 3.3.3 — 2026-11-13
 
 - Inclui GNOME Boxes nativo na instalação limpa, com suporte a redirecionamento USB.
 - A opção 5 instala e verifica o pacote nativo antes de remover o Boxes Flatpak do sistema e do usuário da atualização. Falhas de consulta, instalação ou remoção impedem a conclusão da etapa; a execução seguinte retoma a migração pendente.

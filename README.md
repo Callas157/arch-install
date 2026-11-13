@@ -2,7 +2,7 @@
   <img src="assets/logo/callas-plasma-icon.png" alt="Callas OS" width="150">
 </p>
 
-<h1 align="center">Callas OS v3.4.0</h1>
+<h1 align="center">Callas OS v3.3.3</h1>
 
 <p align="center">
   <strong>Seu próximo jogo começa aqui.</strong><br>
@@ -124,13 +124,13 @@ Depois de uma atualização geral concluída com sucesso, você pode **reiniciar
 
 Feche o Brave antes da opção 5 para permitir a aplicação das preferências visuais pendentes.
 
-**GNOME Boxes:** a partir da versão 3.4.0, a instalação nova inclui o pacote nativo. Em sistemas existentes, a opção **5. Callas OS Update** instala e verifica `gnome-boxes` antes de remover `org.gnome.Boxes` do sistema e do usuário que executou a atualização. Se a instalação nativa falhar, o Flatpak é preservado.
+**GNOME Boxes:** a partir da versão 3.3.3, a instalação nova inclui o pacote nativo. Em sistemas existentes, a opção **5. Callas OS Update** instala e verifica `gnome-boxes` antes de remover `org.gnome.Boxes` do sistema e do usuário que executou a atualização. Se a instalação nativa falhar, o Flatpak é preservado.
 
 Antes da atualização, desligue as VMs e feche o Boxes. A remoção preserva os discos e as configurações do Flatpak em `~/.var/app/org.gnome.Boxes/`, mas as VMs podem precisar ser importadas manualmente na versão nativa; essa migração de VMs não é automática. O redirecionamento USB fica nas preferências da VM e depende do dispositivo conectado ao computador que hospeda o Boxes.
 
 ---
 
-**Versão atual: 3.4.0** · [VERSION](programas-callas-os/atualizador/VERSION) · [Histórico de mudanças](programas-callas-os/atualizador/CHANGELOG.md)
+**Versão atual: 3.3.3** · [VERSION](programas-callas-os/atualizador/VERSION) · [Histórico de mudanças](programas-callas-os/atualizador/CHANGELOG.md)
 
 Projeto em desenvolvimento. Mantenha seus backups em dia.
 
