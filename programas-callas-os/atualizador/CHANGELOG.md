@@ -1,5 +1,14 @@
 # Histórico do Callas OS
 
+## 3.4.0 — 2026-11-13
+
+- Inclui GNOME Boxes nativo na instalação limpa, com suporte a redirecionamento USB.
+- A opção 5 instala e verifica o pacote nativo antes de remover o Boxes Flatpak do sistema e do usuário da atualização. Falhas de consulta, instalação ou remoção impedem a conclusão da etapa; a execução seguinte retoma a migração pendente.
+- Preserva dados, configurações e discos das VMs do Flatpak, sem `--delete-data`. A importação das VMs na versão nativa permanece manual; desligue as VMs e feche o Boxes antes de atualizar.
+- Identifica cada aplicativo no README como nativo ou Flatpak, indicando AUR quando aplicável. Preserva a tabela e inclui o Boxes.
+
+Validação: 185 testes offline aprovados e um ignorado por user namespace indisponível; sintaxe Bash/Python conferida. Testes executam o bloco real da migração com gerenciadores de pacotes simulados, incluindo falhas de consulta/instalação/remoção, repetição e preservação dos dados das VMs. Instalação Arch, sessão KDE e redirecionamento USB reais permanecem pendentes de teste no computador.
+
 ## 3.3.2 — 2026-11-12
 
 - Restaura a sequência inicial do instalador: detecção do hardware, escolha do disco e credenciais, antes da preparação de arquivos. Essa preparação integra a fase automática, com mensagem de instalação e sem banner/lista de arquivos do Callas OS Update.

@@ -2,7 +2,7 @@
   <img src="assets/logo/callas-plasma-icon.png" alt="Callas OS" width="150">
 </p>
 
-<h1 align="center">Callas OS v3.3.2</h1>
+<h1 align="center">Callas OS v3.4.0</h1>
 
 <p align="center">
   <strong>Seu próximo jogo começa aqui.</strong><br>
@@ -61,15 +61,18 @@ bash <(curl -fsSL https://raw.githubusercontent.com/Callas157/arch-install/main/
 
 | Para quê | O que vem no Callas OS |
 | --- | --- |
-| Jogar | Steam · ProtonPlus |
-| Conversar | Discord |
-| Navegar | Brave, com Bonjourr e [SteamDB](https://steamdb.info/extension/) |
-| Gravar e editar | GPU Screen Recorder · Shotcut |
-| Ouvir música | Spotify |
-| Baixar arquivos | qBittorrent |
-| Instalar e acompanhar apps | Bazaar · Mission Center |
-| Gerenciar arquivos | Dolphin · Ark |
-| Acessórios e sistema | Solaar · Konsole · Kate · Spectacle · Fastfetch · NekoFetch |
+| Jogar | Steam **(nativo)** · ProtonPlus **(Flatpak)** |
+| Conversar | Discord **(nativo)** |
+| Navegar | Brave **(nativo, AUR)**, com Bonjourr e [SteamDB](https://steamdb.info/extension/) |
+| Gravar e editar | GPU Screen Recorder **(nativo)** · Shotcut **(nativo)** |
+| Ouvir música | Spotify **(nativo, AUR)** |
+| Baixar arquivos | qBittorrent **(nativo)** |
+| Instalar e acompanhar apps | Bazaar **(Flatpak)** · Mission Center **(Flatpak)** |
+| Gerenciar arquivos | Dolphin **(nativo)** · Ark **(nativo)** |
+| Máquinas virtuais | GNOME Boxes **(nativo)**, com suporte a redirecionamento USB |
+| Acessórios e sistema | Solaar **(nativo)** · Konsole **(nativo)** · Kate **(nativo)** · Spectacle **(nativo)** · Fastfetch **(nativo)** · NekoFetch **(nativo, script do projeto)** |
+
+**Nativo** indica instalação no próprio sistema; **Flatpak**, instalação pelo Flathub. Os nativos identificados com **AUR** são preparados a partir do Arch User Repository. Bonjourr e SteamDB são extensões do Brave.
 
 ## Drivers e periféricos
 
@@ -121,9 +124,13 @@ Depois de uma atualização geral concluída com sucesso, você pode **reiniciar
 
 Feche o Brave antes da opção 5 para permitir a aplicação das preferências visuais pendentes.
 
+**GNOME Boxes:** a partir da versão 3.4.0, a instalação nova inclui o pacote nativo. Em sistemas existentes, a opção **5. Callas OS Update** instala e verifica `gnome-boxes` antes de remover `org.gnome.Boxes` do sistema e do usuário que executou a atualização. Se a instalação nativa falhar, o Flatpak é preservado.
+
+Antes da atualização, desligue as VMs e feche o Boxes. A remoção preserva os discos e as configurações do Flatpak em `~/.var/app/org.gnome.Boxes/`, mas as VMs podem precisar ser importadas manualmente na versão nativa; essa migração de VMs não é automática. O redirecionamento USB fica nas preferências da VM e depende do dispositivo conectado ao computador que hospeda o Boxes.
+
 ---
 
-**Versão atual: 3.3.2** · [VERSION](programas-callas-os/atualizador/VERSION) · [Histórico de mudanças](programas-callas-os/atualizador/CHANGELOG.md)
+**Versão atual: 3.4.0** · [VERSION](programas-callas-os/atualizador/VERSION) · [Histórico de mudanças](programas-callas-os/atualizador/CHANGELOG.md)
 
 Projeto em desenvolvimento. Mantenha seus backups em dia.
 

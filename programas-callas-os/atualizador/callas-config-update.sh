@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.12.04"
+VERSAO="2026.11.13.01"
 export PATH=/usr/bin:/bin
 umask 077
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/${CALLAS_RELEASE_REF:-main}"
@@ -181,6 +181,40 @@ fi
 /usr/local/libexec/callas-spotify-permissions "$usuario"
 # End native Spotify preparation.
 
+# BEGIN native Boxes migration
+printf '\n==> Verificando GNOME Boxes nativo (redirecionamento USB)\n'
+if pacman -Q gnome-boxes >/dev/null 2>&1; then
+  printf 'GNOME Boxes nativo já instalado.\n'
+else
+  consulta_boxes=$?
+  [[ $consulta_boxes == 1 ]] || erro 'Não consegui consultar o GNOME Boxes no banco de pacotes.'
+  pacman -Syu --needed --noconfirm gnome-boxes ||
+    erro 'Não consegui instalar o GNOME Boxes nativo; o Flatpak foi preservado.'
+fi
+pacman -Q gnome-boxes >/dev/null 2>&1 ||
+  erro 'GNOME Boxes nativo não encontrado após a instalação; o Flatpak foi preservado.'
+
+# Remove only the application, never --delete-data or VM disks/configurations.
+# Per-user Flatpaks must be queried/removed as the desktop user, not as root.
+if command -v flatpak >/dev/null; then
+  for boxes_scope in system user; do
+    boxes_flatpak=(flatpak)
+    [[ $boxes_scope != user ]] || boxes_flatpak=(como_usuario flatpak)
+    boxes_apps=$("${boxes_flatpak[@]}" list "--$boxes_scope" --app --columns=application) ||
+      erro "Não consegui consultar os Flatpaks ($boxes_scope); atualização não concluída."
+    if grep -Fxq org.gnome.Boxes <<< "$boxes_apps"; then
+      "${boxes_flatpak[@]}" uninstall "--$boxes_scope" --noninteractive --assumeyes org.gnome.Boxes ||
+        erro "Não consegui remover o GNOME Boxes Flatpak ($boxes_scope); dados preservados."
+      boxes_apps=$("${boxes_flatpak[@]}" list "--$boxes_scope" --app --columns=application) ||
+        erro "Não consegui verificar a remoção do GNOME Boxes Flatpak ($boxes_scope)."
+      if grep -Fxq org.gnome.Boxes <<< "$boxes_apps"; then
+        erro "O GNOME Boxes Flatpak ($boxes_scope) ainda está instalado; atualização não concluída."
+      fi
+    fi
+  done
+fi
+printf 'GNOME Boxes nativo preparado. Dados das VMs preservados; VMs do Flatpak podem precisar de importação manual.\n'
+# END native Boxes migration
 
 phase_done apps
 fi

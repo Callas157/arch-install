@@ -286,7 +286,7 @@ pacstrap -K /mnt \
   konsole dolphin kate ark gwenview okular spectacle kdeplasma-addons \
   unrar unarchiver zip unzip libarchive 7zip lrzip lzop arj cpio \
   uv fastfetch chafa python python-dbus python-gobject ttf-jetbrains-mono-nerd \
-  solaar libappindicator qbittorrent \
+  solaar libappindicator qbittorrent gnome-boxes \
   xdg-desktop-portal-kde xdg-user-dirs \
   kwallet-pam kwalletmanager \
   pipewire pipewire-alsa pipewire-pulse wireplumber \
