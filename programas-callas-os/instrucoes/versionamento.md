@@ -26,7 +26,11 @@ Considere o conjunto da entrega, não o número de arquivos, commits ou pacotes.
 
 Se a versão remota já for `3.4.1`, uma nova correção será `3.4.2`, mesmo que você lembre de `3.2.2`. Não reduza a versão nem compense incrementos anteriores. Uma instrução explícita para manter uma versão é uma exceção apenas para aquela entrega.
 
-## 3. Preparar e validar
+## 3. Fazer o backup obrigatório antes de alterar o instalador
+
+Antes de editar `instalar-arch.sh`, execute o procedimento da seção 6. O backup deve conter o instalador anterior da main, obtido por commit imutável. Só comece a implementação após verificar a cópia no Drive. Não adie esse passo para depois da edição ou da publicação. Se o backup falhar, interrompa a alteração do instalador.
+
+## 4. Preparar e validar
 
 - Quando houver incremento, atualize VERSION e o CHANGELOG correspondente uma única vez.
 - Não edite o README sem solicitação.
@@ -35,7 +39,7 @@ Se a versão remota já for `3.4.1`, uma nova correção será `3.4.2`, mesmo qu
 - Mantenha versão pública, revisão interna por data e commit como identificadores separados.
 - Execute a validação apropriada à mudança e diferencie testes simulados de testes reais no sistema ou hardware. Documentação isolada exige revisão de coerência e links, sem criar testes que apenas repetem seu texto.
 
-## 4. Conferir novamente e publicar
+## 5. Conferir novamente e publicar
 
 - Consulte novamente o commit e VERSION na `main` remota.
 - Se outro agente publicou alterações, releia VERSION e o CHANGELOG e reconcilie a entrega antes de publicar.
@@ -43,11 +47,41 @@ Se a versão remota já for `3.4.1`, uma nova correção será `3.4.2`, mesmo qu
 - Publique diretamente na `main`, nos caminhos existentes, conforme a orientação do projeto. Não crie branches ou pull requests sem pedido explícito e não force a referência para contornar concorrência.
 - Confira os arquivos publicados e a versão remota após a publicação.
 
-## 5. Usar a versão correta em backups, inclusive no Google Drive
+## 6. Backup do instalador no Google Drive
 
-Quando um backup for solicitado, consulte as instruções e a estrutura de pastas já adotadas para esse destino antes de criar pastas. Este roteiro não autoriza criar ou enviar backups por conta própria.
+O usuário autorizou permanentemente este procedimento para cada atualização do instalador, incluindo criação das cópias e retenção de até **10 backups**. Não é necessário solicitar autorização novamente.
 
-- Para backup do código de uma entrega, identifique a versão pelo VERSION do commit efetivamente copiado e registre também esse commit.
-- Para backup de um sistema instalado, use a identidade efetivamente registrada por `callas-version`, incluindo o estado de uma migração pendente ou incompleta. Não use a versão remota de destino como se já estivesse instalada.
-- Use esses dados ao escolher a pasta de versão prevista na organização existente. Não invente uma versão para um backup antigo, renomeie arquivos históricos ou sobrescreva colisões.
-- Versão, commit e data têm funções diferentes: vários backups podem pertencer à mesma versão. Preserve as regras existentes de nomes, retenção, permissões e localização.
+### Destino e identificação
+
+- Use a pasta existente [CallasOS](https://drive.google.com/drive/folders/1gGvO2rTC4Y0iH1R5BosbWsJH8fwxaMgm), ID `1gGvO2rTC4Y0iH1R5BosbWsJH8fwxaMgm`; confirme acesso e identidade do destino antes de escrever.
+- A pasta de cada backup deve ter o nome `CallasOS X.Y.Z`, com a versão anterior lida em VERSION na main remota, não a versão planejada para a atualização.
+- Há uma pasta existente chamada `CallasOS 3.3.2`. Sua existência não prova que o arquivo do instalador esteja salvo ou íntegro; verifique o conteúdo antes de reutilizar qualquer backup.
+- Não invente versões, renomeie históricos ou sobrescreva cópias anteriores. Se a mesma versão corresponder a outro conteúdo, acrescente data/hora ao nome: `CallasOS X.Y.Z — AAAA-MM-DD HH-mm-ss`, horário de São Paulo. Cada cópia conta para o limite de 10.
+
+### Sequência obrigatória
+
+1. Consulte a main atualizada e fixe o commit de origem.
+2. Leia VERSION e obtenha `instalar-arch.sh` daquele mesmo commit. Use os bytes originais do GitHub, não um arquivo local já modificado.
+3. Confira os backups existentes. Uma cópia íntegra do mesmo instalador/commit pode ser reutilizada após verificação; não crie duplicatas desnecessárias.
+4. Se não houver cópia verificada, crie a pasta de versão dentro de CallasOS e salve `instalar-arch.sh`. Inclua um registro de versão, commit de origem, data/hora e SHA-256.
+5. Leia o arquivo salvo pelo conector do Drive e confira seu SHA-256 contra o original. Confirme também seu nome e a pasta de destino. Não considere apenas a criação da pasta ou o retorno inicial do envio como sucesso.
+6. Após confirmar o novo backup, aplique a retenção abaixo.
+7. **Somente agora edite e implemente a atualização no instalador.** Mantenha o backup da versão anterior intacto.
+8. Valide a entrega. Antes de publicar, releia a main remota; se o instalador remoto mudou por ação concorrente, faça e verifique o backup dessa nova origem antes de reconciliar e publicar.
+9. Confira os arquivos publicados na main. Não crie branches ou pull requests sem solicitação.
+
+Se faltar acesso ao Drive, ocorrer falha de envio ou não for possível verificar a integridade, pare a alteração do instalador e informe o bloqueio. Não publique primeiro para tentar fazer o backup depois.
+
+### Retenção: no máximo 10 backups
+
+- Conte apenas pastas de backup do instalador devidamente identificadas dentro de CallasOS; preserve outros conteúdos.
+- O novo backup conta no limite de 10. Ordene os backups pela data real de captura registrada; não ordene versões como texto.
+- Envie à lixeira somente os backups mais antigos necessários para voltar ao limite de 10, após confirmar o novo backup. Não use exclusão definitiva.
+- Nunca remova a cópia anterior antes de concluir e verificar o envio da próxima.
+- Se não for possível identificar com segurança os backups antigos ou cumprir a retenção, informe o bloqueio e resolva-o antes de prosseguir com a atualização.
+
+### Relação com versão e backups locais
+
+Documentação isolada, sem mudança do instalador, não exige duplicar um backup idêntico nem aumentar a versão pública. A criação de um backup também não incrementa VERSION.
+
+Para backups de um sistema instalado, use a identidade efetivamente registrada por `callas-version`, incluindo estado pendente ou incompleto, e não a versão remota de destino. Preserve as regras locais existentes de nomes, permissões, localização e retenção; o limite de 10 desta seção aplica-se aos backups do instalador no Drive.

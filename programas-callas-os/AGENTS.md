@@ -2,7 +2,7 @@
 
 ## Leitura obrigatória no início do trabalho
 
-Antes de planejar ou implementar alterações, consulte a `main` remota atualizada de `Callas157/arch-install`, examine a árvore do repositório e leia estas instruções, [o roteiro de versionamento](instrucoes/versionamento.md), `atualizador/VERSION` e o histórico relevante em `atualizador/CHANGELOG.md`. Leia também os arquivos e as instruções relacionados à tarefa. Repita essa consulta em cada novo chat ou retomada; não dependa da memória de conversas anteriores. A regra vale também para tarefas no instalador da raiz ou em `assets/`.
+Antes de planejar ou implementar alterações, consulte a `main` remota atualizada de `Callas157/arch-install`, examine a árvore do repositório e leia estas instruções, [o roteiro de versionamento](instrucoes/versionamento.md), `atualizador/VERSION` e o histórico relevante em `atualizador/CHANGELOG.md`. Leia também os arquivos e as instruções relacionados à tarefa. Repita essa consulta em cada novo chat ou retomada; não dependa da memória de conversas anteriores. A regra vale também para tarefas no instalador da raiz ou em `assets/`. Antes de alterar o instalador, cumpra o backup obrigatório no Google Drive descrito abaixo.
 
 ## Regras existentes do projeto
 
@@ -56,3 +56,18 @@ Se a memória indicar `3.2.2`, mas o repositório já estiver em `3.4.1`, uma no
 - A identidade instalada só deve avançar após as etapas obrigatórias terminarem com sucesso. Preserve o estado incompleto ou de boot legado sem anunciar uma entrega concluída.
 - Atualizações comuns do Arch, kernel ou aplicativos não aumentam a versão do projeto Callas OS.
 - A revisão interna por data (`VERSAO`) e o identificador do commit são separados da versão pública; preserve suas funções existentes.
+
+## Backup obrigatório do instalador antes de alterações
+
+Esta é uma autorização permanente do usuário para realizar o backup e a retenção abaixo como parte de cada atualização do instalador, sem pedir nova confirmação.
+
+1. **Antes de editar ou implementar qualquer atualização em `instalar-arch.sh`**, consulte a `main` remota atualizada e fixe o commit de origem. Leia VERSION e baixe o instalador original desse mesmo commit, sem alterações locais.
+2. Salve a cópia no Google Drive, dentro da pasta existente **CallasOS**, em uma pasta chamada **CallasOS X.Y.Z**, usando a versão anterior efetivamente lida em VERSION. Destino verificado: [CallasOS](https://drive.google.com/drive/folders/1gGvO2rTC4Y0iH1R5BosbWsJH8fwxaMgm), ID `1gGvO2rTC4Y0iH1R5BosbWsJH8fwxaMgm`. Já existe uma pasta `CallasOS 3.3.2`; confira seu conteúdo antes de reutilizá-la.
+3. Preserve o arquivo como `instalar-arch.sh` e registre junto a versão, o commit, a data do backup e o SHA-256 do conteúdo. Confirme por leitura do Drive que o arquivo foi salvo integralmente e corresponde ao original do GitHub. A existência da pasta, sozinha, não comprova backup.
+4. **Só depois de confirmar o backup, implemente a alteração no instalador e publique na main.** Se o Drive estiver indisponível, o envio falhar ou a integridade não puder ser confirmada, pare a alteração do instalador e informe o bloqueio. Não substitua o backup anterior pelo arquivo já atualizado.
+5. Mantenha **no máximo 10 backups do instalador**, incluindo o novo. Após confirmar o novo backup, envie à lixeira somente os backups mais antigos que excederem esse limite; preserve o novo e todos os arquivos alheios a esses backups. Nunca apague primeiro o backup anterior para tentar enviar o próximo.
+6. Não sobrescreva backups históricos. Se já houver cópia íntegra do mesmo instalador/commit, reutilize-a após conferir. Se a mesma versão tiver um instalador diferente, use uma pasta com sufixo de data/hora (`CallasOS X.Y.Z — AAAA-MM-DD HH-mm-ss`, horário de São Paulo); essa cópia também conta no limite de 10.
+7. Antes de publicar, confira a main novamente. Se o instalador remoto tiver mudado, preserve também essa nova origem em backup verificado antes de reconciliar e publicar. Nunca sobrescreva trabalho concorrente.
+8. Mudanças somente nas instruções/documentação, sem alteração do instalador, não exigem uma cópia idêntica adicional nem incremento de versão. Esses backups no Drive não substituem nem alteram a política de backups locais do sistema.
+
+O procedimento completo está em [instrucoes/versionamento.md](instrucoes/versionamento.md).
