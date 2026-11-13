@@ -20,17 +20,6 @@
   <img src="assets/wallpapers/callas-wallpaper-14-mountains-moon.jpg" alt="Wallpaper Callas OS com montanhas, lua e iluminação azul" width="900">
 </p>
 
-## Pronto para sua biblioteca
-
-O **Callas OS** reúne uma base Arch com ambiente KDE, Steam, ferramentas para gerenciar Proton, gravação de gameplay e aplicativos para o dia a dia. Tema escuro, wallpapers e integração com o desktop já fazem parte da instalação.
-
-- **Jogos:** Steam e ProtonPlus para gerenciar versões do Proton.
-- **Gravação:** GPU Screen Recorder para capturar suas partidas.
-- **Desktop:** KDE Plasma Wayland com a identidade visual do Callas OS.
-- **Manutenção:** atualizador integrado, limpeza e backups de configurações.
-
-A compatibilidade de cada jogo depende do Proton, dos drivers e do anticheat utilizado pelo título.
-
 ## Instalação
 
 O Callas OS é instalado a partir da **ISO oficial do Arch Linux**. O comando abaixo prepara e configura o sistema; o projeto ainda não distribui uma ISO própria.
