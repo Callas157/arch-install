@@ -155,12 +155,12 @@ class NativeTests(unittest.TestCase):
         with patch.object(native.subprocess,'run',return_value=response) as run:
             self.assertEqual(native.update(),0)
         self.assertEqual(run.call_count,1)
-    def test_allowed_transaction_uses_guard_and_complete_upgrade(self):
-        responses=[types.SimpleNamespace(returncode=0,stdout='qbittorrent 1 -> 2\n',stderr=''),types.SimpleNamespace(returncode=0)]
+    def test_allowed_transaction_uses_guard_and_explicit_app_targets(self):
+        responses=[types.SimpleNamespace(returncode=0,stdout='qbittorrent 1 -> 2\n',stderr=''),types.SimpleNamespace(returncode=0,stdout='qbittorrent 1 -> 2\n',stderr=''),types.SimpleNamespace(returncode=0)]
         with patch.object(native.subprocess,'run',side_effect=responses) as run:
             self.assertEqual(native.update(),0)
             args=run.call_args.args[0]
-            self.assertIn('-Syu',args); self.assertIn('--hookdir',args)
+            self.assertIn('-S',args); self.assertIn('qbittorrent',args); self.assertNotIn('-Syu',args); self.assertIn('--hookdir',args)
     def test_apps_only_aur_never_requests_native_dependency_install(self):
         with self.assertRaises(aur.RequiresGeneral): aur.plan('INSTALL DEP extra new-library\nAUR TARGET app app',apps_only=True)
         with self.assertRaises(aur.RequiresGeneral): aur.plan('AUR TARGET linux-custom linux-custom',apps_only=True)

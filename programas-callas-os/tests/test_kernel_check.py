@@ -137,7 +137,9 @@ done''',
             text=(UPDATER/'put-update.sh').read_text()
             fn=text[text.index('atualizar_arch() {'):text.index('\natualizar_aur()')]
             fn=fn.replace('/usr/lib/modules/',str(root)+'/usr/lib/modules/').replace('/etc/callas-nvidia-version',str(root)+'/etc/callas-nvidia-version')
-            code='''mountpoint() { return 0; }
+            fn=fn.replace('/usr/local/libexec/callas-kernel-policy', 'policy_fixture')
+            code='''policy_fixture() { [[ $1 == --check-hooks ]]; }
+mountpoint() { return 0; }
 pacman-conf() { printf '%s\n' "$FAKE_ROOT"; }
 pacman() { return 0; }
 '''+fn+'\natualizar_arch manual\n'

@@ -10,7 +10,7 @@ A NVIDIA permanece na versão escolhida pelo usuário, atualmente **610.57.04**.
 
 ## Antes da transação
 
-O hook `00-callas-kernel-policy.hook` recebe todos os alvos, usa PreTransaction, NeedsTargets e AbortOnFail, e roda antes dos hooks que removem módulos. Só o comando oficial da opção 4 recebe `CALLAS_KERNEL_UPDATE_CONTEXT=general`; não exporte essa autorização globalmente nem para o AUR.
+O hook `00-callas-kernel-policy.hook` recebe todos os alvos, usa PreTransaction, NeedsTargets e AbortOnFail, e roda antes dos hooks que removem módulos. O comando geral exige antes `callas-kernel-policy --check-hooks`: auxiliar e hooks precisam existir, pertencer a root, ter permissões seguras e corresponder às definições esperadas. A transação usa explicitamente o diretório desses hooks. Só o comando oficial da opção 4 recebe `CALLAS_KERNEL_UPDATE_CONTEXT=general`; não exporte essa autorização globalmente nem para o AUR.
 
 Com NVIDIA fixada, exige pares oficiais completos (`linux` e `linux-headers`, ou `linux-lts` e `linux-lts-headers`) na mesma transação. As versões do kernel e dos headers devem coincidir. Pacotes precisam estar disponíveis no cache após validação de assinatura/integridade pelo pacman; metadados são consultados em locale C, independentemente do idioma do sistema.
 
@@ -34,3 +34,11 @@ O diagnóstico prévio fica em `/var/lib/callas-os/kernel-preflight-last.log`, c
 - Procure comandos pacman/Paru/AUR em todos os modos, inclusive Discord `--pacman`, hooks e agendamento.
 - Mantenha `put-update.sh` e sua cópia embutida idênticos; distribua helper e hooks pela instalação limpa e pelo Update com estágio verificado e checkpoints.
 - Teste contextos proibidos, driver fixado, pares incompletos, falha de namespace/build, locale português, módulos incorretos e bloqueio antes da transação. Diferencie simulação de compilação/boot real.
+
+## Aplicativos e configurações: isolamento obrigatório
+
+- A opção 5 não reinstala/inicia/reinicia o timer de atualização, não recria suas unidades e não recalcula datas. Preserva a agenda mesmo vencida. Instalação limpa e reparo explícito podem preparar o agendamento; o modo de configurações usa `--preserve-schedule`. Isso evita que `OnBootSec=2min` provoque uma verificação geral imediata após o Update.
+- A opção de aplicativos nunca usa `pacman -Syu`, `-Sy` ou `--sysupgrade`. Compara a consulta isolada com o banco local; divergência ou mudança de base adia a fase. Não sincroniza o banco real para tentar uma atualização parcial.
+- Todos os caminhos nativos e AUR `-S`/`-U` usam `callas-native.guarded_transaction`, com hook temporário próprio cobrindo Install, Upgrade e Remove, `Target = *`, NeedsTargets e AbortOnFail. Conferir só os nomes pedidos não cobre dependências e substituições. Os hooks permanentes são implantados antes de pacotes e antes da saída `--helpers-only`.
+- Autorizações herdadas de atualização geral são descartadas nos pontos de entrada. Uma dependência protegida deve interromper a transação inteira. Não execute atualização geral como fallback para instalar Haruna, Boxes, Spotify, Discord ou qualquer outro aplicativo.
+- O teste opcional `test_pacman_transaction.py`, habilitado por `CALLAS_TEST_PACMAN`, valida transações reais do libalpm com banco privado e pacotes artificiais que só escrevem no diretório temporário. Cobre dependência de kernel, arquivo de kernel e aplicativo que remove/substitui um kernel. Não instala kernels reais nem valida boot/NVIDIA.

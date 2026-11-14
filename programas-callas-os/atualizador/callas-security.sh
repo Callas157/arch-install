@@ -59,6 +59,43 @@ done
 printf '%s\n' "$usuario" > /etc/callas-os/log-user
 printf '%s\n' "${CALLAS_RELEASE_REF:-installation}" > /etc/callas-os/security-release
 
+  # Runs before the distribution's DKMS removal hook. Failure aborts the entire
+  # transaction while the working kernels/modules are still installed.
+  cat > /etc/pacman.d/hooks/00-callas-kernel-deny-remove.hook <<'KERNEL_REMOVE_HOOK'
+[Trigger]
+Operation = Remove
+Type = Package
+Target = linux*
+Target = nvidia*
+Target = lib32-nvidia*
+Target = libxnvctrl
+Target = opencl-nvidia
+Target = lib32-opencl-nvidia
+
+[Action]
+Description = Impedir remocao automatica dos kernels e driver preservados
+When = PreTransaction
+NeedsTargets
+AbortOnFail
+Exec = /usr/local/libexec/callas-kernel-policy --remove
+KERNEL_REMOVE_HOOK
+
+  cat > /etc/pacman.d/hooks/00-callas-kernel-policy.hook <<'KERNEL_POLICY_HOOK'
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = *
+
+[Action]
+Description = Preservar kernel e NVIDIA ate validar compilacao candidata
+When = PreTransaction
+NeedsTargets
+AbortOnFail
+Exec = /usr/local/libexec/callas-kernel-policy
+KERNEL_POLICY_HOOK
+
+
 [[ ${2:-} != --helpers-only ]] || exit 0
 
 logdir=$(mktemp -d /var/tmp/callas-security.XXXXXXXX)
@@ -115,7 +152,7 @@ PY
   # full Arch upgrade when every requirement is already available.
   if [[ ${2:-} != --installation ]]; then
     missing=()
-    for package in linux linux-lts linux-headers linux-lts-headers ufw plasma-firewall python python-dbus python-gobject kscreen base-devel git rebuild-detector pacman-contrib acl gpu-screen-recorder-ui usb_modeswitch; do
+    for package in ufw plasma-firewall python python-dbus python-gobject kscreen base-devel git rebuild-detector pacman-contrib acl gpu-screen-recorder-ui usb_modeswitch; do
       if pacman -Qq "$package" >/dev/null 2>&1; then :; else
         code=$?; [[ $code == 1 ]] || { echo 'Falha ao consultar o banco de pacotes.' >&2; return 1; }
         missing+=("$package")
@@ -223,42 +260,6 @@ UDEV
     fi
   fi
 
-  # Runs before the distribution's DKMS removal hook. Failure aborts the entire
-  # transaction while the working kernels/modules are still installed.
-  cat > /etc/pacman.d/hooks/00-callas-kernel-deny-remove.hook <<'KERNEL_REMOVE_HOOK'
-[Trigger]
-Operation = Remove
-Type = Package
-Target = linux*
-Target = nvidia*
-Target = lib32-nvidia*
-Target = libxnvctrl
-Target = opencl-nvidia
-Target = lib32-opencl-nvidia
-
-[Action]
-Description = Impedir remocao automatica dos kernels e driver preservados
-When = PreTransaction
-NeedsTargets
-AbortOnFail
-Exec = /usr/local/libexec/callas-kernel-policy --remove
-KERNEL_REMOVE_HOOK
-
-  cat > /etc/pacman.d/hooks/00-callas-kernel-policy.hook <<'KERNEL_POLICY_HOOK'
-[Trigger]
-Operation = Install
-Operation = Upgrade
-Type = Package
-Target = *
-
-[Action]
-Description = Preservar kernel e NVIDIA ate validar compilacao candidata
-When = PreTransaction
-NeedsTargets
-AbortOnFail
-Exec = /usr/local/libexec/callas-kernel-policy
-KERNEL_POLICY_HOOK
-
   cat > /etc/pacman.d/hooks/99-zz-callas-kernels.hook <<'HOOK'
 [Trigger]
 Operation = Install
@@ -333,7 +334,11 @@ SPOTIFY_HOOK
   fi
 
   /usr/local/libexec/callas-game-logs --install-system
-  /usr/local/libexec/put-update --instalar-para "$usuario"
+  if [[ ${2:-} == --config-update ]]; then
+    /usr/local/libexec/put-update --instalar-para "$usuario" --preserve-schedule
+  else
+    /usr/local/libexec/put-update --instalar-para "$usuario"
+  fi
   if [[ ${2:-} != --config-update ]]; then
     /usr/local/libexec/callas-kernel-check --verify-only
   fi

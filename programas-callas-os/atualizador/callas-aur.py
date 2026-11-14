@@ -20,6 +20,18 @@ PINNED = frozenset(('nvidia-utils', 'nvidia-open-dkms', 'nvidia-open', 'nvidia-o
                     'lib32-nvidia-utils', 'nvidia-settings', 'libxnvctrl', 'opencl-nvidia', 'lib32-opencl-nvidia'))
 NAME = re.compile(r'[a-zA-Z0-9@_+][a-zA-Z0-9@_.+\-]*\Z')
 
+def native_policy():
+    from importlib.machinery import SourceFileLoader
+    from importlib.util import module_from_spec, spec_from_loader
+    path = Path(__file__).with_name('callas-native.py')
+    if not path.is_file():
+        path = Path(__file__).with_name('callas-native')
+    spec = spec_from_loader('callas_native_policy', SourceFileLoader('callas_native_policy', str(path)))
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 class RequiresGeneral(ValueError):
     pass
 
@@ -47,8 +59,7 @@ def plan(text, apps_only=False):
             result.append(('INSTALL', fields[1], repo, [pkg]))
         elif fields[0] == 'AUR':
             base, pkgs = name(fields[2]), [name(pkg) for pkg in fields[3:]]
-            if apps_only and any(pkg.startswith(('linux', 'systemd', 'grub', 'pacman', 'glibc', 'mkinitcpio',
-                                                'nvidia', 'lib32-nvidia', 'opencl-nvidia', 'lib32-opencl-nvidia', 'plasma', 'kwin')) for pkg in pkgs):
+            if apps_only and any(native_policy().frozen(pkg) for pkg in pkgs):
                 raise RequiresGeneral('Pacote de base preservado; use Atualizar geral')
             if set(pkgs) & PINNED or base in PINNED:
                 raise ValueError('O AUR não pode substituir a NVIDIA preservada')
@@ -197,10 +208,10 @@ def run_update(apps_only=False):
             raise ValueError('O plano não inclui todos os pacotes pendentes')
         for kind, reason, source, pkgs in actions:
             if kind == 'INSTALL':
-                command(['/usr/bin/pacman', '-S', '--needed', '--asdeps', '--noconfirm', source + '/' + pkgs[0]])
+                native_policy().guarded_transaction(['-S', '--needed', '--asdeps', '--noconfirm', source + '/' + pkgs[0]], runner=command)
             else:
                 archives = builder.build(source, pkgs)
-                command(['/usr/bin/pacman', '-U', '--noconfirm', *archives])
+                native_policy().guarded_transaction(['-U', '--noconfirm', *archives], runner=command)
                 new_dependencies = [pkg for pkg in pkgs if pkg not in foreign and reason != 'TARGET']
                 if new_dependencies:
                     command(['/usr/bin/pacman', '-D', '--asdeps', *new_dependencies])
@@ -210,6 +221,7 @@ def run_update(apps_only=False):
         print('Atualização e recompilações necessárias do AUR concluídas.')
 
 def main():
+    os.environ['CALLAS_KERNEL_UPDATE_CONTEXT'] = 'apps'
     if os.geteuid() != 0 or sys.argv[1:] not in ([], ['--apps-only']):
         raise SystemExit('Uso interno do Atualizador do sistema.')
     os.umask(0o077)

@@ -45,6 +45,18 @@ def metadata(text):
     if not packages: raise ValueError('.SRCINFO sem pacotes')
     return dependencies, packages, keys
 
+def native_policy():
+    from importlib.machinery import SourceFileLoader
+    from importlib.util import module_from_spec, spec_from_loader
+    path = Path(__file__).with_name('callas-native.py')
+    if not path.is_file():
+        path = Path(__file__).with_name('callas-native')
+    spec = spec_from_loader('callas_native_policy', SourceFileLoader('callas_native_policy', str(path)))
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 class Installer:
     def __init__(self,user):
         self.account = pwd.getpwnam(user)
@@ -89,7 +101,7 @@ class Installer:
                     if name in PINNED: raise ValueError('Dependência exigiria mudar a NVIDIA')
                     repo=run(['/usr/bin/pacman','-Si',name],capture=True,check=False)
                     if repo.returncode == 0:
-                        run(['/usr/bin/pacman','-S','--needed','--noconfirm','--asdeps',requirement])
+                        native_policy().guarded_transaction(['-S','--needed','--noconfirm','--asdeps',requirement], runner=run)
                     else: self.install(name,dependency=True)
                     if self.missing(requirement): raise ValueError('Versão de dependência não satisfeita: '+requirement)
                 for key in keys:
@@ -113,10 +125,11 @@ class Installer:
                     if len(fields)!=2 or fields[0] not in expected or fields[0] in PINNED: raise ValueError('Pacote produzido inesperado')
                     archives.append(str(target)); produced.add(fields[0])
                 if package not in produced: raise ValueError('Pacote solicitado não foi produzido')
-                run(['/usr/bin/pacman','-U','--needed','--noconfirm',*(['--asdeps'] if dependency else []),*archives])
+                native_policy().guarded_transaction(['-U','--needed','--noconfirm',*(['--asdeps'] if dependency else []),*archives], runner=run)
         finally: self.visiting.remove(package)
 
 def main():
+    os.environ['CALLAS_KERNEL_UPDATE_CONTEXT'] = 'apps'
     if os.geteuid()!=0 or len(sys.argv)<3: raise ValueError('Uso interno: callas-aur-install USUARIO PACOTE...')
     installer=Installer(sys.argv[1])
     for package in sys.argv[2:]: installer.install(package)

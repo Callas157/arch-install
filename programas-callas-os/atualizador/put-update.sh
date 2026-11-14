@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export PATH=/usr/bin:/bin
+# Only the explicit General pacman command below may grant this context.
+unset CALLAS_KERNEL_UPDATE_CONTEXT
 
 program=/usr/local/libexec/put-update
 atalho_menu=/usr/local/share/applications/io.github.Callas157.AtualizadorDoSistema.desktop
@@ -141,6 +143,10 @@ etapa() {
 }
 
 atualizar_arch() {
+    /usr/local/libexec/callas-kernel-policy --check-hooks || {
+        printf 'Proteção PreTransaction indisponível; atualização geral bloqueada antes do pacman.\n' >&2
+        return 1
+    }
     mountpoint -q /boot || { printf 'A partição /boot não está montada; atualização geral interrompida antes do pacman.\n' >&2; return 1; }
     local origem=$1 dbpath tentativa
     local -a dependencias=() confirmacao=(--noconfirm)
@@ -159,7 +165,7 @@ atualizar_arch() {
         pacman -Qq git >/dev/null 2>&1 || dependencias+=(git)
     fi
     if [[ -r /etc/callas-nvidia-version ]]; then
-        CALLAS_KERNEL_UPDATE_CONTEXT=general pacman -Syu --needed --ignore=nvidia-utils,nvidia-open-dkms,nvidia-open,nvidia-open-lts,lib32-nvidia-utils,nvidia-settings,libxnvctrl,opencl-nvidia,lib32-opencl-nvidia "${confirmacao[@]}" "${dependencias[@]}" || return
+        CALLAS_KERNEL_UPDATE_CONTEXT=general pacman --hookdir /etc/pacman.d/hooks -Syu --needed --ignore=nvidia-utils,nvidia-open-dkms,nvidia-open,nvidia-open-lts,lib32-nvidia-utils,nvidia-settings,libxnvctrl,opencl-nvidia,lib32-opencl-nvidia "${confirmacao[@]}" "${dependencias[@]}" || return
 
         # Antes de considerar a atualização concluída, garante que o NVIDIA
         # fixado ainda foi compilado para todos os kernels linux/linux-lts.
@@ -183,7 +189,7 @@ atualizar_arch() {
         done
         (( falhou_modulo == 0 )) || return 1
     else
-        CALLAS_KERNEL_UPDATE_CONTEXT=general pacman -Syu --needed "${confirmacao[@]}" "${dependencias[@]}"
+        CALLAS_KERNEL_UPDATE_CONTEXT=general pacman --hookdir /etc/pacman.d/hooks -Syu --needed "${confirmacao[@]}" "${dependencias[@]}"
     fi
 }
 
@@ -522,11 +528,12 @@ DESKTOP
 }
 
 desativar_agendamento_antigo() {
-    local em_chroot=$1 unidade estado
+    local em_chroot=$1 preservar_agenda=${2:-0} unidade estado
     local -a antigas=(
-        put-update.timer put-update-sistema.timer put-update-apps.timer put-update-check.timer
+        put-update.timer put-update-sistema.timer put-update-apps.timer
     )
 
+    (( preservar_agenda )) || antigas+=(put-update-check.timer)
     if (( em_chroot )); then
         for unidade in "${antigas[@]}"; do
             systemctl --root=/ disable "$unidade" 2>/dev/null || :
@@ -543,13 +550,15 @@ desativar_agendamento_antigo() {
         /etc/systemd/system/put-update.service \
         /etc/systemd/system/put-update-sistema.timer \
         /etc/systemd/system/put-update-apps.timer \
-        /etc/systemd/system/put-update@.service \
-        /etc/systemd/system/put-update-check.timer \
-        /etc/systemd/system/put-update-check.service
+        /etc/systemd/system/put-update@.service
+    if (( ! preservar_agenda )); then
+        rm -f -- /etc/systemd/system/put-update-check.timer /etc/systemd/system/put-update-check.service
+    fi
 }
 
 instalar() {
-    local usuario=$1 origem temporario conta home modo timer hora pasta em_chroot=0
+    local usuario=$1 origem temporario conta home modo timer hora pasta em_chroot=0 preservar_agenda=0
+    [[ ${2:-} != --preserve-schedule ]] || preservar_agenda=1
     [[ "$usuario" =~ ^[a-zA-Z_][a-zA-Z0-9_.-]*$ && "$usuario" != root ]] ||
         erro 'Informe um usuário normal do Arch.'
     [[ -f /etc/arch-release ]] || erro 'Este script requer Arch Linux.'
@@ -592,12 +601,13 @@ Unit=$servico_check
 WantedBy=timers.target
 UNIT
 
-    desativar_agendamento_antigo "$em_chroot"
+    desativar_agendamento_antigo "$em_chroot" "$preservar_agenda"
     rm -f -- "$sudo_rule"
 
     rm -f -- "$sudo_rule" "$sudo_template" "$paru_conf"
     # AUR builds use the isolated helper; no passwordless pacman rule is installed.
 
+    if (( ! preservar_agenda )); then
     preparar_agenda
     if [[ ! -f $agenda_dir/maintenance-monthly-v2 ]]; then
         base_agenda=$(ler_data_agenda inicio)
@@ -605,11 +615,14 @@ UNIT
         gravar_data_agenda sistema "$(proxima_data sistema "$base_agenda")"
         touch "$agenda_dir/maintenance-monthly-v2"
     fi
+    fi
     # O programa pode já ser a origem quando o automático é reconfigurado pelo atalho.
     if [[ $origem != "$program" ]]; then
         install -D -m 0755 -T -- "$origem" "$program"
     fi
-    install -m 0644 -- "$temporario/$servico_check" "$temporario/$timer_check" /etc/systemd/system/
+    if (( ! preservar_agenda )); then
+        install -m 0644 -- "$temporario/$servico_check" "$temporario/$timer_check" /etc/systemd/system/
+    fi
     instalar_entrada_menu "$temporario/${atalho_menu##*/}"
 
     como_usuario "$usuario" "$home" mkdir -p "$home/.config/autostart"
@@ -624,18 +637,24 @@ StartupNotify=false
 X-KDE-AutostartScript=true
 REBOOT_DESKTOP
 
-    if (( em_chroot )); then
-        systemctl --root=/ enable "$timer_check"
-    else
-        systemctl daemon-reload
-        systemctl enable "$timer_check"
-        systemctl restart "$timer_check"
+    if (( ! preservar_agenda )); then
+        if (( em_chroot )); then
+            systemctl --root=/ enable "$timer_check"
+        else
+            systemctl daemon-reload
+            systemctl enable "$timer_check"
+            systemctl restart "$timer_check"
+        fi
     fi
 
+    if (( preservar_agenda )); then
+        printf '\nAgenda e estado do timer preservados; nenhuma atualização geral foi agendada ou iniciada por esta configuração.\n'
+    else
     printf '\nAgendamento automático configurado.\n'
     printf 'Atualização mensal do sistema vence em: %s.\n' "$(ler_data_agenda sistema)"
     printf 'Atualização semanal dos aplicativos vence em: %s.\n' "$(ler_data_agenda apps)"
     printf 'Se o PC estiver desligado no vencimento, a atualização roda no primeiro boot/verificação seguinte.\n'
+    fi
     como_usuario "$usuario" "$home" "$program" --instalar-atalhos
     if pasta=$(como_usuario "$usuario" "$home" "$program" --log-dir); then
         printf 'Logs por categoria em Documentos: %s\n' "$pasta"
@@ -787,8 +806,9 @@ case ${1:-} in
         instalar "${SUDO_USER:-}"
         ;;
     --instalar-para)
-        (( EUID == 0 && $# == 2 )) || erro 'Use como root: bash atualizador-do-sistema.sh --instalar-para USUARIO.'
-        instalar "$2"
+        (( EUID == 0 && ( $# == 2 || $# == 3 ) )) || erro 'Uso interno: --instalar-para USUARIO [--preserve-schedule].'
+        [[ $# == 2 || $3 == --preserve-schedule ]] || erro 'Modo de agendamento inválido.'
+        instalar "$2" "${3:-}"
         ;;
     --instalar-atalhos)
         (( EUID != 0 && $# == 1 )) || erro 'Esta opção é interna.'

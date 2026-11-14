@@ -1,5 +1,16 @@
 # Histórico do Callas OS
 
+## 3.4.1 — 2026-11-14
+
+- Corrige o caminho indireto da opção 5 para a atualização geral: a implantação das configurações preserva as datas, os arquivos e o estado do timer existente, sem reiniciá-lo, iniciá-lo ou recalcular o vencimento mensal. Timers legados continuam sendo desativados. Instalação limpa e reparo explícito mantêm a preparação normal da agenda.
+- Remove `pacman -Syu` da atualização de aplicativos nativos. Usa somente alvos explícitos, sem sincronizar o banco do sistema; adia a etapa quando há mudanças de base ou divergência entre os bancos local e isolado.
+- Aplica a mesma proteção PreTransaction às instalações nativas e às transações AUR `-S`/`-U`, incluindo dependências, remoções e substituições de pacotes protegidos. Se o aplicativo exigir kernel, NVIDIA ou base protegida, a transação inteira é recusada, sem atualização geral como alternativa.
+- Implanta os hooks permanentes antes de qualquer pacote ou saída `--helpers-only`. Limpa autorizações de kernel herdadas fora do comando geral e exige hooks íntegros antes da atualização geral. Não muda a NVIDIA nem executa recuperação/downgrade de kernel.
+- Mantém instalador e cópia embutida do atualizador alinhados; disponibiliza a política compartilhada antes do AUR na instalação limpa. Acrescenta Haruna às verificações de presença das etapas concluídas.
+
+
+Validação: 219 testes aprovados e um ignorado por user namespace indisponível. Inclui pacman 7.0.0/libalpm 15 reais em banco privado com pacotes artificiais: dependência de kernel, arquivo de kernel e substituição/remoção são bloqueados antes de qualquer instalação, enquanto o aplicativo isolado instala. O harness sem privilégios simula UID/chroot e suprime ldconfig; os pacotes só contêm arquivos temporários. Sintaxe Bash/Python e cópia embutida conferidas. Não valida um sistema Arch completo, boot, VM ou compilação NVIDIA real.
+
 ## 3.4.0 — 2026-11-14
 
 - Adiciona o reprodutor de vídeo Haruna nativo (`extra/haruna`) à instalação limpa e ao Callas OS Update.

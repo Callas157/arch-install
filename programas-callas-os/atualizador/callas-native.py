@@ -3,7 +3,7 @@
 
 Check the complete pending transaction in an isolated database. If it contains
 base changes, defer the official phase to General. A pretransaction hook also
-guards against repository changes between the check and pacman's refresh.
+guards the resolved transaction without refreshing the live databases.
 """
 import os
 from pathlib import Path
@@ -29,14 +29,13 @@ if blocked:
     sys.exit(1)
 '''
 
-def install_packages(packages):
-    """Option 5 installs explicit apps from the existing database, never -y/-u.
-
-    Abort the entire transaction if dependency resolution would touch the base.
-    No selective upgrade against freshly synchronized repositories is attempted.
-    """
-    if not packages or any(not re.fullmatch(r'[a-zA-Z0-9@_+][a-zA-Z0-9@_.+\-]*', p) or frozen(p) for p in packages):
-        raise ValueError('Instalação pontual inválida ou exige alteração da base; nenhuma transação iniciada.')
+def guarded_transaction(arguments, runner=None):
+    """Guard the resolved transaction, including dependencies and replacements."""
+    if not arguments or arguments[0] not in ('-S', '-U'):
+        raise ValueError('Somente instalações explícitas são permitidas neste fluxo.')
+    options = {'--needed', '--noconfirm', '--asdeps'}
+    if any(arg.startswith('-') and arg not in options for arg in arguments[1:]):
+        raise ValueError('Sincronização e atualização geral não são permitidas neste fluxo.')
     with tempfile.TemporaryDirectory(prefix='callas-install-', dir='/var/tmp') as temp:
         guard = Path(temp) / 'guard.py'
         guard.write_text(pretransaction_code())
@@ -51,20 +50,30 @@ Type = Package
 Target = *
 
 [Action]
-Description = Impedir alteracoes de kernel, driver, boot e base na opcao 5
+Description = Impedir alteracoes de kernel, driver, boot e base em aplicativos
 When = PreTransaction
 NeedsTargets
 AbortOnFail
 Exec = /usr/bin/python3 ''' + str(guard) + '\n')
-        result = subprocess.run(['/usr/bin/pacman', '--hookdir', '/etc/pacman.d/hooks', '--hookdir', str(hooks),
-                                 '-S', '--needed', '--noconfirm', *packages], stdin=subprocess.DEVNULL)
-        if result.returncode:
-            print('Instalação pontual não concluída. Nenhuma atualização geral será iniciada automaticamente.', file=sys.stderr)
-        return result.returncode
+        command = ['/usr/bin/pacman', '--hookdir', '/etc/pacman.d/hooks', '--hookdir', str(hooks), *arguments]
+        if runner is not None:
+            return runner(command)
+        env = dict(os.environ, CALLAS_KERNEL_UPDATE_CONTEXT='apps')
+        return subprocess.run(command, stdin=subprocess.DEVNULL, env=env)
+
+
+def install_packages(packages):
+    """Explicit apps from the existing database, never -y/-u."""
+    if not packages or any(not re.fullmatch(r'[a-zA-Z0-9@_+][a-zA-Z0-9@_.+\-]*', p) or frozen(p) for p in packages):
+        raise ValueError('Instalação pontual inválida ou exige alteração da base; nenhuma transação iniciada.')
+    result = guarded_transaction(['-S', '--needed', '--noconfirm', *packages])
+    if result.returncode:
+        print('Instalação pontual não concluída. Nenhuma atualização geral será iniciada automaticamente.', file=sys.stderr)
+    return result.returncode
 
 def update():
     with tempfile.TemporaryDirectory(prefix='callas-native-', dir='/var/tmp') as temp:
-        env = dict(os.environ, CHECKUPDATES_DB=temp + '/db')
+        env = dict(os.environ, CHECKUPDATES_DB=temp + '/db', LC_ALL='C')
         check = subprocess.run(['/usr/bin/checkupdates'], env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True)
         if check.returncode == 2:
             print('Aplicativos oficiais: nenhuma atualização disponível.'); return 0
@@ -79,29 +88,19 @@ def update():
             print('Aplicativos oficiais aguardam a opção 4 — Atualizar geral, pois há mudanças de base pendentes: ' + ', '.join(blocked))
             print('Nenhum kernel ou pacote de boot foi alterado pela opção 2.')
             return 2
-        marker = Path(temp) / 'blocked'
-        guard = Path(temp) / 'guard.py'; guard.write_text(pretransaction_code(marker)); guard.chmod(0o600)
-        hooks = Path(temp) / 'hooks'; hooks.mkdir()
-        (hooks / '00-callas-native-guard.hook').write_text('''[Trigger]
-Operation = Install
-Operation = Upgrade
-Operation = Remove
-Type = Package
-Target = *
-
-[Action]
-Description = Preservar kernel, boot e base na atualização de aplicativos
-When = PreTransaction
-NeedsTargets
-AbortOnFail
-Exec = /usr/bin/python3 ''' + str(guard) + '\n')
-        # Complete transaction only, never pacman -Sy followed by selected packages.
-        result = subprocess.run(['/usr/bin/pacman', '--hookdir', '/etc/pacman.d/hooks', '--hookdir', str(hooks),
-                                 '-Syu', '--needed', '--noconfirm'], stdin=subprocess.DEVNULL)
-        if result.returncode:
-            print('A fase oficial não terminou. Use Atualizar geral para resolver a transação completa.', file=sys.stderr)
-            return 2 if marker.exists() else 1
-        return 0
+        # Do not refresh the live database or invoke --sysupgrade here. The
+        # installed sync databases must describe exactly the isolated snapshot.
+        local = subprocess.run(['/usr/bin/pacman', '-Qu'], stdin=subprocess.DEVNULL,
+                               capture_output=True, text=True, env=dict(os.environ, LC_ALL='C'))
+        if local.returncode not in (0, 1) or (local.returncode == 1 and (local.stdout or local.stderr)):
+            print('Não consegui verificar o banco local de pacotes.', file=sys.stderr)
+            return 1
+        expected = {line.strip() for line in check.stdout.splitlines() if line.strip() and '[ignored]' not in line}
+        current = {line.strip() for line in local.stdout.splitlines() if line.strip() and '[ignored]' not in line}
+        if current != expected:
+            print('Aplicativos adiados: banco local difere dos repositórios atuais. Use a opção 4 quando decidir atualizar a base.')
+            return 2
+        return install_packages(pending)
 
 if __name__ == '__main__':
     if os.geteuid() != 0: raise SystemExit('Uso interno do atualizador')

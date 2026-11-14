@@ -196,9 +196,9 @@ class InitialAurTests(unittest.TestCase):
                 name=args[2].split('>=')[0]
                 return types.SimpleNamespace(returncode=0 if name in installed else 127,stdout='',stderr='')
             if args[1]=='-Si': return types.SimpleNamespace(returncode=0,stdout='',stderr='')
-            if args[1]=='-S': installed.add('native-lib')
+            if '-S' in args: installed.add('native-lib')
             if args[1]=='-Qp': return types.SimpleNamespace(returncode=0,stdout=('app-debug' if 'app-debug' in args[-1] else 'app')+' 1-1\n',stderr='')
-            if args[1]=='-U':
+            if '-U' in args:
                 self.assertIn('--noconfirm',args);self.assertFalse(any('app-debug-' in a for a in args))
                 installed.add('app')
             return types.SimpleNamespace(returncode=0,stdout='',stderr='')

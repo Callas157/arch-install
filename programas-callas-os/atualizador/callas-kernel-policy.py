@@ -24,6 +24,25 @@ BUILD_PACKAGES = {'glibc', 'make', 'dkms', 'libelf', 'elfutils', 'openssl', 'zst
                   'compiler-rt', 'kmod', 'sbsigntools', 'mokutil', 'util-linux'}
 
 
+REQUIRED_HOOKS = {'00-callas-kernel-policy.hook': '[Trigger]\nOperation = Install\nOperation = Upgrade\nType = Package\nTarget = *\n\n[Action]\nDescription = Preservar kernel e NVIDIA ate validar compilacao candidata\nWhen = PreTransaction\nNeedsTargets\nAbortOnFail\nExec = /usr/local/libexec/callas-kernel-policy\n', '00-callas-kernel-deny-remove.hook': '[Trigger]\nOperation = Remove\nType = Package\nTarget = linux*\nTarget = nvidia*\nTarget = lib32-nvidia*\nTarget = libxnvctrl\nTarget = opencl-nvidia\nTarget = lib32-opencl-nvidia\n\n[Action]\nDescription = Impedir remocao automatica dos kernels e driver preservados\nWhen = PreTransaction\nNeedsTargets\nAbortOnFail\nExec = /usr/local/libexec/callas-kernel-policy --remove\n'}
+HOOK_DIRECTORY = Path('/etc/pacman.d/hooks')
+POLICY_PROGRAM = Path('/usr/local/libexec/callas-kernel-policy')
+
+
+def check_hooks():
+    for path in [POLICY_PROGRAM, *(HOOK_DIRECTORY / name for name in REQUIRED_HOOKS)]:
+        if path.is_symlink() or not path.is_file():
+            raise RuntimeError('Proteção de kernel ausente ou desativada: ' + str(path))
+        info = path.stat()
+        if info.st_uid != 0 or info.st_mode & 0o022:
+            raise RuntimeError('Proteção de kernel sem permissões seguras: ' + str(path))
+    if not os.access(POLICY_PROGRAM, os.X_OK):
+        raise RuntimeError('Proteção de kernel não executável.')
+    for name, expected in REQUIRED_HOOKS.items():
+        if (HOOK_DIRECTORY / name).read_text() != expected:
+            raise RuntimeError('Hook de kernel diverge da proteção esperada: ' + name)
+
+
 def command(args):
     print('+ ' + ' '.join(str(x) for x in args), flush=True)
     result = subprocess.run([str(x) for x in args], stdin=subprocess.DEVNULL,
@@ -142,8 +161,11 @@ def guard(targets, context, version):
 
 
 def main():
-    if os.geteuid() != 0 or sys.argv[1:] not in ([], ['--remove']):
+    if os.geteuid() != 0 or sys.argv[1:] not in ([], ['--remove'], ['--check-hooks']):
         raise RuntimeError('Uso interno do hook PreTransaction, como root.')
+    if sys.argv[1:] == ['--check-hooks']:
+        check_hooks()
+        return 0
     targets = sys.stdin.read().splitlines()
     version = VERSION_FILE.read_text().strip() if VERSION_FILE.exists() else None
     if version and any(p in set(PAIRS) | set(PAIRS.values()) for p in targets):

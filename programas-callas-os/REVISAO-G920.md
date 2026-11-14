@@ -39,9 +39,10 @@ conteúdo e propagação de falhas. A mudança da fase de segurança exige sua
 reaplicação; a ausência da nova regra também invalida o checkpoint. A fase
 ocorre antes da barreira de boot antigo, sem converter sua arquitetura.
 
-Como já fazia, a migração executa uma transação completa `pacman -Syu` se
-faltam dependências, preservando a pilha NVIDIA; não realiza atualização
-parcial do Arch. Se todas existem, não inicia outra atualização geral.
+Nota atualizada em 2026-11-14: a migração instala apenas dependências explícitas
+pelo auxiliar protegido, sem `-Sy`/`-Syu`. Se a resolução exigir kernel, NVIDIA
+ou base protegida, interrompe a transação inteira. A descrição anterior de
+atualização geral para completar dependências foi superada pelas correções.
 
 Não foi feita auditoria exaustiva de segurança nem instalação Arch real.
 Testes offline verificam o provisionamento e regressões, sem validar o

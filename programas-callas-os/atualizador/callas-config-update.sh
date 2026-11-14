@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.14.01"
+VERSAO="2026.11.14.02"
 export PATH=/usr/bin:/bin
+export CALLAS_KERNEL_UPDATE_CONTEXT=config
 umask 077
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/${CALLAS_RELEASE_REF:-main}"
 ASSET_BASE="$BASE_RAW/assets"
