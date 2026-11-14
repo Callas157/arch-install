@@ -4,6 +4,30 @@
 
 Antes de planejar ou implementar alterações, consulte a `main` remota atualizada de `Callas157/arch-install`, examine a árvore do repositório e leia estas instruções, [o roteiro de versionamento](instrucoes/versionamento.md), `atualizador/VERSION` e o histórico relevante em `atualizador/CHANGELOG.md`. Leia também os arquivos e as instruções relacionados à tarefa. Repita essa consulta em cada novo chat ou retomada; não dependa da memória de conversas anteriores. A regra vale também para tarefas no instalador da raiz ou em `assets/`. Antes de alterar o instalador, cumpra o backup obrigatório no Google Drive descrito abaixo.
 
+## Regra obrigatória: cada opção respeita seu escopo
+
+Estas regras devem ser lidas antes de qualquer tarefa, em cada novo chat e retomada. Não são sugestões: não as ignore, flexibilize ou contorne para concluir uma instalação. Leia também [a política de kernel](instrucoes/atualizacao-kernel.md) quando a tarefa alcançar atualização de pacotes, dependências, drivers ou agendamento. Um pedido para adicionar um aplicativo não autoriza manutenção geral do sistema.
+
+| Opção | Escopo permitido |
+| --- | --- |
+| 2 — Atualizar aplicativos nativos | Atualizar aplicativos com as proteções existentes; preservar kernel, headers e NVIDIA. |
+| 3 — Atualizar Discord | Atualizar somente o Discord e o suporte autorizado para ele; preservar kernel, headers e NVIDIA. |
+| 4 — Atualizar geral | Fluxo separado para atualização geral, inclusive kernel/headers, sujeito à validação de compatibilidade e à preservação da NVIDIA fixada. |
+| 5 — Callas OS Update | Adição ou remoção de aplicativos conforme a entrega autorizada e atualização de configurações do Linux/Callas OS. Nunca atualizar kernel ou driver NVIDIA. |
+
+- **Callas OS Update não é atualização geral.** Na opção 5, é proibido atualizar, reinstalar, substituir, remover ou fazer downgrade dos pacotes de kernel, headers e driver NVIDIA, direta ou indiretamente por dependências, AUR, hooks, auxiliares ou agendamento. Isso inclui tentativas de “preparar”, “reparar” ou “completar dependências” para instalar um aplicativo.
+- Se adicionar/remover/atualizar um aplicativo exigir alterar kernel, headers ou NVIDIA, interrompa essa transação e informe o impedimento. Não instale o aplicativo dessa forma e não execute atualização geral como alternativa.
+- Preserve as datas e o estado do agendamento na opção 5; não inicie, reinicie, antecipe ou enfileire uma atualização geral como efeito das configurações. O agendamento geral já existente é um fluxo separado, não uma autorização para a opção 5 mexer em kernel.
+- A **NVIDIA 610.57.04 é a prioridade definida pelo usuário para os jogos**. Mesmo na opção 4, não troque o driver para acomodar um kernel novo. Mudar essa versão exige pedido explícito do usuário; selecionar atualização geral, por si só, não revoga a fixação.
+- Antes de publicar, revise o caminho completo da opção afetada, incluindo os auxiliares e efeitos indiretos. Testes simulados e compilação bem-sucedida não comprovam funcionamento dos jogos, dos dois monitores ou boot real. Não anuncie essas garantias sem validação correspondente.
+- Exceções não podem ser presumidas por um agente: precisam de instrução explícita do usuário para aquela tarefa. Não use urgência, conveniência ou falha de dependência para ultrapassar o escopo autorizado.
+
+### Instalação limpa e a versão 7.2.15
+
+A instalação limpa é um fluxo separado do Update. Na referência atual, `instalar-arch.sh` solicita `linux`/`linux-headers` e `linux-lts`/`linux-lts-headers` ao Arch, sem fixar o kernel principal em **7.2.15**. Portanto, não afirme que a instalação limpa instalará 7.2.15: ela pode receber um kernel mais novo. O kernel 7.2.15 informado pelo usuário descreve sua máquina principal; não constitui uma fixação já implementada no instalador.
+
+O usuário aceita kernel novo na instalação limpa se a NVIDIA **610.57.04** puder ser preparada e o sistema funcionar corretamente com ela. Isso não autoriza trocar o driver nem atualizar kernels de máquinas existentes pela opção 5. Se houver pedido de fixar o kernel da instalação limpa, trate-o como mudança explícita do instalador, preserve o par kernel/headers e cumpra o backup e as validações; editar estas instruções não implementa essa fixação.
+
 ## Regras existentes do projeto
 
 - Keep the repository root limited to the existing `assets/`, `programas-callas-os/`, `instalar-arch.sh`, and `README.md`. New programs, metadata, docs and tests belong inside `programas-callas-os/`; visual resources belong inside `assets/`. Do not create extra top-level files.

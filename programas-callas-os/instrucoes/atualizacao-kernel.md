@@ -2,6 +2,14 @@
 
 Leia junto com [AGENTS.md](../AGENTS.md) e [versionamento.md](versionamento.md).
 
+## Escopo que não pode ser ultrapassado
+
+Leia a seção “Regra obrigatória: cada opção respeita seu escopo” em [AGENTS.md](../AGENTS.md) antes de alterar qualquer fluxo. **A opção 5 — Callas OS Update só atende aplicativos (adição/remoção autorizada) e configurações do Linux/Callas OS. Não altera pacotes de kernel, headers ou driver NVIDIA**, inclusive reinstalação, remoção, substituição e downgrade. Uma dependência incompatível interrompe a transação; não autoriza atualização geral, troca do driver ou ativação/antecipação do agendamento.
+
+A NVIDIA **610.57.04** deve permanecer por decisão do usuário. A opção 4 pode tratar kernel/headers com as validações abaixo; não é autorização automática para mudar a NVIDIA fixada.
+
+A instalação limpa atual não fixa Linux em **7.2.15**: solicita os pacotes do repositório do Arch. Não prometa essa versão sem implementar uma fixação explicitamente solicitada. A aceitação de um kernel novo na instalação limpa depende de preservar o driver e validar compatibilidade; não concede à opção 5 permissão para trocar o kernel instalado.
+
 ## Autorização
 
 A opção **4 — Atualizar geral** é o único fluxo do projeto que autoriza atualizar kernels/headers em um sistema instalado. O agendamento mensal usa esse caminho e não pode ser antecipado por atualizações de aplicativos ou pela opção 5. Opção 2, Discord, AUR e instalação pontual não autorizam alterações de kernel.

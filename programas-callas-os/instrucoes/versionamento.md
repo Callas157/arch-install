@@ -9,6 +9,10 @@ Leia este roteiro no início de cada tarefa e retomada, junto com [AGENTS.md](..
 - Leia [VERSION](../atualizador/VERSION) e o [CHANGELOG](../atualizador/CHANGELOG.md) na mesma referência remota.
 - Não parta de uma versão lembrada de outro chat ou de um checkout desatualizado.
 
+## Escopo obrigatório antes de planejar a alteração
+
+Releia a seção “Regra obrigatória: cada opção respeita seu escopo” em [AGENTS.md](../AGENTS.md). A opção 5 — Callas OS Update atende adição/remoção de aplicativos e configurações do Linux/Callas OS; não altera kernel, headers ou NVIDIA, nem por dependências ou agendamento. Se o aplicativo exigir essa alteração, interrompa a transação em vez de executar atualização geral. A opção 4 é o fluxo separado para kernel/headers; a NVIDIA 610.57.04 permanece fixada até pedido explícito de troca. Não confunda a versão instalada na máquina principal (7.2.15) com uma fixação implementada na instalação limpa.
+
 ## 2. Identificar a entrega e decidir o incremento
 
 Uma entrega pode conter vários commits. Verifique primeiro se ela já recebeu um incremento. Corrigir ou complementar a mesma entrega não cria automaticamente outro incremento.
