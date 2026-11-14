@@ -1244,7 +1244,7 @@ if (( EUID == 0 )); then
     exit 1
 fi
 
-# Only the clean installer arms the one-time autostart suppression. Repairs and
+# Only the clean installer arms autostart suppression until the next reboot. Repairs and
 # existing-system migrations never create/reset these markers.
 case ${1:-} in
     '') export CALLAS_PREPARE_FIRST_LOGIN=0 ;;
@@ -1472,7 +1472,7 @@ if os.environ.get("CALLAS_PREPARE_FIRST_LOGIN") == "1":
         if app in planos:
             marker = state / ("first-login-" + app + ".pending")
             marker.touch(mode=0o600, exist_ok=True)
-    print("Primeiro login: Steam e Discord aguardam abertura manual; autostart normal nos próximos logins.")
+    print("Primeiro boot: Steam e Discord só abrem pelo menu; autostart normal após reiniciar o sistema.")
 
 if any(backup.iterdir()):
     print(f"Backup das configurações: {backup}")

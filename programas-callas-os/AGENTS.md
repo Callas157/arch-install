@@ -41,6 +41,10 @@ O usuário aceita kernel novo na instalação limpa se a NVIDIA **610.57.04** pu
 - User-visible logs and backups belong under the user's XDG Documents folder: `Callas OS/Callas OS Logs` and `Callas OS/Callas OS Backups`. Backup archives stay root-only and bounded by the configured combined quota. Migrate existing files without overwriting collisions or following symlinks.
 - Validate relevant changes with the offline test suite and shell/Python syntax checks. Clearly distinguish mocked checks from real Arch, boot, VM and hardware validation.
 
+## Primeiro boot após instalação limpa
+
+Steam e Discord não devem iniciar automaticamente durante todo o primeiro boot após a instalação limpa. O usuário pode abri-los manualmente pelo menu KDE a qualquer momento. Sair/entrar na sessão ou repetir uma chamada de autostart não libera o bloqueio; somente uma reinicialização real, identificada pela mudança do boot ID. A partir dela, ambos iniciam normalmente com o sistema em todos os boots seguintes. A opção 5 distribui essa configuração sem rearmar o bloqueio em máquinas já instaladas. Preserve as demais inicializações automáticas.
+
 ## Versionamento público do Callas OS
 
 A versão pública segue **MAJOR.MINOR.PATCH**:

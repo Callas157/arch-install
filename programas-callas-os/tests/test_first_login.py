@@ -38,13 +38,55 @@ class FirstLoginTests(unittest.TestCase):
              patch.object(sys,'argv',['callas-autostart',app,*command]), patch.object(autostart.os,'execvp') as execute:
             autostart.main()
         return execute
-    def test_clean_install_skips_each_app_once_then_starts_normally(self):
+    def test_clean_install_blocks_entire_first_boot_then_starts_after_reboot(self):
         self.configure(first=True)
         for app in ('steam','discord'):
             self.assertEqual(self.launch(app).call_count,0)
+        for app in ('steam','discord'):
+            self.assertEqual(self.launch(app).call_count,0)
+        with patch.object(autostart, 'boot_id', return_value='22222222-2222-4222-8222-222222222222'):
+            self.launch('steam').assert_called_once_with('/usr/bin/steam',['/usr/bin/steam','-silent'])
+            self.launch('discord').assert_called_once_with('/usr/bin/discord',['/usr/bin/discord'])
         self.assertEqual(list((self.state/'callas-os').glob('*.pending')),[])
-        self.launch('steam').assert_called_once_with('/usr/bin/steam',['/usr/bin/steam','-silent'])
-        self.launch('discord').assert_called_once_with('/usr/bin/discord',['/usr/bin/discord'])
+        self.assertEqual(self.launch('steam').call_count,1)
+        self.assertEqual(self.launch('discord').call_count,1)
+    def test_second_attempt_or_relogin_without_reboot_is_still_blocked(self):
+        self.configure(first=True)
+        for _ in range(3):
+            self.configure()
+            for app in ('steam','discord'):
+                self.assertEqual(self.launch(app).call_count,0)
+
+    def test_shared_boot_gate_releases_app_even_if_it_first_runs_after_reboot(self):
+        self.configure(first=True)
+        self.assertEqual(self.launch('steam').call_count,0)
+        with patch.object(autostart, 'boot_id', return_value='44444444-4444-4444-8444-444444444444'):
+            self.assertEqual(self.launch('discord').call_count,1)
+            self.assertEqual(self.launch('steam').call_count,1)
+
+    def test_boot_id_read_failure_never_launches_automatically(self):
+        self.configure(first=True)
+        with patch.object(autostart, 'boot_id', side_effect=OSError('boot ID unavailable')):
+            with self.assertRaises(OSError): self.launch('steam')
+        self.assertTrue((self.state/'callas-os/first-login-steam.pending').exists())
+
+    def test_parallel_real_launchers_do_not_consume_the_first_boot_gate(self):
+        from concurrent.futures import ThreadPoolExecutor
+        self.configure(first=True)
+        def start(app):
+            command = [sys.executable, str(ROOT/'sessao/callas-autostart.py'), app,
+                       sys.executable, '-c', 'from pathlib import Path; Path('+repr(str(self.home/app))+').touch()']
+            return subprocess.run(command, capture_output=True, text=True)
+        with ThreadPoolExecutor(max_workers=6) as workers:
+            results = list(workers.map(start, ['steam','discord']*3))
+        self.assertTrue(all(result.returncode==0 for result in results), results)
+        self.assertFalse((self.home/'steam').exists())
+        self.assertFalse((self.home/'discord').exists())
+        (self.state/'callas-os/first-login.boot-id').write_text('55555555-5555-4555-8555-555555555555')
+        for app in ('steam','discord'):
+            self.assertEqual(start(app).returncode,0)
+            self.assertTrue((self.home/app).exists())
+
     def test_migration_never_arms_first_login_and_keeps_existing_settings(self):
         settings = self.config/'discord/settings.json'; settings.parent.mkdir()
         settings.write_text(json.dumps({'accountPreference':'keep','windowBounds':{'x':1920,'y':20}}))
@@ -56,6 +98,8 @@ class FirstLoginTests(unittest.TestCase):
         self.assertEqual(self.launch('discord').call_count,1)
     def test_repair_does_not_rearm_consumed_markers(self):
         self.configure(first=True); self.launch('steam'); self.launch('discord')
+        with patch.object(autostart, 'boot_id', return_value='33333333-3333-4333-8333-333333333333'):
+            self.launch('steam'); self.launch('discord')
         self.configure()
         self.assertEqual(self.launch('steam').call_count,1)
         self.assertEqual(self.launch('discord').call_count,1)

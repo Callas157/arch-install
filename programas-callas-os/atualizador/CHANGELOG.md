@@ -1,5 +1,14 @@
 # Histórico do Callas OS
 
+## 3.4.2 — 2026-11-14
+
+- Corrige a inicialização automática de Steam e Discord na instalação limpa: o bloqueio dura todo o primeiro boot, inclusive chamadas repetidas e saída/entrada na sessão KDE sem reiniciar. Ambos continuam disponíveis para abertura manual pelo menu.
+- Libera o autostart somente ao detectar outro boot do sistema; o mesmo estado é compartilhado pelos dois aplicativos e protegido contra chamadas simultâneas. Depois dessa reinicialização, o autostart segue normal nos próximos boots.
+- O Callas OS Update distribui o auxiliar corrigido sem armar bloqueio em perfis existentes; reparos de configuração não rearmam o bloqueio. Sincroniza a mensagem e a cópia da preparação de sessão embutida no instalador.
+
+
+Validação: 223 testes aprovados e um ignorado por namespace indisponível. Inclui chamadas reais simultâneas ao auxiliar com perfil temporário e mudança simulada de boot ID; chamadas de aplicativos são substituídas por criação de arquivos temporários. Sintaxe Bash/Python e cópia embutida conferidas. Primeira sessão de uma instalação KDE real não foi executada neste ambiente.
+
 ## 3.4.1 — 2026-11-14
 
 - Corrige o caminho indireto da opção 5 para a atualização geral: a implantação das configurações preserva as datas, os arquivos e o estado do timer existente, sem reiniciá-lo, iniciá-lo ou recalcular o vencimento mensal. Timers legados continuam sendo desativados. Instalação limpa e reparo explícito mantêm a preparação normal da agenda.
