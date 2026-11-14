@@ -1,5 +1,13 @@
 # Histórico do Callas OS
 
+## 3.4.0 — 2026-11-14
+
+- Adiciona o reprodutor de vídeo Haruna nativo (`extra/haruna`) à instalação limpa e ao Callas OS Update.
+- Em máquinas existentes, usa a instalação pontual protegida, sem sincronização de repositórios ou atualização geral; confirma a presença do pacote e interrompe a entrega em caso de falha. Instalações existentes do Haruna são preservadas.
+- Mantém as políticas existentes de kernel e NVIDIA.
+
+Validação: 206 testes offline aprovados e um ignorado por namespace indisponível; sintaxe Bash/Python conferida. Operações de pacotes são simuladas; instalação Arch real não executada.
+
 ## 3.3.5 — 2026-11-13
 
 - Restringe mudanças de kernel/headers em máquinas instaladas à opção 4 — Atualizar geral, incluindo o agendamento mensal existente, sem antecipá-lo. O caminho opcional Discord `--pacman` passa a usar instalação pontual protegida, sem atualização geral.

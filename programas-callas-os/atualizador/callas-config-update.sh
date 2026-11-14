@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.13.03"
+VERSAO="2026.11.14.01"
 export PATH=/usr/bin:/bin
 umask 077
 BASE_RAW="https://raw.githubusercontent.com/Callas157/arch-install/${CALLAS_RELEASE_REF:-main}"
@@ -188,6 +188,20 @@ fi
 
 /usr/local/libexec/callas-spotify-permissions "$usuario"
 # End native Spotify preparation.
+
+# BEGIN native Haruna preparation
+printf '\n==> Verificando Haruna nativo (reprodutor de vídeo)\n'
+if pacman -Q haruna >/dev/null 2>&1; then
+  printf 'Haruna nativo já instalado.\n'
+else
+  consulta_haruna=$?
+  [[ $consulta_haruna == 1 ]] || erro 'Não consegui consultar o Haruna no banco de pacotes.'
+  /usr/local/libexec/callas-native --install haruna ||
+    erro 'Não consegui instalar o Haruna nativo. Consulte o log do Callas OS Update.'
+fi
+pacman -Q haruna >/dev/null 2>&1 ||
+  erro 'Haruna nativo não encontrado após a instalação; atualização não concluída.'
+# END native Haruna preparation
 
 # BEGIN native Boxes migration
 printf '\n==> Verificando GNOME Boxes nativo (redirecionamento USB)\n'
