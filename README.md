@@ -117,7 +117,7 @@ As funções disponíveis são:
 
 O **Codex não é instalado junto com o sistema**: o download começa somente ao escolher o botão na Central.
 
-O agendamento padrão verifica atualizações gerais **mensais** e de aplicativos nativos **semanais**. Se o PC estiver desligado, a pendência é retomada numa verificação posterior.
+As atualizações são **totalmente manuais**. Use **Aplicativos nativos** para atualizar os aplicativos ou **Atualizar geral** para atualizar o sistema. A instalação e o Callas OS Update desativam os agendamentos antigos; não há atualização automática ao ligar o computador.
 
 **Kernel e NVIDIA:** antes de trocar kernel e headers, a opção 4 testa a compilação da NVIDIA fixada em uma área isolada. Se a verificação falhar ou não puder ser concluída com segurança, a transação é interrompida e os pacotes anteriores são preservados. Não há troca automática do driver para liberar a atualização. Após uma transação aprovada, módulos, initramfs e GRUB ainda precisam ser validados. Consulte os [detalhes da proteção de kernel e NVIDIA](programas-callas-os/instrucoes/atualizacao-kernel.md).
 
@@ -131,7 +131,7 @@ Feche o Brave antes da opção 5 para permitir a aplicação das preferências v
 
 ---
 
-**Versão atual: 3.8.0** · [VERSION](programas-callas-os/atualizador/VERSION) · [Histórico de mudanças](programas-callas-os/atualizador/CHANGELOG.md)
+**Versão atual: 3.9.0** · [VERSION](programas-callas-os/atualizador/VERSION) · [Histórico de mudanças](programas-callas-os/atualizador/CHANGELOG.md)
 
 Projeto em desenvolvimento. Mantenha seus backups em dia.
 

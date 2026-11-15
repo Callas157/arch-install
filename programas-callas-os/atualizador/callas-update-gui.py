@@ -358,7 +358,7 @@ class Window(QWidget):
         options = [('Limpeza segura', 'edit-clear', 'clean'),
             ('Espaço, backups e VMs', 'folder-open', 'report'),
             ('Verificar pacotes órfãos', 'applications-all', 'orphans'),
-            ('Reparar agendamento', 'appointment-soon', 'repair'),
+            ('Reaplicar modo manual', 'appointment-soon', 'repair'),
             ('Diagnóstico de jogo', 'view-list-details', 'games'),
             ('Atualizar Flatpaks', 'system-software-update', 'flatpaks')]
         for i, (title, icon, action) in enumerate(options):
@@ -398,8 +398,8 @@ class Window(QWidget):
             QMessageBox.warning(self, 'Função indisponível', 'O auxiliar desta função não está instalado: ' + command[0]); return
         if action == 'sistema' and QMessageBox.question(self, 'Atualizar geral',
             'Atualizar o sistema e os aplicativos? Esta função inclui kernel, com as proteções existentes do Callas OS.') != QMessageBox.Yes: return
-        if action == 'repair' and QMessageBox.question(self, 'Reparar agendamento',
-            'Reconfigurar o agendamento automático? As datas serão tratadas pelo reparo existente.') != QMessageBox.Yes: return
+        if action == 'repair' and QMessageBox.question(self, 'Atualizações manuais',
+            'Desativar os agendamentos de atualização e manter somente os botões manuais da Central?') != QMessageBox.Yes: return
         self.action = action
         try: self.before = package_state()
         except (OSError, subprocess.SubprocessError, RuntimeError): self.before = None

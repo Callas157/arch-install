@@ -12,7 +12,7 @@ A instalação limpa atual não fixa Linux em **7.2.15**: solicita os pacotes do
 
 ## Autorização
 
-A opção **4 — Atualizar geral** é o único fluxo do projeto que autoriza atualizar kernels/headers em um sistema instalado. O agendamento mensal usa esse caminho e não pode ser antecipado por atualizações de aplicativos ou pela opção 5. Opção 2, Discord, AUR e instalação pontual não autorizam alterações de kernel.
+A opção **4 — Atualizar geral** é o único fluxo do projeto que autoriza atualizar kernels/headers em um sistema instalado. Atualizações são exclusivamente manuais; os agendamentos antigos devem permanecer desativados. Opção 2, Discord, AUR e instalação pontual não autorizam alterações de kernel.
 
 A NVIDIA permanece na versão escolhida pelo usuário, atualmente **610.57.04**. Não a atualize para contornar incompatibilidade de kernel. O instalador limpo provisiona o sistema inicial com os auxiliares compartilhados do mesmo commit; não executa a interface da opção 5 e não pode anunciar conclusão se a NVIDIA fixada ou o boot falharem.
 
@@ -45,7 +45,7 @@ O diagnóstico prévio fica em `/var/lib/callas-os/kernel-preflight-last.log`, c
 
 ## Aplicativos e configurações: isolamento obrigatório
 
-- A opção 5 não reinstala/inicia/reinicia o timer de atualização, não recria suas unidades e não recalcula datas. Preserva a agenda mesmo vencida. Instalação limpa e reparo explícito podem preparar o agendamento; o modo de configurações usa `--preserve-schedule`. Isso evita que `OnBootSec=2min` provoque uma verificação geral imediata após o Update.
+- Por pedido explícito do usuário em 2026-11-15, instalação limpa, opção 5 e reaplicação do modo manual desativam os timers atuais e antigos. Não criam novos timers nem recalculam datas históricas. `--preserve-schedule` permanece aceito por compatibilidade, sem preservar timers ativos. Chamadas automáticas antigas encerram sem atualizar pacotes.
 - A opção de aplicativos nunca usa `pacman -Syu`, `-Sy` ou `--sysupgrade`. Compara a consulta isolada com o banco local; divergência ou mudança de base adia a fase. Não sincroniza o banco real para tentar uma atualização parcial.
 - Todos os caminhos nativos e AUR `-S`/`-U` usam `callas-native.guarded_transaction`, com hook temporário próprio cobrindo Install, Upgrade e Remove, `Target = *`, NeedsTargets e AbortOnFail. Conferir só os nomes pedidos não cobre dependências e substituições. Os hooks permanentes são implantados antes de pacotes e antes da saída `--helpers-only`.
 - Autorizações herdadas de atualização geral são descartadas nos pontos de entrada. Uma dependência protegida deve interromper a transação inteira. Não execute atualização geral como fallback para instalar Haruna, Boxes, Spotify, Discord ou qualquer outro aplicativo.

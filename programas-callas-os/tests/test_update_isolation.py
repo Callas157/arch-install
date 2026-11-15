@@ -51,11 +51,11 @@ class IsolationTests(unittest.TestCase):
         self.assertIn("<<'KERNEL_POLICY_HOOK'", before_exit)
         self.assertIn("<<'KERNEL_REMOVE_HOOK'", before_exit)
 
-    def test_config_update_preserves_the_scheduler_instead_of_starting_it(self):
+    def test_config_update_accepts_old_flag_without_reenabling_schedule(self):
         source = (UP / 'callas-security.sh').read_text()
         self.assertIn('put-update --instalar-para "$usuario" --preserve-schedule', source)
         updater = (UP / 'put-update.sh').read_text()
-        self.assertIn('if (( ! preservar_agenda )); then', updater)
+        self.assertNotIn('systemctl enable', updater)
         self.assertIn('[[ ${2:-} != --preserve-schedule ]] || preservar_agenda=1', updater)
 
     def test_apps_checkpoint_requires_haruna(self):
@@ -81,7 +81,7 @@ paru_conf=/nonexistent
         self.assertNotIn('TRANSACTION', result.stdout)
 
 class SchedulerPreservationTests(unittest.TestCase):
-    def test_overdue_dates_and_running_timer_are_not_changed_by_config_install(self):
+    def test_config_install_disables_timer_and_preserves_historical_dates(self):
         source = (UP / 'put-update.sh').read_text()
         disable = source.split('desativar_agendamento_antigo() {', 1)[1].split('\ninstalar() {', 1)[0]
         install = source.split('instalar() {', 1)[1].split('\nperguntar_reinicio()', 1)[0]
@@ -124,12 +124,21 @@ preparar_agenda() { echo 'UNEXPECTED DATE CHANGE' >&2; exit 93; }
             result = subprocess.run(['bash', '-c', prefix + functions + '\ninstalar fixture --preserve-schedule\n'], env=dict(os.environ, TEST_ROOT=temp), capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             after = {str(p.relative_to(root)):p.read_bytes() for folder in ('agenda', 'etc/systemd/system') for p in (root / folder).iterdir()}
-            self.assertEqual(before, after)
+            self.assertEqual({k:v for k,v in before.items() if k.startswith('agenda/')}, after)
             commands = (root / 'systemctl').read_text()
-            self.assertNotIn('put-update-check', commands)
+            self.assertIn('disable --now put-update-check.timer', commands)
             self.assertNotIn('restart', commands)
             self.assertNotIn('start ', commands)
             self.assertNotIn('enable', commands)
+            chroot_prefix = prefix.replace('systemd-detect-virt() { return 1; }',
+                                           'systemd-detect-virt() { return 0; }')
+            result = subprocess.run(['bash', '-c', chroot_prefix + functions + '\ninstalar fixture\n'],
+                                    env=dict(os.environ, TEST_ROOT=temp), capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            commands = (root / 'systemctl').read_text()
+            self.assertIn('--root=/ disable put-update-check.timer', commands)
+            self.assertNotIn('enable', commands)
+            self.assertFalse((units/'put-update-check.timer').exists())
 
 class SharedPolicyTests(unittest.TestCase):
     def test_aur_transactions_use_the_resolved_dependency_and_removal_guard(self):

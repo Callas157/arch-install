@@ -473,36 +473,12 @@ preparar_agenda() {
 }
 
 executar_agendado() {
-    local usuario=$1 modo=$2 hoje vencimento proxima
-    hoje=$(date +%F)
-    vencimento=$(ler_data_agenda "$modo")
-
-    # A data funciona como vencimento, não como uma janela de 24 horas.
-    # Se o computador ficou desligado no dia previsto, a atualização roda
-    # no primeiro boot/verificação seguinte.
-    [[ $hoje < $vencimento ]] && return 0
-
-    if registrar_atualizacao "$usuario" "$modo" automatico; then
-        # O próximo ciclo começa no dia em que a atualização realmente terminou.
-        proxima=$(proxima_data "$modo" "$hoje")
-        gravar_data_agenda "$modo" "$proxima"
-        [[ $modo != sistema ]] || gravar_data_agenda apps "$(proxima_data apps "$hoje")"
-    else
-        local codigo=$?
-        if [[ $modo == apps && $codigo == 2 ]]; then
-            # Expected deferral to the next General update; don't retry hourly.
-            gravar_data_agenda apps "$(proxima_data apps "$hoje")"
-            return 0
-        fi
-        return "$codigo"
-    fi
+    # Compatibility for old timers and queued automatic invocations: never update.
+    printf 'Atualizações automáticas desativadas. Use os botões da Central Callas OS.\n'
 }
 
 verificar_agenda() {
-    local usuario=$1 falhou=0
-    executar_agendado "$usuario" sistema || return 1
-    executar_agendado "$usuario" apps || falhou=1
-    return "$falhou"
+    executar_agendado
 }
 
 home_do_usuario() {
@@ -741,15 +717,9 @@ registrar_atualizacao() {
         exit "$codigo"
     } 2>&1 | como_usuario "$usuario" "$home" "$program" --log "$categoria"; then
         if [[ $modo == sistema ]]; then
-            local proxima
-            proxima=$(proxima_data sistema "$(date +%F)") || return
-            gravar_data_agenda sistema "$proxima" || return
-            printf '%s\n' "$(date +%F)" > "$agenda_dir/ultima-sistema"
-            gravar_data_agenda apps "$(proxima_data apps "$(date +%F)")" || return
             marcar_reinicio_pendente "$usuario" "$home" ||
                 printf 'Aviso: não consegui mostrar a opção de reiniciar.\n' >&2
         elif [[ $modo == apps || $modo == nativos || $modo == flatpaks ]]; then
-            [[ $modo == flatpaks ]] || gravar_data_agenda apps "$(proxima_data apps "$(date +%F)")" || return
             notificar_apps_usuario "$usuario" "$home" "$modo" || :
         fi
     else
@@ -829,7 +799,7 @@ instalar_entrada_menu() {
 [Desktop Entry]
 Type=Application
 Name=Central Callas OS
-Comment=Atualizações automáticas e manuais do Arch e Flatpak
+Comment=Atualizações manuais do Arch e Flatpak
 Exec=$program --menu
 TryExec=$program
 Icon=system-software-update
@@ -847,7 +817,7 @@ desativar_agendamento_antigo() {
         put-update.timer put-update-sistema.timer put-update-apps.timer
     )
 
-    (( preservar_agenda )) || antigas+=(put-update-check.timer)
+    antigas+=(put-update-check.timer)
     if (( em_chroot )); then
         for unidade in "${antigas[@]}"; do
             systemctl --root=/ disable "$unidade" 2>/dev/null || :
@@ -855,7 +825,7 @@ desativar_agendamento_antigo() {
     else
         for unidade in "${antigas[@]}"; do
             estado=$(systemctl show -p LoadState --value "$unidade" 2>/dev/null || :)
-            [[ $estado == not-found || -z $estado ]] || systemctl disable --now "$unidade" 2>/dev/null || :
+            [[ $estado == not-found || -z $estado ]] || systemctl disable --now "$unidade"
         done
     fi
 
@@ -865,9 +835,7 @@ desativar_agendamento_antigo() {
         /etc/systemd/system/put-update-sistema.timer \
         /etc/systemd/system/put-update-apps.timer \
         /etc/systemd/system/put-update@.service
-    if (( ! preservar_agenda )); then
-        rm -f -- /etc/systemd/system/put-update-check.timer /etc/systemd/system/put-update-check.service
-    fi
+    rm -f -- /etc/systemd/system/put-update-check.timer /etc/systemd/system/put-update-check.service
 }
 
 instalar() {
@@ -888,54 +856,15 @@ instalar() {
     temporario=$(mktemp -d)
     trap "rm -rf -- $(printf '%q' "$temporario")" EXIT
 
-    cat > "$temporario/$servico_check" <<UNIT
-[Unit]
-Description=Verificar agenda de atualização do Callas OS
-Wants=network-online.target
-After=network-online.target
-
-[Service]
-Type=oneshot
-ExecStart=$program --check $usuario
-StandardOutput=journal
-StandardError=journal
-UNIT
-
-    cat > "$temporario/$timer_check" <<UNIT
-[Unit]
-Description=Verificar a agenda de atualização ao longo do dia
-
-[Timer]
-OnBootSec=2min
-OnUnitInactiveSec=1h
-AccuracySec=1min
-Unit=$servico_check
-
-[Install]
-WantedBy=timers.target
-UNIT
-
     desativar_agendamento_antigo "$em_chroot" "$preservar_agenda"
     rm -f -- "$sudo_rule"
 
     rm -f -- "$sudo_rule" "$sudo_template" "$paru_conf"
     # AUR builds use the isolated helper; no passwordless pacman rule is installed.
 
-    if (( ! preservar_agenda )); then
-    preparar_agenda
-    if [[ ! -f $agenda_dir/maintenance-monthly-v2 ]]; then
-        base_agenda=$(ler_data_agenda inicio)
-        [[ ! -r $agenda_dir/ultima-sistema ]] || read -r base_agenda < "$agenda_dir/ultima-sistema"
-        gravar_data_agenda sistema "$(proxima_data sistema "$base_agenda")"
-        touch "$agenda_dir/maintenance-monthly-v2"
-    fi
-    fi
-    # O programa pode já ser a origem quando o automático é reconfigurado pelo atalho.
+    # Keep historical dates untouched; all entry points now remain manual.
     if [[ $origem != "$program" ]]; then
         install -D -m 0755 -T -- "$origem" "$program"
-    fi
-    if (( ! preservar_agenda )); then
-        install -m 0644 -- "$temporario/$servico_check" "$temporario/$timer_check" /etc/systemd/system/
     fi
     instalar_entrada_menu "$temporario/${atalho_menu##*/}"
 
@@ -951,24 +880,10 @@ StartupNotify=false
 X-KDE-AutostartScript=true
 REBOOT_DESKTOP
 
-    if (( ! preservar_agenda )); then
-        if (( em_chroot )); then
-            systemctl --root=/ enable "$timer_check"
-        else
-            systemctl daemon-reload
-            systemctl enable "$timer_check"
-            systemctl restart "$timer_check"
-        fi
+    if (( ! em_chroot )); then
+        systemctl daemon-reload
     fi
-
-    if (( preservar_agenda )); then
-        printf '\nAgenda e estado do timer preservados; nenhuma atualização geral foi agendada ou iniciada por esta configuração.\n'
-    else
-    printf '\nAgendamento automático configurado.\n'
-    printf 'Atualização mensal do sistema vence em: %s.\n' "$(ler_data_agenda sistema)"
-    printf 'Atualização semanal dos aplicativos vence em: %s.\n' "$(ler_data_agenda apps)"
-    printf 'Se o PC estiver desligado no vencimento, a atualização roda no primeiro boot/verificação seguinte.\n'
-    fi
+    printf '\nAtualizações exclusivamente manuais. Nenhuma atualização automática será agendada.\n'
     como_usuario "$usuario" "$home" "$program" --instalar-atalhos
     if pasta=$(como_usuario "$usuario" "$home" "$program" --log-dir); then
         printf 'Logs por categoria em Documentos: %s\n' "$pasta"
@@ -993,14 +908,14 @@ menu_manutencao() {
     while true; do
         printf '\n=== Limpeza e manutenção ===\n'
         printf '%s\n' '1. Limpeza segura agora' '2. Ver espaço, backups e arquivos de VMs' \
-            '3. Verificar pacotes órfãos' '4. Reparar agendamento automático' '5. Coletar diagnóstico de jogo' '6. Voltar'
+            '3. Verificar pacotes órfãos' '4. Reaplicar modo manual' '5. Coletar diagnóstico de jogo' '6. Voltar'
         read -r -p 'Escolha [1-6]: ' escolha || return 0
         [[ $escolha == 6 || -z $escolha ]] || printf 'É necessária autorização administrativa para esta ação.\n'
         case $escolha in
           1) sudo /usr/local/libexec/callas-maintenance --clean "$USER" || printf 'A limpeza registrou uma falha; consulte os logs.\n' ;;
           2) sudo /usr/local/libexec/callas-maintenance --report "$USER" || printf 'Não consegui concluir o relatório.\n' ;;
           3) sudo /usr/local/libexec/callas-maintenance --orphans "$USER" || printf 'Não consegui concluir a verificação de órfãos.\n' ;;
-          4) sudo "$program" --instalar || printf 'Falha ao reparar o agendamento.\n' ;;
+          4) sudo "$program" --instalar || printf 'Falha ao reaplicar o modo manual.\n' ;;
           5) sudo /usr/local/libexec/callas-game-logs --collect "$USER" || printf 'Não consegui concluir o diagnóstico do jogo.\n' ;;
           6|"") return 0 ;;
           *) printf 'Opção inválida.\n' ;;
@@ -1073,7 +988,7 @@ menu() {
 case ${1:-} in
     --check)
         (( EUID == 0 && $# == 2 )) || erro 'Esta opção é usada pelo serviço de atualização.'
-        exec flock -x -o "$lock_atualizador" "$program" --verificar-agenda "$2"
+        executar_agendado
         ;;
     --verificar-agenda)
         (( EUID == 0 && $# == 2 )) || erro 'Esta opção é interna.'

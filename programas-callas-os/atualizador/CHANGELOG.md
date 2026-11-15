@@ -1,5 +1,14 @@
 # Histórico do Callas OS
 
+## 3.9.0 — 2026-11-15
+
+- Torna as atualizações exclusivamente manuais pela Central. Instalação limpa, Callas OS Update e reaplicação do modo manual desativam os timers atuais e antigos, sem criar nova agenda nem reativar atualizações ao reiniciar.
+- Chamadas automáticas antigas e pendentes passam a encerrar sem atualizar pacotes. Atualizações manuais não recalculam datas; históricos existentes são preservados. Mantém limpeza periódica, kernel/NVIDIA e validações dos fluxos manuais.
+- Substitui Reparar agendamento por Reaplicar modo manual na manutenção. Sincroniza a cópia embutida e registra a nova política nas instruções. Backup 3.8.0 do instalador confirmado no Google Drive por SHA-256 antes da edição.
+
+
+Validação: 270 testes offline executados, 269 aprovados e um opcional ignorado. Inclui chamadas automáticas antigas inertes, migração no sistema e em chroot sem reativar timers, preservação das datas históricas e notificações manuais após sucesso. Sintaxe Python/Bash e cópia embutida conferidas. Timer real desativado nesta máquina; não foi executada atualização de pacotes, instalação Arch limpa ou validação de boot.
+
 ## 3.8.0 — 2026-11-15
 
 - Ajusta o glifo Codex da Central ao mesmo azul dos demais botões, sem fundo próprio, e corrige seu tamanho de renderização para manter proporção visual equivalente. Preserva texto, botão e ícone do aplicativo no KDE.

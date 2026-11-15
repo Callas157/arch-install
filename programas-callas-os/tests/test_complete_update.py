@@ -146,24 +146,38 @@ proxima_data() { printf 2026-11-18; }
 gravar_data_agenda() { printf 'schedule\\n' >> "$EVENTS"; }
 marcar_reinicio_pendente() { grep -q 'Fim da atualização' "$LOG"; printf 'reboot\\n' >> "$EVENTS"; }
 notificar_falha_usuario() { printf 'failed\\n' >> "$EVENTS"; }
-''' + function + '\nregistrar_atualizacao user sistema automatico\n'
+''' + function + '\nregistrar_atualizacao user sistema manual\n'
                 result = subprocess.run(['bash', '-c', script], env=dict(os.environ, LOG=str(log), EVENTS=str(events), FAIL=str(fail), TEST_STATE=temp), capture_output=True)
                 self.assertEqual(result.returncode, fail)
                 self.assertIn('transaction', log.read_text())
-                self.assertEqual(events.read_text().splitlines(), ['failed'] if fail else ['schedule', 'schedule', 'reboot'])
+                self.assertEqual(events.read_text().splitlines(), ['failed'] if fail else ['reboot'])
 
-    def test_full_update_advances_app_schedule_so_it_is_not_run_twice(self):
+    def test_legacy_automatic_update_never_runs_or_changes_dates(self):
         function = self.text[self.text.index('executar_agendado() {'):self.text.index('\nverificar_agenda()')]
         with tempfile.TemporaryDirectory() as temp:
             log = Path(temp) / 'dates'
             script = '''set -euo pipefail
 ler_data_agenda() { printf 2020-01-01; }
-registrar_atualizacao() { return 0; }
+registrar_atualizacao() { echo UNEXPECTED_UPDATE; exit 97; }
 proxima_data() { printf 2026-11-18; }
 gravar_data_agenda() { printf '%s %s\\n' "$1" "$2" >> "$LOG"; }
 ''' + function + '\nexecutar_agendado user sistema\n'
             subprocess.run(['bash', '-c', script], env=dict(os.environ, LOG=str(log)), check=True)
-            self.assertEqual(log.read_text().splitlines(), ['sistema 2026-11-18', 'apps 2026-11-18'])
+            self.assertFalse(log.exists())
+
+    def test_automatic_command_entrypoints_are_inert(self):
+        with tempfile.TemporaryDirectory() as folder:
+            script = self.text.replace('EUID', 'fixture_euid').replace(
+                'sudo_rule=/etc/sudoers.d/put-update', 'sudo_rule=' + folder + '/old-rule')
+            script = 'fixture_euid=0\n' + script
+            for args in (['--check', 'fixture'], ['--verificar-agenda', 'fixture'],
+                         ['--registrar', 'fixture', 'sistema', 'automatico'],
+                         ['--registrar', 'fixture', 'apps', 'automatico']):
+                with self.subTest(args=args):
+                    result = subprocess.run(['bash', '-c', script, 'fixture', *args],
+                                            capture_output=True, text=True, timeout=5)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertIn('automáticas desativadas', result.stdout)
 
     def test_notification_from_previous_boot_is_discarded(self):
         function = self.text[self.text.index('notificar_reinicio_usuario() {'):self.text.index('\nmarcar_reinicio_pendente()')]
