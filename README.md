@@ -112,12 +112,14 @@ As funções disponíveis são:
 | **2. Aplicativos nativos** | Atualiza aplicativos compatíveis com a base já instalada; preserva kernels |
 | **3. Monitores** | Detecta as telas conectadas e permite escolher o monitor principal para painel, notificações e login |
 | **4. Atualizar geral** | Atualiza Arch, AUR e Flatpaks; único fluxo que autoriza atualizar kernels, com verificação da NVIDIA fixada e validação final de boot |
-| **5. Callas OS Update** | Aplica configurações, ferramentas, correções e migrações de aplicativos do projeto; preserva kernels, headers, NVIDIA e o agendamento existente |
+| **5. Callas OS Update** | Aplica configurações, ferramentas, correções e migrações de aplicativos do projeto; preserva kernels, headers e NVIDIA, e desativa os agendamentos antigos de atualização |
 | **6. Codex** | Baixa e instala o chat opcional e adiciona seu acesso ao menu KDE; quando instalado, abre o aplicativo. Entre com sua própria conta ChatGPT/OpenAI |
 
 O **Codex não é instalado junto com o sistema**: o download começa somente ao escolher o botão na Central.
 
-As atualizações são **totalmente manuais**. Use **Aplicativos nativos** para atualizar os aplicativos ou **Atualizar geral** para atualizar o sistema. A instalação e o Callas OS Update desativam os agendamentos antigos; não há atualização automática ao ligar o computador.
+As atualizações pela Central acontecem **manualmente**: clique em **Aplicativos nativos** para atualizar os aplicativos ou em **Atualizar geral** para atualizar o sistema.
+
+A **Steam** e o **Discord** mantêm seus próprios mecanismos de atualização interna. Eles continuam funcionando normalmente, inclusive quando o aplicativo pede para reiniciar para aplicar uma atualização.
 
 **Kernel e NVIDIA:** antes de trocar kernel e headers, a opção 4 testa a compilação da NVIDIA fixada em uma área isolada. Se a verificação falhar ou não puder ser concluída com segurança, a transação é interrompida e os pacotes anteriores são preservados. Não há troca automática do driver para liberar a atualização. Após uma transação aprovada, módulos, initramfs e GRUB ainda precisam ser validados. Consulte os [detalhes da proteção de kernel e NVIDIA](programas-callas-os/instrucoes/atualizacao-kernel.md).
 
