@@ -2,6 +2,8 @@
 
 ## 3.8.0 — 2026-11-15
 
+- Ajusta o glifo Codex da Central ao mesmo azul dos demais botões, sem fundo próprio, e corrige seu tamanho de renderização para manter proporção visual equivalente. Preserva texto, botão e ícone do aplicativo no KDE.
+
 - Adiciona o botão Codex à Central Callas OS: baixa e instala somente após escolha do usuário; abre o aplicativo quando já instalado. O pacote é separado, fixado por commit e verificado por SHA-256 antes da execução no perfil normal. Instalação limpa e Update distribuem apenas a opção, sem baixar ou instalar o chat.
 - Publica o cliente gráfico Codex 1.3.0 em `programas-callas-os/codex`, com nome e ícone Codex, login individual ChatGPT/OpenAI pelo navegador e entrada no menu KDE. Preserva IDs, preferências, fotos e histórico anteriores; não publica dados de usuários.
 - Mantém acesso completo do usuário e autorização administrativa por janela sudo separada dos logs. Dependências do aplicativo usam somente a instalação pontual protegida; falhas interrompem a instalação, sem atualização geral de kernel, headers, NVIDIA ou agenda.
