@@ -2,6 +2,7 @@ import importlib.util
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from types import SimpleNamespace
@@ -68,6 +69,20 @@ class InstallerTests(unittest.TestCase):
             with self.assertRaises(subprocess.CalledProcessError): installer.prepare_system_dependencies()
             self.assertEqual(run.call_args.args[0],
                 ['/usr/bin/sudo', '-A', '--', '/usr/local/libexec/callas-native', '--install', 'pyside6'])
+
+    def test_askpass_returns_password_only_and_cancel_is_empty(self):
+        for accepted, expected_code, output in ((True, 0, 'fixture-password\n'), (False, 1, '')):
+            script = ("import sys; from unittest.mock import patch; "
+                      "from callas_chat.__main__ import main; "
+                      "sys.argv=['codex', '--askpass']; "
+                      "mock=patch('callas_chat.__main__.QInputDialog.getText', return_value=('fixture-password', "
+                      + repr(accepted) + ")); mock.start(); sys.exit(main())")
+            result = subprocess.run([sys.executable, '-c', script], cwd=ROOT,
+                        env=dict(os.environ, QT_QPA_PLATFORM='offscreen', PYTHONPATH=str(ROOT)),
+                        capture_output=True, text=True)
+            self.assertEqual(result.returncode, expected_code, result.stderr)
+            self.assertEqual(result.stdout, output)
+            self.assertNotIn('fixture-password', result.stderr)
 
     def test_whisper_model_is_reused_without_redownload(self):
         import setup_voice

@@ -1,0 +1,114 @@
+"""Optional Codex install: user profile, integrity, cancellation and no auto-install."""
+import hashlib
+import importlib.util
+import io
+import os
+from pathlib import Path
+import subprocess
+import tarfile
+import tempfile
+import time
+import unittest
+from unittest.mock import patch
+
+os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+ROOT = Path(__file__).resolve().parents[1]
+spec = importlib.util.spec_from_file_location('codex_central', ROOT/'atualizador/callas-update-gui.py')
+gui = importlib.util.module_from_spec(spec); spec.loader.exec_module(gui)
+from PySide6.QtWidgets import QApplication
+APP = QApplication.instance() or QApplication([])
+
+
+def bundle(name='installer.py', content=b'print("fixture")'):
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode='w:gz') as archive:
+        info = tarfile.TarInfo(name); info.size = len(content)
+        archive.addfile(info, io.BytesIO(content))
+    return buffer.getvalue()
+
+
+class OptionalCodexTests(unittest.TestCase):
+    def test_home_has_icon_button_without_downloading_or_installing(self):
+        with patch.object(gui.urllib.request, 'urlopen') as download, patch.object(gui.subprocess, 'Popen') as process:
+            window = gui.Window()
+            button = next(b for b in window.buttons if b.text() == 'Codex')
+            self.assertFalse(button.icon().isNull())
+            download.assert_not_called(); process.assert_not_called()
+            window.close(); window.deleteLater()
+        release = (ROOT/'atualizador/callas-release.py').read_text().split('FILES = (', 1)[1].split('\n)', 1)[0]
+        self.assertNotIn('codex.tar.gz', release)
+
+    def test_existing_app_opens_without_sudo_or_install(self):
+        window = gui.Window()
+        with tempfile.TemporaryDirectory() as folder:
+            launcher = Path(folder)/'app'; launcher.write_text('#!/bin/sh\nexit 0'); launcher.chmod(0o755)
+            with patch.object(gui, 'codex_launcher', return_value=launcher), \
+                 patch.object(gui.subprocess, 'Popen') as process, patch.object(window, 'start') as start:
+                window.codex()
+                self.assertEqual(process.call_args.args[0], [str(launcher)])
+                start.assert_not_called()
+        window.close(); window.deleteLater()
+
+    def test_cancel_and_confirm_optional_install(self):
+        window = gui.Window()
+        with patch.object(gui, 'codex_launcher', return_value=Path('/nonexistent/codex')), \
+             patch.object(window, 'start') as start:
+            with patch.object(gui.QMessageBox, 'question', return_value=gui.QMessageBox.No): window.codex()
+            start.assert_not_called()
+            with patch.object(gui.QMessageBox, 'question', return_value=gui.QMessageBox.Yes): window.codex()
+            start.assert_called_once_with('codex')
+        window.close(); window.deleteLater()
+
+    def test_user_process_preserves_askpass_and_drops_general_context(self):
+        window = gui.Window()
+        original = subprocess.Popen
+        invoked = []
+        def process(args, **kwargs):
+            invoked.append((args, kwargs['env']))
+            return original(['/usr/bin/python3', '-c', 'print("fixture done")'], **kwargs)
+        with patch.object(gui, 'package_state', return_value={}), \
+             patch.object(gui.subprocess, 'Popen', side_effect=process), \
+             patch.dict(os.environ, {'CALLAS_KERNEL_UPDATE_CONTEXT': 'general'}):
+            window.start('codex')
+            deadline = time.monotonic() + 5
+            while window.process is not None and time.monotonic() < deadline:
+                APP.processEvents(); time.sleep(.01)
+        self.assertIsNone(window.process)
+        args, env = invoked[0]
+        self.assertEqual(args, gui.action_command('codex'))
+        self.assertNotIn('/usr/bin/sudo', args)
+        self.assertNotIn('CALLAS_KERNEL_UPDATE_CONTEXT', env)
+        self.assertIn('SUDO_ASKPASS', env)
+        self.assertIn('Codex instalado', window.status.text())
+        self.assertFalse(window.reboot_pending)
+        window.close(); window.deleteLater()
+
+    def download_fixture(self, data):
+        response = io.BytesIO(data); response.url = 'https://raw.githubusercontent.com/fixture'
+        return patch.object(gui.urllib.request, 'urlopen', return_value=response)
+
+    def test_integrity_failure_never_executes_package(self):
+        with self.download_fixture(b'corrupted'), patch.object(gui.subprocess, 'run') as run:
+            with self.assertRaisesRegex(ValueError, 'não corresponde'): gui.install_codex()
+            run.assert_not_called()
+
+    def test_unsafe_archive_is_rejected_before_execution(self):
+        data = bundle('../escape')
+        with self.download_fixture(data), patch.object(gui, 'CODEX_SHA256', hashlib.sha256(data).hexdigest()), \
+             patch.object(gui.subprocess, 'run') as run:
+            with self.assertRaisesRegex(ValueError, 'inválido'): gui.install_codex()
+            run.assert_not_called()
+
+    def test_valid_download_runs_installer_as_user(self):
+        data = bundle()
+        with self.download_fixture(data), patch.object(gui, 'CODEX_SHA256', hashlib.sha256(data).hexdigest()), \
+             patch.object(gui.subprocess, 'run') as run:
+            gui.install_codex()
+            self.assertEqual(run.call_count, 1)
+            args = run.call_args.args[0]
+            self.assertEqual(args[:2], ['/usr/bin/python3', '-u'])
+            self.assertTrue(args[2].endswith('/installer.py'))
+            self.assertTrue(run.call_args.kwargs['check'])
+
+
+if __name__ == '__main__': unittest.main()

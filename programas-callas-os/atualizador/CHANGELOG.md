@@ -1,5 +1,14 @@
 # Histórico do Callas OS
 
+## 3.8.0 — 2026-11-15
+
+- Adiciona o botão Codex à Central Callas OS: baixa e instala somente após escolha do usuário; abre o aplicativo quando já instalado. O pacote é separado, fixado por commit e verificado por SHA-256 antes da execução no perfil normal. Instalação limpa e Update distribuem apenas a opção, sem baixar ou instalar o chat.
+- Publica o cliente gráfico Codex 1.3.0 em `programas-callas-os/codex`, com nome e ícone Codex, login individual ChatGPT/OpenAI pelo navegador e entrada no menu KDE. Preserva IDs, preferências, fotos e histórico anteriores; não publica dados de usuários.
+- Mantém acesso completo do usuário e autorização administrativa por janela sudo separada dos logs. Dependências do aplicativo usam somente a instalação pontual protegida; falhas interrompem a instalação, sem atualização geral de kernel, headers, NVIDIA ou agenda.
+- Mantém o instalador principal e suas cópias embutidas intactos. A Central modificada já integra o estágio compartilhado dos dois fluxos; o pacote opcional não entra na lista de arquivos desse estágio.
+
+Validação: testes offline da Central, instalação opcional e cliente, incluindo cancelamento, abertura sem reinstalação, SHA inválido, extração insegura, senha separada e preservação dos dados/menu. Totais e limites registrados em `codex/INTEGRACAO.md`. Sem instalação Arch limpa, login de outra conta, senha real ou boot validado.
+
 ## 3.7.0 — 2026-11-15
 
 - Renomeia a interface para Central Callas OS, preservando o ID e os favoritos existentes. Substitui Atualizar Discord por Monitores, com submenu gráfico para detectar as telas ativas, indicar a principal atual e selecionar outra pelo mouse.

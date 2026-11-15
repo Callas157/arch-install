@@ -3,6 +3,11 @@
 import codecs
 import errno
 import fcntl
+import hashlib
+import io
+import tarfile
+import tempfile
+import urllib.request
 import json
 import os
 from pathlib import Path
@@ -24,6 +29,41 @@ ID = 'io.github.Callas157.AtualizadorDoSistema'
 CRITICAL = ('linux', 'linux-lts', 'linux-zen', 'linux-hardened', 'systemd', 'glibc',
             'nvidia-utils', 'nvidia-open-dkms', 'mesa', 'linux-firmware')
 ANSI = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07]*(?:\x07|\x1b\\)')
+
+# The optional app is a separate download, never part of the OS install stage.
+CODEX_REF = 'acd5e6ce5cff3f1ebaf12fcbe0954cc40ed31914'
+CODEX_SHA256 = '32ab0b2f131670a45985b607bf4ad4bd79626eda57ccafde98e40e79757977c0'
+CODEX_URL = ('https://raw.githubusercontent.com/Callas157/arch-install/' + CODEX_REF
+             + '/programas-callas-os/codex/codex.tar.gz')
+CODEX_ICON = '<svg\n  width="20"\n  height="20"\n  viewBox="0 0 20 20"\n  fill="none"\n  xmlns="http://www.w3.org/2000/svg"\n>\n  <rect width="20" height="20" rx="4" fill="#10151e"/>\n  <path\n    d="M13.333 11.418C13.7002 11.418 13.9978 11.7159 13.998 12.083C13.998 12.4503 13.7003 12.748 13.333 12.748H10.833C10.4657 12.748 10.168 12.4503 10.168 12.083C10.1682 11.7159 10.4659 11.418 10.833 11.418H13.333Z"\n    fill="#f5f5f5"\n  />\n  <path\n    d="M6.74121 7.34668C7.0561 7.15796 7.46442 7.26036 7.65332 7.5752L8.90332 9.6582C9.02949 9.86874 9.02961 10.1323 8.90332 10.3428L7.65332 12.4258C7.46441 12.7403 7.05597 12.8427 6.74121 12.6543C6.42637 12.4654 6.32396 12.0561 6.5127 11.7412L7.55664 10L6.5127 8.25879C6.324 7.94395 6.4265 7.53562 6.74121 7.34668Z"\n    fill="#f5f5f5"\n  />\n  <path\n    fill-rule="evenodd"\n    clip-rule="evenodd"\n    d="M9.00195 1.75C10.1157 1.75021 11.1362 2.15467 11.9238 2.82227C12.1849 2.77516 12.455 2.74903 12.7295 2.74902C15.2262 2.74978 17.2507 4.77449 17.251 7.27148C17.2509 7.54581 17.2238 7.81473 17.1768 8.0752C17.8448 8.86317 18.2499 9.88479 18.25 10.999C18.2496 12.9609 16.9996 14.6284 15.2549 15.2549C14.6285 16.9998 12.9608 18.2497 10.999 18.25C9.88486 18.25 8.86411 17.8448 8.07617 17.1768C7.8155 17.2239 7.54592 17.2509 7.27148 17.251C4.77445 17.2507 2.7504 15.2257 2.75 12.7285C2.75003 12.4539 2.77608 12.1848 2.82324 11.9238C2.20237 11.1913 1.80895 10.2574 1.75684 9.23438L1.75 9.00098C1.75022 7.03932 2.99952 5.36992 4.74414 4.74316C5.37104 2.99851 7.04034 1.75002 9.00195 1.75ZM9.00195 3.07812C7.52474 3.07814 6.27967 4.08156 5.91504 5.44531C5.85362 5.67419 5.67418 5.85363 5.44531 5.91504C4.08208 6.27984 3.07836 7.52408 3.07812 9.00098C3.07826 9.88321 3.43594 10.682 4.01465 11.2607C4.1816 11.4283 4.24663 11.6728 4.18555 11.9014C4.11505 12.1653 4.07719 12.4429 4.07715 12.7285C4.07755 14.4925 5.50753 15.9225 7.27148 15.9229C7.55712 15.9228 7.83548 15.886 8.09961 15.8154L8.18652 15.7979C8.38833 15.7722 8.59297 15.8403 8.73926 15.9863C9.31801 16.5649 10.1168 16.9218 10.999 16.9219C12.4759 16.9216 13.7203 15.9183 14.085 14.5547L14.1133 14.4707C14.1918 14.2821 14.3542 14.1386 14.5547 14.085C15.9181 13.7203 16.9225 12.4758 16.9229 10.999C16.9228 10.1168 16.5648 9.31802 15.9863 8.73926C15.819 8.57175 15.7544 8.3274 15.8154 8.09863C15.886 7.83454 15.9238 7.5568 15.9238 7.27148C15.9235 5.50751 14.4924 4.07762 12.7285 4.07715C12.4424 4.0772 12.164 4.11412 11.9004 4.18457C11.672 4.24541 11.4282 4.18048 11.2607 4.01367C10.7183 3.47141 9.98306 3.12271 9.16699 3.08105L9.00195 3.07812Z"\n    fill="#f5f5f5"\n  />\n</svg>\n'
+
+def codex_launcher():
+    return Path.home() / '.local/bin/callas-chat'
+
+def install_codex():
+    if os.geteuid() == 0: raise ValueError('Instale Codex no seu usuário normal, sem sudo.')
+    print('==> Baixando Codex do GitHub…', flush=True)
+    request = urllib.request.Request(CODEX_URL, headers={'User-Agent': 'CallasOS-Codex'})
+    with urllib.request.urlopen(request, timeout=60) as response:
+        if not response.url.startswith('https://'): raise ValueError('Download sem HTTPS recusado.')
+        data = response.read(4 * 1024 * 1024 + 1)
+    if len(data) > 4 * 1024 * 1024: raise ValueError('Pacote excedeu o tamanho permitido.')
+    if hashlib.sha256(data).hexdigest() != CODEX_SHA256:
+        raise ValueError('O pacote Codex não corresponde à versão publicada. Tente novamente após atualizar a Central.')
+    print('==> Integridade confirmada. Preparando instalação no seu perfil…', flush=True)
+    with tempfile.TemporaryDirectory(prefix='callas-codex-') as folder:
+        with tarfile.open(fileobj=io.BytesIO(data), mode='r:gz') as archive:
+            members = archive.getmembers()
+            if (sum(m.size for m in members) > 16 * 1024 * 1024 or len(members) > 100
+                    or any(not m.isfile() or Path(m.name).is_absolute() or '..' in Path(m.name).parts for m in members)):
+                raise ValueError('Conteúdo inválido no pacote Codex.')
+            archive.extractall(folder, members=members, filter='data')
+        env = os.environ.copy()
+        env.pop('CALLAS_KERNEL_UPDATE_CONTEXT', None)
+        subprocess.run(['/usr/bin/python3', '-u', str(Path(folder)/'installer.py')],
+                       check=True, env=env)
+    print('==> Codex instalado! Abra pelo menu KDE ou pelo botão Codex da Central.', flush=True)
+
 
 def package_state():
     result = subprocess.run(['/usr/bin/pacman', '-Q', *CRITICAL], capture_output=True,
@@ -58,10 +98,14 @@ def action_command(action):
         return ['/usr/local/libexec/callas-maintenance', '--' + action, user]
     if action == 'repair': return [BACKEND, '--instalar']
     if action == 'games': return ['/usr/local/libexec/callas-game-logs', '--collect', user]
+    if action == 'codex': return ['/usr/bin/python3', '-u', str(Path(__file__).resolve()), '--install-codex']
     if action == 'callas': return ['/usr/local/libexec/callas-release']
     raise ValueError('Função desconhecida')
 
 def option_icon(name):
+    if name == 'codex':
+        pixmap = QPixmap(); pixmap.loadFromData(CODEX_ICON.encode(), 'SVG')
+        return QIcon(pixmap)
     paths = {
         'edit-clear': '<path d="m9 4 11 11-7 7L2 11zM6 15l7-7M13 22h9"/>',
         'applications-all': '<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/>',
@@ -236,6 +280,7 @@ class Window(QWidget):
             ('Monitores', 'video-display', self.monitors),
             ('Atualizar geral', 'system-software-update', lambda: self.start('sistema')),
             ('Callas OS Update', 'system-upgrade', lambda: self.start('callas')),
+            ('Codex', 'codex', self.codex),
             ('Sair', 'application-exit', self.close),
         )
         for i, (label, name, callback) in enumerate(entries):
@@ -332,6 +377,20 @@ class Window(QWidget):
             self.monitor_dialog.deleteLater()
             self.monitor_dialog = None
 
+    def codex(self):
+        if self.process is not None: return
+        launcher = codex_launcher()
+        if launcher.is_file() and os.access(launcher, os.X_OK):
+            try: subprocess.Popen([str(launcher)], start_new_session=True)
+            except OSError as exc: QMessageBox.warning(self, 'Codex', str(exc))
+            return
+        if QMessageBox.question(self, 'Instalar Codex',
+            'Baixar e instalar Codex no seu perfil e adicioná-lo ao menu KDE?\n\n'
+            'O ditado baixa um modelo de voz de aproximadamente 1,5 GB. '
+            'Depois, entre com sua própria conta ChatGPT. '
+            'O sistema pedirá senha somente se faltar alguma dependência.') == QMessageBox.Yes:
+            self.start('codex')
+
     def start(self, action):
         if self.process is not None: return
         command = action_command(action)
@@ -356,7 +415,8 @@ class Window(QWidget):
         env.pop('CALLAS_KERNEL_UPDATE_CONTEXT', None)
         master, slave = pty.openpty()
         try:
-            self.process = subprocess.Popen(['/usr/bin/sudo', '-A', '--', *command],
+            argv = command if action == 'codex' else ['/usr/bin/sudo', '-A', '--', *command]
+            self.process = subprocess.Popen(argv,
                 stdin=slave, stdout=slave, stderr=slave, env=env, start_new_session=True, close_fds=True)
         except OSError as exc:
             os.close(master); self.bar.setRange(0, 100); self.bar.setValue(0)
@@ -369,6 +429,10 @@ class Window(QWidget):
         self.input_row.setVisible(self.details.isVisible())
         if action in ('games', 'orphans'):
             self.details.show(); self.input_row.show(); self.details_button.setText('Ocultar detalhes')
+        if action == 'codex':
+            self.stage.setText('Instalando Codex')
+            self.status.setText('Baixando o aplicativo e preparando o menu KDE. Acompanhe os detalhes.')
+            self.details.show(); self.input_row.hide(); self.details_button.setText('Ocultar detalhes')
         self.timer.start()
 
     def read_output(self, *_):
@@ -415,7 +479,7 @@ class Window(QWidget):
         self.input_row.hide(); self.bar.setRange(0, 100)
         if code == 0:
             self.bar.setValue(100); self.stage.setText('Concluído com sucesso')
-            self.status.setText('A função terminou. Você já pode escolher outra opção.')
+            self.status.setText('Codex instalado. Abra pelo menu KDE ou pelo botão Codex.' if self.action == 'codex' else 'A função terminou. Você já pode escolher outra opção.')
             try: after = package_state()
             except (OSError, subprocess.SubprocessError, RuntimeError): after = None
             if self.action in ('sistema', 'nativos', 'callas', 'flatpaks'):
@@ -498,4 +562,10 @@ def main():
     if '--monitors' in sys.argv[1:]: QTimer.singleShot(0, window.monitors)
     return app.exec()
 
-if __name__ == '__main__': sys.exit(main())
+if __name__ == '__main__':
+    if '--install-codex' in sys.argv[1:]:
+        try: install_codex()
+        except Exception as exc:
+            print('Não foi possível instalar Codex: ' + str(exc), file=sys.stderr)
+            sys.exit(1)
+    else: sys.exit(main())
