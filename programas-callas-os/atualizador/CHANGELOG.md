@@ -1,5 +1,15 @@
 # Histórico do Callas OS
 
+## 3.6.1 — 2026-11-15
+
+- Compara os arquivos globais e do perfil do Callas Baterias com a entrega verificada antes de implantar. Arquivos iguais são preservados sem reinstalação, recarga udev ou reinício do serviço, inclusive quando outro auxiliar da etapa de segurança mudou. Respeita o autostart desativado e preserva preferências.
+- Registra hashes e permissões dos arquivos gerenciados de referência por etapa, além das árvores de código do Baterias e do painel. Arquivos alterados ou ausentes invalidam a etapa correspondente. Recibos antigos são renovados uma vez para registrar essa comparação.
+- Reutiliza downloads em cache limitado a uma cópia por arquivo. Cada conteúdo é comparado com o blob do commit atual no GitHub antes do uso; arquivos novos, alterados ou corrompidos são baixados novamente.
+- A saída antecipada por commit idêntico passa a exigir a integridade local registrada, sem ignorar reparos pendentes. Migrações explícitas de aplicativos continuam separadas de remoções arbitrárias; nenhuma troca do Discord foi feita.
+- O auxiliar compartilhado atende instalação limpa e Update sem alterar instalar-arch.sh, kernel, NVIDIA ou agendamento.
+
+Validação: 253 testes offline executados, 252 aprovados e um opcional ignorado. Inclui comparação, arquivo alterado/ausente, autostart desativado, ausência de reinstalação/reinício, reparo no mesmo commit e cache reutilizado/corrompido. Sintaxe de 56 arquivos Python e 8 Bash conferida. Sem atualização real do sistema, instalação Arch limpa ou validação de boot/hardware.
+
 ## 3.6.0 — 2026-11-15
 
 - Adiciona interface gráfica Qt/PySide6 para o atualizador, com tema escuro, botões centralizados, ícones próprios em cada função e manutenção acessível pelo mouse.

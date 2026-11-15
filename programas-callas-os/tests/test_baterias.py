@@ -16,6 +16,37 @@ installer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(installer)
 
 class BatteryDeploymentTests(unittest.TestCase):
+    def test_matching_installation_is_preserved_and_missing_or_changed_files_repair(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); system = root / 'system'; home = root / 'home'
+            archive = SOURCE / 'callas-baterias.tar.gz'
+            installer.deploy(archive, system)
+            installer.configure_user(home, system)
+            self.assertTrue(installer.current(archive, home, system))
+            override = home / '.config/autostart/callas-baterias.desktop'
+            override.write_text(installer.DESKTOP + 'Hidden=true\n')
+            self.assertTrue(installer.current(archive, home, system))
+            target = system / installer.APP.relative_to('/') / 'sharktray/mouse.py'
+            target.write_text('outdated')
+            self.assertFalse(installer.current(archive, home, system))
+            installer.deploy(archive, system)
+            self.assertTrue(installer.current(archive, home, system))
+            target.unlink()
+            self.assertFalse(installer.current(archive, home, system))
+
+    def test_unchanged_install_does_not_redeploy_or_restart(self):
+        from types import SimpleNamespace
+        account = SimpleNamespace(pw_uid=1000, pw_dir='/home/fixture')
+        with patch.object(installer.pwd, 'getpwnam', return_value=account), \
+             patch.object(installer.os, 'geteuid', return_value=0), \
+             patch.object(installer, 'ensure_dependencies'), \
+             patch.object(installer, 'current', return_value=True), \
+             patch.object(installer, 'deploy') as deploy, \
+             patch.object(installer.subprocess, 'run') as run:
+            installer.install_system('fixture', SOURCE / 'callas-baterias.tar.gz')
+            deploy.assert_not_called()
+            run.assert_not_called()
+
     def test_dependencies_use_only_guarded_target_and_propagate_failure(self):
         calls = []
         def run(args, **kwargs):

@@ -158,10 +158,38 @@ def arrange_tray():
     print('Aviso: painel KDE indisponível; a ordem será tentada na próxima inicialização.')
 
 
+def current(archive, home, system=Path('/')):
+    """Compare generated system/profile files with this verified release.
+
+    No receipt is needed: this also recognizes installations made by older
+    installers. Only managed files are compared; preferences stay private.
+    """
+    with tempfile.TemporaryDirectory(prefix='callas-baterias-compare-') as temp:
+        expected = Path(temp) / 'system'
+        profile = Path(temp) / 'home'
+        deploy(archive, expected)
+        configure_user(profile, expected)
+        override = Path(home) / '.config/autostart/callas-baterias.desktop'
+        if autostart_disabled(override):
+            write(profile / '.config/autostart/callas-baterias.desktop', DESKTOP + 'Hidden=true\n')
+        for source, destination in ((expected, system), (profile, Path(home))):
+            for path in source.rglob('*'):
+                target = destination / path.relative_to(source)
+                if path.is_file():
+                    if (target.is_symlink() or not target.is_file()
+                            or target.read_bytes() != path.read_bytes()
+                            or target.stat().st_mode & 0o777 != path.stat().st_mode & 0o777):
+                        return False
+        return True
+
+
 def install_system(user, archive):
     account = pwd.getpwnam(user)
     if os.geteuid() != 0 or account.pw_uid == 0: raise ValueError('Requer root e usuário normal')
     ensure_dependencies()  # Guarded transaction first; never falls back to a general upgrade.
+    if current(archive, Path(account.pw_dir)):
+        print('Callas Baterias já corresponde ao repositório; preservado sem reinstalação ou reinício.')
+        return
     deploy(archive)
     env = ['env', '-i', 'PATH=/usr/bin:/bin', 'HOME=' + account.pw_dir,
            'USER=' + user, 'LOGNAME=' + user, 'LANG=C.UTF-8',

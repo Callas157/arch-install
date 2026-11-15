@@ -61,6 +61,21 @@ class IncrementalTests(unittest.TestCase):
     (stage/'update-assets.json').write_text(json.dumps(manifest))
     self.assertEqual([p for p in state.DEPENDENCIES if state.needed(p,stage,user)],['desktop'])
     required.unlink();self.assertTrue(state.needed('boot',stage,user))
+ def test_local_drift_invalidates_receipt_even_when_release_did_not_change(self):
+  with tempfile.TemporaryDirectory() as temp:
+   root=Path(temp);stage=self.stage(root);user=pwd.getpwuid(os.getuid()).pw_name
+   target=root/'installed';target.write_text('official')
+   rules={k:() for k in state.DEPENDENCIES};rules['tools']=(str(target),)
+   with patch.object(state,'STATE',root/'receipts'),patch.object(state,'REQUIRED',rules):
+    for phase in state.DEPENDENCIES:state.complete(phase,stage,user)
+    self.assertTrue(state.intact(user))
+    target.write_text('changed locally')
+    self.assertTrue(state.needed('tools',stage,user))
+    self.assertFalse(state.intact(user))
+    state.complete('tools',stage,user)
+    target.unlink()
+    self.assertFalse(state.intact(user))
+
  def test_asset_download_is_verified_atomic_and_skipped_when_unchanged(self):
   with tempfile.TemporaryDirectory() as temp:
    root=Path(temp);stage=self.stage(root);dest=root/'wallpaper.jpg';dest.write_bytes(b'old')
@@ -143,6 +158,41 @@ pacman() { [[ $1 != -Syu ]] || exit 88; return 0; }
      try:self.assertEqual(release.main(),0)
      finally:os.umask(previous)
      self.assertEqual(download.call_count,expected)
+ def test_same_commit_with_local_damage_still_runs_repair(self):
+  user=pwd.getpwuid(os.getuid()).pw_name
+  original_read=Path.read_text;original_exists=Path.exists;original_file=Path.is_file
+  def read(path,*args,**kwargs):
+   if str(path)=='/etc/callas-os/release.json':return json.dumps({'release':'a'*40,'status':'complete'})
+   return original_read(path,*args,**kwargs)
+  def exists(path):
+   return False if path.name.startswith('update-pending-') else original_exists(path)
+  def is_file(path):
+   return True if str(path)=='/usr/local/libexec/callas-update-state' else original_file(path)
+  with patch.object(release.os,'geteuid',return_value=0),patch.dict(os.environ,{'SUDO_USER':user}),patch.object(release.sys,'argv',['callas-release']),patch.object(release,'resolve_ref',return_value='a'*40),patch.object(release,'stage_files') as download,patch.object(release.subprocess,'run',side_effect=[types.SimpleNamespace(returncode=1),types.SimpleNamespace(returncode=0)]) as run,patch.object(Path,'read_text',read),patch.object(Path,'exists',exists),patch.object(Path,'is_file',is_file):
+   previous=os.umask(0o077)
+   try:self.assertEqual(release.main(),0)
+   finally:os.umask(previous)
+   download.assert_called_once()
+   self.assertIn('--intact',run.call_args_list[0].args[0])
+
+ def test_download_cache_reuses_only_blobs_matching_github(self):
+  with tempfile.TemporaryDirectory() as temp:
+   root=Path(temp);cache=root/'cache';name='programas-callas-os/atualizador/VERSION'
+   data=b'3.6.1\n';tree={'tree':[{'path':name,'type':'blob','mode':'100644','sha':state.blob(data)}]}
+   calls=[]
+   def request(url):
+    calls.append(url)
+    return json.dumps(tree).encode() if '/git/trees/' in url else data
+   with patch.object(release,'FILES',(name,)),patch.object(release,'request',side_effect=request):
+    for i in range(2):
+     stage=root/str(i);stage.mkdir();release.stage_files(stage,'a'*40,progress=False,cache=cache)
+     self.assertEqual((stage/'VERSION').read_bytes(),data)
+    self.assertEqual(sum('/git/trees/' not in u for u in calls),1)
+    (cache/'VERSION').write_bytes(b'corrupt')
+    stage=root/'repair';stage.mkdir();release.stage_files(stage,'b'*40,progress=False,cache=cache)
+    self.assertEqual((stage/'VERSION').read_bytes(),data)
+    self.assertEqual(sum('/git/trees/' not in u for u in calls),2)
+
  def test_real_boot_phase_rebuilds_only_changed_components_once(self):
   text=(UP/'callas-config-update.sh').read_text()
   phase=text.split('# CALLAS_PHASE_BEGIN boot\n',1)[1].split('# CALLAS_PHASE_END boot\n',1)[0]

@@ -92,7 +92,32 @@ def stage_complete(destination, expected_owner=0):
     return complete
 
 
-def stage_files(destination, ref, *, progress=True):
+def cached_file(name, ref, expected, cache):
+    if cache is not None:
+        path = cache / Path(name).name
+        if path.is_file() and not path.is_symlink() and path.stat().st_size <= 4 * 1024 * 1024:
+            data = path.read_bytes()
+            try:
+                verify_blob(data, expected)
+                return data
+            except ValueError:
+                pass  # A stale/corrupt cache never replaces the GitHub authority.
+    return request(RAW + '/' + ref + '/' + name)
+
+
+def cache_file(cache, name, data):
+    # One current copy per canonical filename bounds storage by the stage size.
+    fd, temporary = tempfile.mkstemp(prefix='.download-', dir=cache)
+    try:
+        with os.fdopen(fd, 'wb') as stream:
+            stream.write(data)
+            os.fchmod(stream.fileno(), 0o600)
+        os.replace(temporary, cache / Path(name).name)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+def stage_files(destination, ref, *, progress=True, cache=None):
     if not re.fullmatch(r"[0-9a-f]{40}", ref):
         raise ValueError("Commit inválido")
     if progress:
@@ -109,9 +134,14 @@ def stage_files(destination, ref, *, progress=True):
         if item["mode"] not in ("100644", "100755"):
             raise ValueError("Tipo de arquivo não permitido")
     if progress:
-        print(f'Baixando e verificando {len(FILES)} arquivos (até 4 por vez)...', flush=True)
+        print(f'Comparando cache e verificando {len(FILES)} arquivos; baixando somente os diferentes (até 4 por vez)...', flush=True)
+    if cache is not None:
+        cache = Path(cache)
+        cache.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if cache.is_symlink() or cache.stat().st_uid != os.geteuid() or cache.stat().st_mode & 0o022:
+            raise ValueError('Cache de atualização inseguro')
     with ThreadPoolExecutor(max_workers=4) as downloads:
-        pending = {downloads.submit(request, RAW + "/" + ref + "/" + name): name for name in FILES}
+        pending = {downloads.submit(cached_file, name, ref, blobs[name]["sha"], cache): name for name in FILES}
         try:
             for count, future in enumerate(as_completed(pending), 1):
                 name = pending[future]
@@ -124,6 +154,8 @@ def stage_files(destination, ref, *, progress=True):
                     subprocess.run(["/usr/bin/bash", "-n", str(target)], check=True)
                 elif name.endswith(".py"):
                     compile(data, name, "exec")
+                if cache is not None:
+                    cache_file(cache, name, data)
                 if progress:
                     print(f'  [{count}/{len(FILES)}] Verificado: {Path(name).name}', flush=True)
         except Exception:
@@ -148,11 +180,13 @@ def main():
                 installed=json.loads(Path('/etc/callas-os/release.json').read_text())
             except FileNotFoundError:installed={}
             pending=Path('/var/lib/callas-os')/('update-pending-'+str(pwd.getpwnam(user).pw_uid))
-            if installed.get('release')==ref and installed.get('status')=='complete' and not pending.exists():
+            if installed.get('release')==ref and installed.get('status')=='complete' and not pending.exists() and Path('/usr/local/libexec/callas-update-state').is_file() and subprocess.run(
+                    ['/usr/bin/python3', '/usr/local/libexec/callas-update-state', '--intact', user],
+                    stdout=subprocess.DEVNULL).returncode == 0:
                 print('Callas OS Update: nenhuma nova atualização do projeto no GitHub.')
                 return 0
         with tempfile.TemporaryDirectory(prefix="callas-release-", dir="/var/tmp") as stage:
-            stage_files(stage, ref)
+            stage_files(stage, ref, cache=Path('/var/cache/callas-os/update-files'))
             env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "SUDO_USER": user,
                    "CALLAS_RELEASE_REF": ref, "CALLAS_RELEASE_DIR": stage}
             if os.environ.get("SSH_CONNECTION"):

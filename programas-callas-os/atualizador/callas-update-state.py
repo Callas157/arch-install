@@ -64,11 +64,51 @@ def state(user):
     try:return json.loads(state_file(user).read_text())
     except FileNotFoundError:return {}
 
+def installed_files(phase):
+    """Observe managed anchors without hashing user data or volatile directories."""
+    result = {}
+    for name in REQUIRED[phase]:
+        path = Path(name)
+        if path.is_symlink():
+            result[name] = {'link': os.readlink(path)}
+        elif path.is_file():
+            result[name] = {'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                            'mode': path.stat().st_mode & 0o777}
+        elif path.is_dir():
+            result[name] = {'directory': True}
+        else:
+            result[name] = None
+    if phase == 'security':
+        for folder in ('/usr/local/share/callas-os/baterias',
+                       '/usr/local/share/plasma/plasmoids/br.com.callas.ordem-baterias'):
+            tree = Path(folder)
+            result[folder] = {
+                str(p.relative_to(tree)): ('link:' + os.readlink(p) if p.is_symlink()
+                    else hashlib.sha256(p.read_bytes()).hexdigest())
+                for p in sorted(tree.rglob('*'))
+                if (p.is_file() or p.is_symlink()) and '__pycache__' not in p.parts
+            }
+    return result
+
+def intact(user):
+    data = state(user)
+    observed = data.get('_installed', {})
+    return all(phase in data and phase in observed
+               and observed[phase] == installed_files(phase)
+               and all(Path(p).exists() for p in REQUIRED[phase])
+               for phase in DEPENDENCIES)
+
+
 def needed(phase,stage,user,force=False):
-    return force or state(user).get(phase)!=fingerprint(phase,stage) or any(not Path(p).exists() for p in REQUIRED[phase])
+    data = state(user)
+    recorded = data.get('_installed', {})
+    return (force or data.get(phase) != fingerprint(phase,stage)
+            or phase not in recorded or recorded[phase] != installed_files(phase)
+            or any(not Path(p).exists() for p in REQUIRED[phase]))
 
 def complete(phase,stage,user):
     data=state(user);data[phase]=fingerprint(phase,stage)
+    data.setdefault('_installed', {})[phase]=installed_files(phase)
     atomic(state_file(user),(json.dumps(data,sort_keys=True)+'\n').encode())
 
 def blob(data):return hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
@@ -92,6 +132,8 @@ def asset(stage,relative,destination):
 def main():
     if os.geteuid()!=0:raise ValueError('Uso administrativo interno')
     args=sys.argv[1:]
+    if len(args)==2 and args[0]=='--intact':
+        return 0 if intact(args[1]) else 1
     if len(args)==4 and args[0]=='--asset':
         print('changed' if asset(Path(args[1]),args[2],args[3]) else 'unchanged');return 0
     if len(args) not in (4,5) or args[0] not in ('--needed','--complete'):raise ValueError('Argumentos inválidos')
