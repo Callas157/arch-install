@@ -2,7 +2,7 @@
   <img src="assets/logo/callas-plasma-icon.png" alt="Callas OS" width="150">
 </p>
 
-<h1 align="center">Callas OS v3.6.2</h1>
+<h1 align="center">Callas OS</h1>
 
 <p align="center">
   <strong>Seu próximo jogo começa aqui.</strong><br>
