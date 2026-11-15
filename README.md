@@ -2,7 +2,7 @@
   <img src="assets/logo/callas-plasma-icon.png" alt="Callas OS" width="150">
 </p>
 
-<h1 align="center">Callas OS v3.3.5</h1>
+<h1 align="center">Callas OS v3.6.2</h1>
 
 <p align="center">
   <strong>Seu próximo jogo começa aqui.</strong><br>
@@ -57,10 +57,12 @@ O instalador usa auxiliares compartilhados de `programas-callas-os/`, obtidos de
 | Navegar | Brave **(nativo, AUR)**, com Bonjourr e [SteamDB](https://steamdb.info/extension/) |
 | Gravar e editar | GPU Screen Recorder **(nativo)** · Shotcut **(nativo)** |
 | Ouvir música | Spotify **(nativo, AUR)** |
+| Assistir a vídeos | Haruna **(nativo)** |
 | Baixar arquivos | qBittorrent **(nativo)** |
 | Instalar e acompanhar apps | Bazaar **(Flatpak)** · Mission Center **(Flatpak)** |
 | Gerenciar arquivos | Dolphin **(nativo)** · Ark **(nativo)** |
 | Máquinas virtuais | GNOME Boxes **(nativo)**, com suporte a redirecionamento USB |
+| Baterias de periféricos | Callas Baterias **(aplicativo do projeto)**, para FreeWolf F75 e variantes Attack Shark suportadas |
 | Acessórios e sistema | Solaar **(nativo)** · Konsole **(nativo)** · Kate **(nativo)** · Spectacle **(nativo)** · Fastfetch **(nativo)** · NekoFetch **(nativo, script do projeto)** |
 
 **Nativo** indica instalação no próprio sistema; **Flatpak**, instalação pelo Flathub. Os nativos identificados com **AUR** são preparados a partir do Arch User Repository. Bonjourr e SteamDB são extensões do Brave.
@@ -74,6 +76,7 @@ O instalador usa auxiliares compartilhados de `programas-callas-os/`, obtidos de
 | Intel | Mesa e Vulkan Intel |
 | Logitech G920 | Driver nativo e troca automática do modo USB |
 | Acessórios Logitech compatíveis | Gerenciamento pelo Solaar |
+| FreeWolf F75 e variantes Attack Shark suportadas | Indicadores de bateria pelo Callas Baterias; suporte depende da identificação HID do dispositivo |
 | Rise Mode Aura Ice Black `aa88:8666` | Driver preparado quando o dispositivo é detectado |
 
 A NVIDIA **610.57.04** é mantida fixa pelo projeto. O sistema inclui os kernels **Linux e Linux LTS**, com opção de recuperação no GRUB. A compilação do driver precisa ser compatível com os kernels; a instalação não deve ser considerada concluída se essa verificação falhar. O funcionamento de cada periférico também depende do modelo e do jogo.
@@ -99,7 +102,9 @@ Explore também a [coleção de wallpapers](assets/wallpapers/).
 
 ## Atualizações
 
-Abra **Atualizador do sistema** no menu do KDE:
+Abra **Atualizador do sistema** no menu do KDE ou pelo atalho em **Documentos → Callas OS**. A interface gráfica mostra a saída e o progresso das operações; solicita autorização administrativa quando necessário.
+
+As funções disponíveis são:
 
 | Opção | O que faz |
 | --- | --- |
@@ -107,7 +112,7 @@ Abra **Atualizador do sistema** no menu do KDE:
 | **2. Atualizar aplicativos nativos** | Aplicativos compatíveis com a base já instalada; preserva kernels |
 | **3. Atualizar Discord** | Atualização dedicada do Discord; preserva kernels |
 | **4. Atualizar geral** | Arch, AUR, Flatpaks e Discord; único fluxo que autoriza atualizar kernels, com teste prévio da NVIDIA fixada e validação final de boot |
-| **5. Callas OS Update** | Configurações, ferramentas e correções do projeto; preserva kernels e a versão NVIDIA |
+| **5. Callas OS Update** | Configurações, ferramentas, correções e migrações de aplicativos previstas pelo projeto; preserva kernels, headers, NVIDIA e o agendamento existente |
 
 O agendamento padrão verifica atualizações gerais **mensais** e de aplicativos nativos **semanais**. Se o PC estiver desligado, a pendência é retomada numa verificação posterior.
 
@@ -117,6 +122,10 @@ Uma transação bloqueada pode continuar pendente nas próximas tentativas. O di
 
 Depois de uma atualização geral concluída com sucesso, você pode **reiniciar ou deixar para depois**. Logs e backups de configurações ficam em **Documentos → Callas OS**.
 
+O **Callas OS Update** compara o conteúdo da entrega no GitHub com os registros das etapas aplicadas e verifica os arquivos locais gerenciados de referência. Etapas iguais são preservadas; alterações ou arquivos ausentes tornam a etapa correspondente pendente. Downloads em cache só são reutilizados quando correspondem ao hash publicado no commit consultado.
+
+No **Callas Baterias**, atualizar apenas o instalador ou reparar atalhos preserva o aplicativo em execução. O serviço só é reiniciado quando mudam seus arquivos de execução ou sua unidade; preferências e início automático desativado são respeitados.
+
 Feche o Brave antes da opção 5 para permitir a aplicação das preferências visuais pendentes.
 
 **GNOME Boxes:** a partir da versão 3.3.3, a instalação nova inclui o pacote nativo. Em sistemas existentes, a opção **5. Callas OS Update** instala e verifica `gnome-boxes` antes de remover `org.gnome.Boxes` do sistema e do usuário que executou a atualização. Se a instalação nativa falhar, o Flatpak é preservado.
@@ -125,7 +134,7 @@ Antes da atualização, desligue as VMs e feche o Boxes. A remoção preserva os
 
 ---
 
-**Versão atual: 3.3.5** · [VERSION](programas-callas-os/atualizador/VERSION) · [Histórico de mudanças](programas-callas-os/atualizador/CHANGELOG.md)
+**Versão atual: 3.6.2** · [VERSION](programas-callas-os/atualizador/VERSION) · [Histórico de mudanças](programas-callas-os/atualizador/CHANGELOG.md)
 
 Projeto em desenvolvimento. Mantenha seus backups em dia.
 
