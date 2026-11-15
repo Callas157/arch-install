@@ -1,5 +1,14 @@
 # Histórico do Callas OS
 
+## 3.6.2 — 2026-11-15
+
+- Corrige a transição da 3.6.0 para a 3.6.1: uma alteração apenas no próprio instalador do Callas Baterias agora atualiza somente esse auxiliar. O pacote do aplicativo não mudou entre essas versões; reinstalar e reiniciar o serviço nesse caso era desnecessário.
+- Separa mudanças nos arquivos de execução, regras udev, atalhos e arquivos do perfil. Reinicia o serviço somente quando seus arquivos de execução ou unidade mudam; regras e perfil são reaplicados somente quando necessário. O log identifica os arquivos diferentes.
+- Cópias e gravações preservam arquivos cujo conteúdo e permissões já correspondem à entrega. Reparar um atalho não regrava o aplicativo nem reinicia o serviço; preferências e autostart desativado continuam preservados.
+- Compartilha a correção entre instalação limpa e Update, sem alterar o instalador principal, pacote do Baterias, kernel, NVIDIA ou agendamento.
+
+Validação: 257 testes offline executados, 256 aprovados e um opcional ignorado; sintaxe de 56 arquivos Python e 8 Bash conferida. Inclui testes da alteração isolada do instalador, reparo de atalho, preservação dos tempos dos arquivos e atualização real de código simulado com reinício somente nesse caso. Comparação somente leitura na máquina confirmou que apenas o auxiliar do instalador difere da nova entrega. Nenhuma implantação administrativa, reinício real do serviço ou instalação Arch limpa foi executada.
+
 ## 3.6.1 — 2026-11-15
 
 - Compara os arquivos globais e do perfil do Callas Baterias com a entrega verificada antes de implantar. Arquivos iguais são preservados sem reinstalação, recarga udev ou reinício do serviço, inclusive quando outro auxiliar da etapa de segurança mudou. Respeita o autostart desativado e preserva preferências.

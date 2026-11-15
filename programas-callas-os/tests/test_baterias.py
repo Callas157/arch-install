@@ -40,12 +40,90 @@ class BatteryDeploymentTests(unittest.TestCase):
         with patch.object(installer.pwd, 'getpwnam', return_value=account), \
              patch.object(installer.os, 'geteuid', return_value=0), \
              patch.object(installer, 'ensure_dependencies'), \
-             patch.object(installer, 'current', return_value=True), \
+             patch.object(installer, 'differences', return_value=[]), \
              patch.object(installer, 'deploy') as deploy, \
              patch.object(installer.subprocess, 'run') as run:
             installer.install_system('fixture', SOURCE / 'callas-baterias.tar.gz')
             deploy.assert_not_called()
             run.assert_not_called()
+
+    def test_installer_only_change_does_not_reinstall_identical_payload(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as tmp:
+            system = Path(tmp) / 'system'; home = Path(tmp) / 'home'
+            archive = SOURCE / 'callas-baterias.tar.gz'
+            installer.deploy(archive, system)
+            installer.configure_user(home, system)
+            helper = system / installer.SELF.lstrip('/')
+            helper.write_text('# previous installer version\n')
+            app = system / installer.APP.relative_to('/') / 'callas_baterias.py'
+            before = app.stat().st_mtime_ns
+            account = SimpleNamespace(pw_uid=1000, pw_dir=str(home))
+            with patch.object(installer.pwd, 'getpwnam', return_value=account), \
+                 patch.object(installer.os, 'geteuid', return_value=0), \
+                 patch.object(installer, 'ensure_dependencies'), \
+                 patch.object(installer.subprocess, 'run') as run:
+                installer.install_system('fixture', archive, system=system)
+                run.assert_not_called()
+            self.assertEqual(app.stat().st_mtime_ns, before)
+            self.assertEqual(helper.read_bytes(), Path(installer.__file__).read_bytes())
+
+    def test_shortcut_repair_does_not_touch_app_or_restart_service(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as tmp:
+            system = Path(tmp) / 'system'; home = Path(tmp) / 'home'
+            archive = SOURCE / 'callas-baterias.tar.gz'
+            installer.deploy(archive, system)
+            installer.configure_user(home, system)
+            shortcut = system / 'usr/local/share/applications/callas-baterias.desktop'
+            shortcut.unlink()
+            app = system / installer.APP.relative_to('/') / 'callas_baterias.py'
+            before = app.stat().st_mtime_ns
+            account = SimpleNamespace(pw_uid=1000, pw_dir=str(home))
+            with patch.object(installer.pwd, 'getpwnam', return_value=account), \
+                 patch.object(installer.os, 'geteuid', return_value=0), \
+                 patch.object(installer, 'ensure_dependencies'), \
+                 patch.object(installer.subprocess, 'run') as run:
+                installer.install_system('fixture', archive, system=system)
+                run.assert_not_called()
+            self.assertEqual(shortcut.read_text(), installer.DESKTOP)
+            self.assertEqual(app.stat().st_mtime_ns, before)
+
+    def test_changed_runtime_restarts_service_and_keeps_udev_untouched(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as tmp:
+            system = Path(tmp) / 'system'; home = Path(tmp) / 'home'
+            archive = SOURCE / 'callas-baterias.tar.gz'
+            installer.deploy(archive, system)
+            installer.configure_user(home, system)
+            app = system / installer.APP.relative_to('/') / 'callas_baterias.py'
+            app.write_text('# outdated runtime\n')
+            account = SimpleNamespace(pw_uid=1000, pw_dir=str(home))
+            original_exists = Path.exists
+            def exists(path):
+                return True if str(path) == '/run/user/1000/bus' else original_exists(path)
+            with patch.object(installer.pwd, 'getpwnam', return_value=account), \
+                 patch.object(installer.os, 'geteuid', return_value=0), \
+                 patch.object(installer, 'ensure_dependencies'), \
+                 patch.object(Path, 'exists', exists), \
+                 patch.object(installer.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)) as run:
+                installer.install_system('fixture', archive, system=system)
+            calls = [call.args[0] for call in run.call_args_list]
+            self.assertTrue(any(command[-2:] == ['restart', 'callas-baterias.service'] for command in calls))
+            self.assertFalse(any(command[0] == 'udevadm' for command in calls))
+            self.assertEqual(app.read_bytes(), (SOURCE / 'app/callas_baterias.py').read_bytes())
+
+    def test_repeat_deployment_preserves_unchanged_file_timestamps(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            system = Path(tmp) / 'system'; home = Path(tmp) / 'home'
+            archive = SOURCE / 'callas-baterias.tar.gz'
+            installer.deploy(archive, system)
+            installer.configure_user(home, system)
+            files = [p for base in (system, home) for p in base.rglob('*') if p.is_file()]
+            before = {p: p.stat().st_mtime_ns for p in files}
+            installer.deploy(archive, system)
+            installer.configure_user(home, system)
+            self.assertEqual(before, {p: p.stat().st_mtime_ns for p in files})
 
     def test_dependencies_use_only_guarded_target_and_propagate_failure(self):
         calls = []

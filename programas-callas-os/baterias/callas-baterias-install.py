@@ -59,8 +59,21 @@ def write(path, content, mode=0o644):
     path.parent.mkdir(parents=True, exist_ok=True)
     # Do not overwrite through a link, including a user-created launcher link.
     if path.is_symlink(): path.unlink()
-    path.write_text(content)
+    data = content.encode()
+    if path.is_file() and path.read_bytes() == data:
+        if path.stat().st_mode & 0o777 != mode: path.chmod(mode)
+        return
+    path.write_bytes(data)
     path.chmod(mode)
+
+
+def copy_changed(source, destination):
+    source, destination = Path(source), Path(destination)
+    if destination.is_symlink(): destination.unlink()
+    if not destination.is_file() or destination.read_bytes() != source.read_bytes():
+        shutil.copyfile(source, destination)
+    if destination.stat().st_mode & 0o777 != 0o644: destination.chmod(0o644)
+    return str(destination)
 
 
 def ensure_dependencies():
@@ -111,7 +124,7 @@ def deploy(archive, system=Path('/')):
         for src, target in ((source / 'app', system / APP.relative_to('/')),
                             (source / 'painel', system / HELPER.relative_to('/'))):
             public_directory(target)
-            shutil.copytree(src, target, dirs_exist_ok=True)
+            shutil.copytree(src, target, dirs_exist_ok=True, copy_function=copy_changed)
             target.chmod(0o755)
             for path in target.rglob('*'): path.chmod(0o755 if path.is_dir() else 0o644)
         for directory in ('etc/systemd/user', 'etc/xdg/autostart',
@@ -136,7 +149,7 @@ def configure_user(home, system=Path('/')):
     write(home / '.local/bin/callas-baterias', LAUNCHER, 0o755)
     target = home / '.local/share/plasma/plasmoids/br.com.callas.ordem-baterias'
     if target.is_symlink(): target.unlink()
-    shutil.copytree(system / HELPER.relative_to('/'), target, dirs_exist_ok=True)
+    shutil.copytree(system / HELPER.relative_to('/'), target, dirs_exist_ok=True, copy_function=copy_changed)
     for name in ('attackshark-tray', 'freewolf-battery'):
         write(home / '.config/autostart' / (name + '.desktop'),
               '[Desktop Entry]\nType=Application\nName=Indicador anterior\nHidden=true\n')
@@ -158,7 +171,7 @@ def arrange_tray():
     print('Aviso: painel KDE indisponível; a ordem será tentada na próxima inicialização.')
 
 
-def current(archive, home, system=Path('/')):
+def differences(archive, home, system=Path('/')):
     """Compare generated system/profile files with this verified release.
 
     No receipt is needed: this also recognizes installations made by older
@@ -172,6 +185,7 @@ def current(archive, home, system=Path('/')):
         override = Path(home) / '.config/autostart/callas-baterias.desktop'
         if autostart_disabled(override):
             write(profile / '.config/autostart/callas-baterias.desktop', DESKTOP + 'Hidden=true\n')
+        changed = []
         for source, destination in ((expected, system), (profile, Path(home))):
             for path in source.rglob('*'):
                 target = destination / path.relative_to(source)
@@ -179,32 +193,56 @@ def current(archive, home, system=Path('/')):
                     if (target.is_symlink() or not target.is_file()
                             or target.read_bytes() != path.read_bytes()
                             or target.stat().st_mode & 0o777 != path.stat().st_mode & 0o777):
-                        return False
-        return True
+                        changed.append(target)
+        return changed
 
 
-def install_system(user, archive):
+def current(archive, home, system=Path('/')):
+    return not differences(archive, home, system)
+
+
+def install_system(user, archive, *, system=Path('/')):
     account = pwd.getpwnam(user)
     if os.geteuid() != 0 or account.pw_uid == 0: raise ValueError('Requer root e usuário normal')
     ensure_dependencies()  # Guarded transaction first; never falls back to a general upgrade.
-    if current(archive, Path(account.pw_dir)):
+    home = Path(account.pw_dir)
+    changed = differences(archive, home, system)
+    if not changed:
         print('Callas Baterias já corresponde ao repositório; preservado sem reinstalação ou reinício.')
         return
-    deploy(archive)
+    print('Callas Baterias: arquivos diferentes: ' + ', '.join(str(p) for p in changed))
+    helper = system / SELF.lstrip('/')
+    if changed == [helper]:
+        write(helper, Path(__file__).read_text(), 0o755)
+        print('Auxiliar de instalação do Baterias atualizado; aplicativo e serviço preservados.')
+        return
+    runtime_changed = any(
+        path.is_relative_to(system / APP.relative_to('/')) or path in (
+            system / 'etc/systemd/user/callas-baterias.service',
+            system / 'usr/local/bin/callas-baterias',
+            home / '.config/systemd/user/callas-baterias.service',
+            home / '.local/bin/callas-baterias') for path in changed)
+    rules_changed = system / 'etc/udev/rules.d/71-callas-baterias.rules' in changed
+    profile_changed = any(path.is_relative_to(home) or
+                          path.is_relative_to(system / HELPER.relative_to('/')) for path in changed)
+    deploy(archive, system)
     env = ['env', '-i', 'PATH=/usr/bin:/bin', 'HOME=' + account.pw_dir,
            'USER=' + user, 'LOGNAME=' + user, 'LANG=C.UTF-8',
            'XDG_RUNTIME_DIR=/run/user/' + str(account.pw_uid),
            'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/' + str(account.pw_uid) + '/bus']
     run_user = ['runuser', '-u', user, '--', *env]
-    subprocess.run([*run_user, '/usr/bin/python3', SELF, '--configure-user'], check=True)
-    subprocess.run(['udevadm', 'control', '--reload-rules'], check=False)
+    if profile_changed:
+        subprocess.run([*run_user, '/usr/bin/python3', SELF, '--configure-user'], check=True)
+    if rules_changed:
+        subprocess.run(['udevadm', 'control', '--reload-rules'], check=False)
     # Only these vendor HID interfaces are retriggered, without resetting USB devices.
-    for product in ('0003:1A2C:8FFF.*', '0003:1D57:FA60.*', '0003:1D57:FA61.*'):
-        for device in Path('/sys/bus/hid/devices').glob(product):
-            for node in device.glob('hidraw/hidraw*'):
-                subprocess.run(['udevadm', 'trigger', '--action=change', str(node.resolve())], check=False)
+    if rules_changed:
+        for product in ('0003:1A2C:8FFF.*', '0003:1D57:FA60.*', '0003:1D57:FA61.*'):
+            for device in Path('/sys/bus/hid/devices').glob(product):
+                for node in device.glob('hidraw/hidraw*'):
+                    subprocess.run(['udevadm', 'trigger', '--action=change', str(node.resolve())], check=False)
     # No session exists inside a clean-install chroot. Autostart handles first login.
-    if Path('/run/user/' + str(account.pw_uid) + '/bus').exists():
+    if runtime_changed and Path('/run/user/' + str(account.pw_uid) + '/bus').exists():
         ctl = [*run_user, 'systemctl', '--user']
         subprocess.run([*ctl, 'daemon-reload'], check=True)
         for old in ('attackshark-tray.service', 'freewolf-battery.service'):
@@ -212,7 +250,10 @@ def install_system(user, archive):
         active = subprocess.run([*ctl, 'is-active', '--quiet', 'callas-baterias.service']).returncode == 0
         if active or not autostart_disabled(Path(account.pw_dir) / '.config/autostart/callas-baterias.desktop'):
             subprocess.run([*ctl, 'restart', 'callas-baterias.service'], check=True)
-    print('Callas Baterias instalado; preferências preservadas e início automático configurado.')
+    if runtime_changed:
+        print('Callas Baterias: arquivos de execução atualizados; preferências preservadas.')
+    else:
+        print('Callas Baterias: integração reparada; aplicativo preservado sem reinício.')
 
 
 def main():
