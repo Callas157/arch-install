@@ -1,0 +1,79 @@
+"""Pure helpers for the Codex app-server protocol."""
+import json
+import re
+
+
+class JsonLines:
+    def __init__(self):
+        self.buffer = bytearray()
+
+    def feed(self, data):
+        self.buffer.extend(data)
+        messages = []
+        while b'\n' in self.buffer:
+            line, _, rest = self.buffer.partition(b'\n')
+            self.buffer = bytearray(rest)
+            if line.strip():
+                value = json.loads(line)
+                if not isinstance(value, dict):
+                    raise ValueError('Resposta incompatível do Codex.')
+                messages.append(value)
+        if len(self.buffer) > 32 * 1024 * 1024:
+            self.buffer.clear()
+            raise ValueError('Resposta do Codex excedeu o limite de leitura.')
+        return messages
+
+
+def thread_params(cwd):
+    return {'approvalPolicy': 'never', 'sandbox': 'danger-full-access', 'cwd': cwd}
+
+
+def turn_params(thread_id, text, cwd, images=()):
+    return {'threadId': thread_id, 'input': [{'type': 'text', 'text': text}] +
+            [{'type': 'localImage', 'path': str(path)} for path in images],
+            'cwd': cwd, 'approvalPolicy': 'never',
+            'sandboxPolicy': {'type': 'dangerFullAccess'}}
+
+
+def messages_from_thread(thread):
+    messages = []
+    for turn in thread.get('turns', []):
+        for item in turn.get('items', []):
+            kind = item.get('type')
+            text, role = '', ''
+            images = []
+            if kind == 'userMessage':
+                role = 'user'
+                parts = []
+                for content in item.get('content', []):
+                    if content.get('type') == 'localImage' and content.get('path'):
+                        images.append(content['path'])
+                    else:
+                        parts.append(content.get('text', '[Anexo]'))
+                text = '\n'.join(parts)
+            elif kind == 'agentMessage':
+                role, text = 'assistant', item.get('text', '')
+            elif kind == 'commandExecution':
+                role = 'tool'
+                text = item.get('command', '') + '\n\n' + (item.get('aggregatedOutput') or '')
+            elif kind == 'fileChange':
+                role = 'tool'
+                text = 'Arquivos alterados:\n' + '\n'.join(c.get('path', '') for c in item.get('changes', []))
+            if (text or images) and role:
+                message = {'id': item.get('id', ''), 'role': role, 'text': text}
+                if images: message['images'] = images
+                messages.append(message)
+    return messages
+
+
+def safe_markdown(text):
+    # QTextDocument must not fetch remote images or render arbitrary HTML.
+    text = re.sub(r'!\[[^\]]*\]\([^)]*\)', '[Imagem]', text)
+    return text.replace('<', '&lt;').replace('>', '&gt;')
+
+
+def check_full_access(result):
+    sandbox = result.get('sandbox', {})
+    kind = sandbox.get('type') if isinstance(sandbox, dict) else sandbox
+    if result.get('approvalPolicy') != 'never' or kind not in ('dangerFullAccess', 'danger-full-access'):
+        raise ValueError('O Codex não confirmou o acesso completo. Confira as políticas da instalação.')

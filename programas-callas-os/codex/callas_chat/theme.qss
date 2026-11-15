@@ -1,0 +1,51 @@
+QWidget { background: #10151e; color: #e8edf5; font-family: "Noto Sans"; }
+QMainWindow, QDialog { background: #10151e; }
+QFrame#sidebar { background: #0b1018; border-right: 1px solid #222d3d; }
+QFrame#sidebar QLabel, QFrame#sidebar QWidget { background: transparent; }
+QLabel#heading { font-size: 17pt; font-weight: 600; }
+QLabel#muted, QLabel#footer { color: #93a1b5; font-size: 10pt; }
+QLabel#footer { font-size: 9pt; }
+QLabel#roleLabel { color: #91a3bd; font-size: 9pt; font-weight: 600; letter-spacing: 1px; }
+QLabel#accessBadge { color: #9de8c8; background: #153127; border: 1px solid #285241; padding: 3px 6px; border-radius: 6px; font-size: 10pt; }
+QLabel#errorBox { background: #35242a; color: #ffd5d9; border: 1px solid #71414b; border-radius: 10px; padding: 12px; }
+QPushButton { background: #1a2433; border: 1px solid #2b3a50; border-radius: 9px; padding: 9px 13px; text-align: center; }
+QPushButton:hover { background: #233249; border-color: #486484; }
+QPushButton:pressed { background: #30445f; }
+QPushButton:disabled { color: #69768a; background: #171e29; border-color: #232d3b; }
+QPushButton#primaryButton { background: #6b7cf3; color: white; border: 1px solid #8594ff; font-weight: 600; }
+QPushButton#primaryButton:hover { background: #8190ff; }
+QPushButton#primaryButton:disabled { background: #323a60; color: #9ca6c8; border-color: #424d77; }
+QPushButton#quietButton, QPushButton#folderButton { background: transparent; border-color: transparent; color: #9fb1ca; font-size: 10pt; padding: 5px 9px; }
+QPushButton#quietButton:hover, QPushButton#folderButton:hover { background: #1c2839; color: #e2ebff; }
+QPushButton[recording="true"] { background: #662c3b; border-color: #b56378; color: white; }
+QLineEdit { background: #141e2c; border: 1px solid #2a384e; border-radius: 8px; padding: 10px; selection-background-color: #5667ca; }
+QLineEdit:focus { border-color: #8695ff; }
+QListWidget { background: transparent; border: none; outline: none; }
+QListWidget::item { padding: 8px; border-radius: 8px; margin-bottom: 4px; color: #b9c5d8; }
+QListWidget::item:hover { background: #182334; }
+QListWidget::item:selected { background: #25334e; color: white; }
+QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }
+QScrollBar:vertical { background: transparent; width: 8px; margin: 0; }
+QScrollBar::handle:vertical { background: #344258; min-height: 30px; border-radius: 4px; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
+QFrame#messageCard { background: transparent; border: none; }
+QFrame#userCard { background: transparent; border: none; }
+QFrame#messageCard QLabel, QFrame#userCard QLabel { background: transparent; }
+QTextBrowser { background: transparent; border: none; selection-background-color: #485b97; padding: 0; }
+QFrame#welcomeCard { background: #151f2f; border: 1px solid #293a56; border-radius: 18px; }
+QFrame#welcomeCard QLabel { background: transparent; }
+QLabel#welcomeTitle { font-size: 25pt; font-weight: 600; margin-bottom: 8px; }
+QFrame#welcomeCard QPushButton { text-align: left; padding: 14px; }
+QFrame#composer { background: #172131; border: 1px solid #354965; border-radius: 16px; }
+QPlainTextEdit { background: transparent; border: none; padding: 8px; selection-background-color: #4a5daa; }
+QSpinBox { background: #1a2433; border: 1px solid #354965; border-radius: 7px; padding: 6px; }
+QToolTip { background: #24334a; color: white; border: 1px solid #526783; padding: 6px; }
+
+QFrame#messageCard QPushButton#quietButton, QFrame#userCard QPushButton#quietButton { font-size: 9pt; padding: 3px 6px; text-align: left; }
+QLabel#heading { font-size: 13pt; }
+
+QLabel#recordingCaption { color: #edb4c0; font-size: 10pt; font-weight: 600; background: transparent; }
+QLabel#recordingTime { color: #c0cbe1; font-size: 10pt; font-family: "Noto Sans Mono"; background: transparent; }
+
+QWidget#recorderPanel, QWidget#recordingWaveform, QStackedWidget#composerStack { background: transparent; border: none; }
