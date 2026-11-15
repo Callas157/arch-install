@@ -137,9 +137,10 @@ class GameLogTests(unittest.TestCase):
         if not shutil.which('node'):self.skipTest('node unavailable')
         script='''const events=[];
 function signal(){return {f:[],connect(cb){this.f.push(cb)},emit(){this.f.forEach(cb=>cb())}}}
-function win(){return {pid:5162,resourceClass:'steam_app_2183900',caption:'Space Marine 2',normalWindow:true,transient:false,unresponsive:false,unresponsiveChanged:signal()}}
+let nextId=0;
+function win(){return {internalId:'window-'+(++nextId),pid:5162,resourceClass:'steam_app_2183900',caption:'Space Marine 2',normalWindow:true,transient:false,unresponsive:false,unresponsiveChanged:signal()}}
 const a=win(),b=win();b.normalWindow=false;
-const workspace={windowAdded:signal(),stackingOrder:[a,b]};
+const workspace={windowAdded:signal(),windowRemoved:signal(),stackingOrder:[a,b]};
 function callDBus(...args){events.push(JSON.parse(args.at(-1)))}
 '''+games.kwin_script()+'''
 if(events.length)throw Error('normal game reported');
@@ -153,6 +154,27 @@ if(events.length!==2)throw Error('new window ignored');
         self.assertEqual(result.returncode,0,result.stderr)
         for forbidden in ('sendClientToScreen','frameGeometry','activeWindow','kill','mouse'):
             self.assertNotIn(forbidden,games.kwin_script())
+
+    def test_uuid_tracking_avoids_weak_sets_and_clears_closed_windows(self):
+        if not shutil.which('node'):self.skipTest('node unavailable')
+        harness='''const events=[];
+function signal(){return {f:[],connect(cb){this.f.push(cb)},emit(...a){this.f.forEach(cb=>cb(...a))}}}
+function win(id){return {internalId:id,pid:5162,resourceClass:'steam_app_2183900',caption:'Game',normalWindow:true,transient:false,unresponsive:false,unresponsiveChanged:signal()}}
+const workspace={windowAdded:signal(),windowRemoved:signal(),windowList:()=>[]};
+function callDBus(...args){events.push(args)}
+function WeakSet(){throw Error('unsafe native WeakSet')}
+'''+games.kwin_script()+'''
+const a=win('same-id');workspace.windowAdded.emit(a);workspace.windowAdded.emit(a);
+const wrapper=win('same-id');workspace.windowAdded.emit(wrapper);
+if(a.unresponsiveChanged.f.length!==1||wrapper.unresponsiveChanged.f.length)throw Error('duplicate UUID observed');
+a.unresponsive=true;a.unresponsiveChanged.emit();a.unresponsiveChanged.emit();
+if(events.length!==1)throw Error('duplicate hang report');
+workspace.windowRemoved.emit(a);
+const b=win('same-id');workspace.windowAdded.emit(b);b.unresponsive=true;b.unresponsiveChanged.emit();
+if(events.length!==2||b.unresponsiveChanged.f.length!==1)throw Error('closed UUID retained');
+'''
+        result=subprocess.run(['node','-e',harness],capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
 
     def test_service_installation_enables_only_target_service_and_preserves_policy(self):
         for chroot in (True,False):

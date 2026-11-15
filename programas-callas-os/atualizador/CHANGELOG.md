@@ -1,5 +1,14 @@
 # Histórico do Callas OS
 
+## 3.4.3 — 2026-11-14
+
+- Evita o caminho de queda identificado em `WeakSet.has()` do Qt ao abrir janelas: os scripts Callas de diagnóstico de jogos e de posicionamento dos diálogos Steam usam tabelas indexadas pelo UUID da janela, sem WeakSet/WeakMap de objetos nativos do KWin.
+- Limpa os registros quando a janela é removida, preservando observação única, diagnóstico único por janela e limite de reposicionamento dos diálogos. Mantém as demais janelas e jogos sem intervenção do monitor de diagnóstico.
+- Distribui os mesmos auxiliares pelo estágio verificado compartilhado da instalação limpa e da opção 5. O arquivo principal do instalador permanece intacto; a atualização recarrega os auxiliares na sessão existente sem reiniciar o KDE. Não altera pacotes, kernel, NVIDIA ou agendamento.
+- Corrige somente a simulação do teste de instalação completa: imagens de kernel artificiais passam a coincidir e a leitura de initramfs artificial é simulada, sem depender da ferramenta real do host. As verificações de boot de produção permanecem intactas.
+
+Validação: 225 testes offline aprovados e um ignorado por namespace indisponível; sintaxe de 37 arquivos Python e 9 Bash conferida. Regressões dos dois scripts executadas antes e depois da correção, incluindo UUID repetido, remoção de janela, diagnóstico único e limite de movimentos. O estágio real do instalador foi exercitado com transporte HTTP simulado e integridade dos arquivos conferida; revisão independente sem achados bloqueantes. A corrupção original do Qt não foi reproduzida; estes testes não garantem ausência futura de falhas do compositor, boot real ou funcionamento de todos os jogos/monitores. Detalhes em `diagnosticos/2026-11-14-kwin-weakset.md`.
+
 ## 3.4.2 — 2026-11-14
 
 - Corrige a inicialização automática de Steam e Discord na instalação limpa: o bloqueio dura todo o primeiro boot, inclusive chamadas repetidas e saída/entrada na sessão KDE sem reiniciar. Ambos continuam disponíveis para abertura manual pelo menu.

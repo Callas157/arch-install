@@ -41,12 +41,32 @@ class SteamDialogTests(unittest.TestCase):
         harness='''const moves=[],diagnostics=[];
 function signal(){return {listeners:[],connect(cb){this.listeners.push(cb)},emit(...args){this.listeners.forEach(cb=>cb(...args))}}}
 const primary={name:'DP-3'},secondary={name:'HDMI-A-1'};
-function window(extra={}){return Object.assign({resourceClass:'steam',windowRole:'',caption:'Steam',fullScreen:false,output:secondary,windowClassChanged:signal(),windowRoleChanged:signal(),captionChanged:signal(),outputChanged:signal()},extra)}
-const workspace={screenOrder:[primary,secondary],windowAdded:signal(),stackingOrder:[],sendClientToScreen(w,o){moves.push(w);w.output=o;w.outputChanged.emit()}};
+let nextId=0;
+function window(extra={}){return Object.assign({internalId:'window-'+(++nextId),resourceClass:'steam',windowRole:'',caption:'Steam',fullScreen:false,output:secondary,windowClassChanged:signal(),windowRoleChanged:signal(),captionChanged:signal(),outputChanged:signal()},extra)}
+const workspace={screenOrder:[primary,secondary],windowAdded:signal(),windowRemoved:signal(),stackingOrder:[],sendClientToScreen(w,o){moves.push(w);w.output=o;w.outputChanged.emit()}};
 const print=(message)=>diagnostics.push(message);
 '''+scenario.split('// LOAD')[0]+'\n'+win.steam_dialog_script(preferred)+'\n'+scenario.split('// LOAD')[1]
         result=subprocess.run(['node','-e',harness],capture_output=True,text=True)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+    def test_uuid_tracking_avoids_weak_collections_and_clears_closed_window_state(self):
+        self.run_js('''function WeakSet(){throw Error('unsafe native WeakSet')}
+function WeakMap(){throw Error('unsafe native WeakMap')}
+// LOAD
+const popup=window({internalId:'same-id',caption:'Launching game'});
+workspace.windowAdded.emit(popup);workspace.windowAdded.emit(popup);
+const wrapper=window({internalId:'same-id',caption:'Launching game'});
+workspace.windowAdded.emit(wrapper);
+if(moves.length!==1||popup.captionChanged.listeners.length!==1||wrapper.captionChanged.listeners.length)throw Error('duplicate UUID observed');
+// Exhaust the bounded move counter, then remove the window. All three tables
+// must be cleared so a later window can be observed and moved again.
+for(let i=0;i<12;i++){popup.output=secondary;popup.outputChanged.emit()}
+if(moves.length!==8)throw Error('unbounded move loop');
+workspace.windowRemoved.emit(popup);
+const replacement=window({internalId:'same-id',caption:'Launching game'});
+workspace.windowAdded.emit(replacement);
+if(moves.length!==9||replacement.captionChanged.listeners.length!==1)throw Error('closed UUID retained');
+if(diagnostics.length!==2)throw Error('report state retained');
+''')
     def test_existing_portuguese_launch_popup_is_routed_and_main_windows_are_preserved(self):
         self.run_js('''const popup=window({caption:'Iniciando o jogo'}),library=window(),game=window({resourceClass:'steam_app_2183900',caption:'Launching game'}),discord=window({resourceClass:'discord',caption:'Iniciando o jogo'});
 workspace.stackingOrder=[popup,library,game,discord];

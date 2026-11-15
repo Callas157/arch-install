@@ -309,9 +309,10 @@ def backup_rules(path):
 def steam_dialog_script(output_name):
     """Route Steam's launch/progress dialogs only; never route game windows."""
     return r'''const preferredOutput = OUTPUT_NAME;
-const watched = new WeakSet();
-const moved = new WeakMap();
-const reported = new WeakSet();
+// Store UUID strings; clear state as soon as a window is removed.
+const watched = Object.create(null);
+const moved = Object.create(null);
+const reported = Object.create(null);
 function steamClient(w) {
     const cls = String(w.resourceClass || "").toLowerCase();
     return cls === "steam" || cls === "steamwebhelper" || cls === "com.valvesoftware.steam";
@@ -326,8 +327,8 @@ function launchDialog(w) {
 function route(w) {
     try {
         if (!w || !steamClient(w)) return;
-        if (!reported.has(w)) {
-            reported.add(w);
+        if (!reported[String(w.internalId)]) {
+            reported[String(w.internalId)] = true;
             print("CallasSteamDialog: " + JSON.stringify({app:String(w.resourceClass), role:String(w.windowRole || ""), title:String(w.captionNormal || w.caption || "").slice(0,160)}));
         }
         if (!launchDialog(w)) return;
@@ -340,23 +341,27 @@ function route(w) {
         // to its first active output if the saved connector was unplugged.
         if (!target && outputs.length) target = outputs[0];
         if (!target || (w.output && String(w.output.name) === String(target.name))) return;
-        const count = moved.get(w) || 0;
+        const count = moved[String(w.internalId)] || 0;
         if (count >= 8) return; // Bound misbehaving-client reposition loops.
-        moved.set(w,count+1);
+        moved[String(w.internalId)] = count+1;
         workspace.sendClientToScreen(w,target);
     } catch (error) {
         print("CallasSteamDialog: erro ao posicionar diálogo: " + String(error));
     }
 }
 function watch(w) {
-    if (!w || watched.has(w)) return;
-    watched.add(w);
+    if (!w || !w.internalId || watched[String(w.internalId)]) return;
+    watched[String(w.internalId)] = true;
     // Steam/CEF can set identity, caption and placement after windowAdded.
     [w.windowClassChanged,w.windowRoleChanged,w.captionChanged,w.outputChanged].forEach(function(signal) {
         if (signal && typeof signal.connect === "function") signal.connect(function(){route(w);});
     });
     route(w);
 }
+workspace.windowRemoved.connect(function(w) {
+    const id = String(w.internalId);
+    delete watched[id]; delete moved[id]; delete reported[id];
+});
 workspace.windowAdded.connect(watch);
 const existing = typeof workspace.windowList === "function" ? workspace.windowList() : workspace.stackingOrder;
 (existing || []).forEach(watch);

@@ -82,6 +82,7 @@ exec 3>&1 4>&2
             for folder, package in (('main','linux'),('lts','linux-lts')):
                 (base/'modules'/folder/'pkgbase').write_text(package)
                 (base/'modules'/folder/'vmlinuz').write_text('kernel')
+                (base/'boot'/('vmlinuz-'+package)).write_text('kernel')
             checker=(UPDATER/'callas-kernel-check.sh').read_text().replace('/usr/lib/modules','/callas-test-modules').replace('export PATH=/usr/bin:/bin','export PATH=/callas-test-bin:/usr/bin:/bin')
             (base/'local/libexec/callas-kernel-check').write_text(checker)
             (base/'local/libexec/callas-kernel-check').chmod(0o755)
@@ -94,6 +95,7 @@ name=Path(sys.argv[0]).name;a=sys.argv[1:]
 with open('/var/log/events','a') as f: f.write(name+' '+repr(a)+'\\n')
 if name=='runuser': os.execvp(a[a.index('--')+1],a[a.index('--')+1:])
 if name=='findmnt': print('vfat' if 'FSTYPE' in a else 'EFI-UUID')
+elif name=='lsinitcpio': print('usr/lib/modules/'+('lts' if a[-1].endswith('linux-lts.img') else 'main')+'/kernel/fixture.ko')
 elif name=='dkms':
  if a not in (['autoinstall','-k','main'],['autoinstall','-k','lts']):
   print('Missing ISO headers: DKMS targeted the running ISO kernel',file=sys.stderr);sys.exit(1)
@@ -110,7 +112,7 @@ elif name=='kwriteconfig6':
  p=Path(os.environ['HOME'])/'.config'/a[a.index('--file')+1];p.parent.mkdir(parents=True,exist_ok=True)
  with p.open('a') as f: f.write(' '.join(a)+'\\n')
 '''
-            for command in ('pacman','pacman-key','locale-gen','hwclock','visudo','chown','systemctl','udevadm','runuser','flatpak','findmnt','grub-mkconfig','grub-install','grub-script-check','plymouth-set-default-theme','mkinitcpio','modinfo','dkms','mountpoint','curl','gpg','xdg-user-dirs-update','plasma-apply-lookandfeel','kwriteconfig6','kreadconfig6','steam','discord','solaar','dbus-run-session'):
+            for command in ('pacman','pacman-key','locale-gen','hwclock','visudo','chown','systemctl','udevadm','runuser','flatpak','findmnt','grub-mkconfig','grub-install','grub-script-check','plymouth-set-default-theme','mkinitcpio','lsinitcpio','modinfo','dkms','mountpoint','curl','gpg','xdg-user-dirs-update','plasma-apply-lookandfeel','kwriteconfig6','kreadconfig6','steam','discord','solaar','dbus-run-session'):
                 path=base/'fakebin'/command;path.write_text(fake);path.chmod(0o755)
             (base/'fakebin/python').symlink_to('/usr/bin/python3')
             (base/'fakebin/awk').symlink_to('/usr/bin/mawk')

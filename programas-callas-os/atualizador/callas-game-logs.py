@@ -280,19 +280,24 @@ def watch_system():
 
 
 def kwin_script():
-    return r'''const watched = new WeakSet(), reported = new WeakSet();
+    return r'''// Store UUID strings, never native QObject wrappers in weak collections.
+const watched = Object.create(null), reported = Object.create(null);
 function observe(w) {
-    if (watched.has(w)) return;
-    watched.add(w);
+    if (!w || !w.internalId || watched[String(w.internalId)]) return;
+    watched[String(w.internalId)] = true;
     function report() {
-        if (!w.unresponsive || !w.normalWindow || w.transient || reported.has(w)) return;
-        reported.add(w);
+        if (!w.unresponsive || !w.normalWindow || w.transient || reported[String(w.internalId)]) return;
+        reported[String(w.internalId)] = true;
         callDBus("io.github.Callas157.GameLogs", "/GameLogs", "io.github.Callas157.GameLogs", "Report",
             JSON.stringify({pid:Number(w.pid),class:String(w.resourceClass||""),title:String(w.caption||"").slice(0,160)}));
     }
     if (w.unresponsiveChanged) w.unresponsiveChanged.connect(report);
     report();
 }
+workspace.windowRemoved.connect(function(w) {
+    const id = String(w.internalId);
+    delete watched[id]; delete reported[id];
+});
 workspace.windowAdded.connect(observe);
 const windows = typeof workspace.windowList === "function" ? workspace.windowList() : workspace.stackingOrder;
 windows.forEach(observe);
