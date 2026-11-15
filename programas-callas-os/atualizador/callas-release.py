@@ -19,6 +19,8 @@ import urllib.request
 API = "https://api.github.com/repos/Callas157/arch-install"
 RAW = "https://raw.githubusercontent.com/Callas157/arch-install"
 FILES = (
+    "programas-callas-os/atualizador/callas-update-gui.py",
+    "programas-callas-os/atualizador/callas-update-gui-install.py",
     "programas-callas-os/baterias/callas-baterias-install.py",
     "programas-callas-os/baterias/callas-baterias.tar.gz",
     "programas-callas-os/atualizador/VERSION",

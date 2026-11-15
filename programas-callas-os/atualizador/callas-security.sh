@@ -344,6 +344,9 @@ SPOTIFY_HOOK
   else
     /usr/local/libexec/put-update --instalar-para "$usuario"
   fi
+  # Same graphical updater for clean installation and option 5; no timer changes.
+  python "$stage/callas-update-gui-install.py" --install-system "$usuario" \
+    --gui "$stage/callas-update-gui.py"
   if [[ ${2:-} != --config-update ]]; then
     /usr/local/libexec/callas-kernel-check --verify-only
   fi

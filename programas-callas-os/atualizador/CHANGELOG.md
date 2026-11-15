@@ -1,5 +1,15 @@
 # Histórico do Callas OS
 
+## 3.6.0 — 2026-11-15
+
+- Adiciona interface gráfica Qt/PySide6 para o atualizador, com tema escuro, botões centralizados, ícones próprios em cada função e manutenção acessível pelo mouse.
+- Mostra saída em tempo real, progresso animado por etapa e percentuais somente quando fornecidos pelo backend. Confirmações interativas usam um campo de resposta; autorização sudo ocorre em diálogo de senha separado dos logs.
+- Distingue sucesso, falha e adiamento de aplicativos. Após sucesso, compara componentes críticos e o marcador de reinício para oferecer “Reiniciar agora” e “Mais tarde” no canto inferior direito. Reinício exige clique e confirmação, respeitando inibidores do systemd.
+- Preserva o ID do aplicativo e substitui os acessos em Documentos, sem segunda entrada de menu. Impede instâncias concorrentes da GUI e fechamento durante uma operação.
+- Distribui a mesma interface pelo estágio verificado da instalação limpa e da opção 5. A dependência PySide6, quando ausente, usa a instalação pontual protegida. Preserva o backend, cópias embutidas, instalador principal, README, limites de kernel/NVIDIA e agendamento.
+
+Validação: 244 testes executados (243 aprovados e um opcional ignorado); sintaxe de 55 arquivos Python e 8 Bash, entrada desktop e identidade do backend embutido conferidas. Inclui testes offline de parser, comparação de componentes, resultados, pseudoterminal com resposta real sem privilégios, atalhos idempotentes e permissões com umask 077. Interface aberta na sessão KDE; nenhuma atualização real, senha real, reinício, instalação Arch limpa ou validação de hardware foi executada nesta entrega. A notificação de reinício já existente no backend geral permanece disponível.
+
 ## 3.5.0 — 2026-11-15
 
 - Adiciona Callas Baterias à instalação limpa e à opção 5, pelo estágio compartilhado verificado do mesmo commit. Inclui o monitor FreeWolf F75/Attack Shark e preserva o Solaar separado para o headset.
