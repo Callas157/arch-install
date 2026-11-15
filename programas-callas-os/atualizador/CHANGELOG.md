@@ -1,5 +1,16 @@
 # Histórico do Callas OS
 
+## 3.5.0 — 2026-11-15
+
+- Adiciona Callas Baterias à instalação limpa e à opção 5, pelo estágio compartilhado verificado do mesmo commit. Inclui o monitor FreeWolf F75/Attack Shark e preserva o Solaar separado para o headset.
+- Corrige a escala da variante X6 `0x10`: o relatório bruto `0A` representa 100%, sem alterar firmware ou presumir a mesma escala para outras variantes.
+- Agrupa Callas Baterias e Solaar imediatamente à esquerda da rede com um ajuste local do painel, sem substituir componentes do Plasma nem adicionar arraste.
+- Implanta menu, serviço de usuário, início automático e permissões restritas às interfaces HID suportadas. Perfis existentes apontam ao aplicativo global; preferências e histórico são preservados. Desativar autostart cria override local e permanece respeitado nas atualizações.
+- Instala PySide6 somente quando ausente, pela transação pontual protegida. Falha ou dependência incompatível interrompe a entrega; kernel, NVIDIA e agenda permanecem no escopo existente. Protege PySide6 da remoção por revisão de órfãos.
+- Mantém instalar-arch.sh, cópias embutidas do atualizador/NekoFetch e README intactos. O auxiliar compartilhado já atende os dois fluxos, sem nova alteração ou backup duplicado do instalador.
+
+Validação: 237 testes offline executados, 236 aprovados e um ignorado por transação real libalpm opcional não habilitada; sintaxe de 52 arquivos Python e 9 Bash conferida. Inclui implantação em diretórios temporários com umask 077, correspondência integral pacote/fontes, preservação do autostart desativado, falha de dependência protegida e chamada compartilhada dos dois modos. Revisão independente sem bloqueios restantes. Aplicativo e ordem da bandeja foram usados na sessão KDE do usuário; a integração administrativa não foi executada em instalação Arch limpa, VM ou outro PC. Não comprova boot, jogos ou carga elétrica real da bateria. Detalhes em baterias/INTEGRACAO.md.
+
 ## 3.4.3 — 2026-11-14
 
 - Evita o caminho de queda identificado em `WeakSet.has()` do Qt ao abrir janelas: os scripts Callas de diagnóstico de jogos e de posicionamento dos diálogos Steam usam tabelas indexadas pelo UUID da janela, sem WeakSet/WeakMap de objetos nativos do KWin.

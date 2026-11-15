@@ -20,7 +20,7 @@ PINNED = ('nvidia-utils', 'nvidia-open-dkms', 'nvidia-open', 'nvidia-open-lts',
           'lib32-nvidia-utils', 'nvidia-settings', 'libxnvctrl', 'opencl-nvidia', 'lib32-opencl-nvidia')
 PROTECTED = set(PINNED) | {'base', 'base-devel', 'linux', 'linux-lts', 'linux-headers', 'linux-lts-headers',
     'linux-firmware', 'systemd', 'pacman', 'sudo', 'python', 'networkmanager', 'sddm', 'plasma-desktop',
-    'konsole', 'dolphin', 'steam', 'discord', 'spotify', 'qbittorrent', 'solaar', 'gnome-boxes',
+    'pyside6', 'konsole', 'dolphin', 'steam', 'discord', 'spotify', 'qbittorrent', 'solaar', 'gnome-boxes',
     'brave-bin', 'paru', 'paru-bin', 'xone-dkms', 'xone-dongle-firmware', 'usb_modeswitch',
     'gpu-screen-recorder', 'gpu-screen-recorder-gtk', 'nvibrant-bin'}
 STORAGE = None

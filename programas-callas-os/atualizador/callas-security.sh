@@ -333,6 +333,11 @@ SPOTIFY_HOOK
     /usr/local/libexec/callas-spotify-permissions "$usuario"
   fi
 
+  # Shared by clean-install --installation and option 5 --config-update.
+  # pyside6 is installed only through callas-native's protected transaction.
+  python "$stage/callas-baterias-install.py" --install-system "$usuario" \
+    --payload "$stage/callas-baterias.tar.gz"
+
   /usr/local/libexec/callas-game-logs --install-system
   if [[ ${2:-} == --config-update ]]; then
     /usr/local/libexec/put-update --instalar-para "$usuario" --preserve-schedule

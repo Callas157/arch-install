@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.14.02"
+VERSAO="2026.11.15.01"
 export PATH=/usr/bin:/bin
 export CALLAS_KERNEL_UPDATE_CONTEXT=config
 umask 077

@@ -1,0 +1,18 @@
+{
+  "KPlugin": {
+    "Id": "br.com.callas.ordem-baterias",
+    "Name": "Ordem das baterias Callas",
+    "Description": "Agrupa Callas Baterias e Solaar antes da rede.",
+    "Version": "1.0",
+    "License": "MIT",
+    "Authors": [
+      {
+        "Name": "Callas"
+      }
+    ],
+    "Category": "Utilities",
+    "Icon": "battery"
+  },
+  "KPackageStructure": "Plasma/Applet",
+  "X-Plasma-API-Minimum-Version": "6.0"
+}
