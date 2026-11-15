@@ -10,6 +10,8 @@
 
 Validação: 244 testes executados (243 aprovados e um opcional ignorado); sintaxe de 55 arquivos Python e 8 Bash, entrada desktop e identidade do backend embutido conferidas. Inclui testes offline de parser, comparação de componentes, resultados, pseudoterminal com resposta real sem privilégios, atalhos idempotentes e permissões com umask 077. Interface aberta na sessão KDE; nenhuma atualização real, senha real, reinício, instalação Arch limpa ou validação de hardware foi executada nesta entrega. A notificação de reinício já existente no backend geral permanece disponível.
 
+Validação complementar da integração: 248 testes executados, 247 aprovados e um opcional ignorado. Exercita o estágio real do instalador até a implantação da GUI em árvore temporária, ambos os modos do auxiliar compartilhado, preservação do agendamento no Update, falha da implantação, checkpoint e lançadores antigos sem os novos arquivos. Mesma entrega 3.6.0, sem novo incremento. Detalhes em `INTEGRACAO-GUI.md`; instalador principal e README preservados.
+
 ## 3.5.0 — 2026-11-15
 
 - Adiciona Callas Baterias à instalação limpa e à opção 5, pelo estágio compartilhado verificado do mesmo commit. Inclui o monitor FreeWolf F75/Attack Shark e preserva o Solaar separado para o headset.

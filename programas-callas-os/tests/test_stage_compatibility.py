@@ -142,11 +142,26 @@ curl() {
             self.assertEqual((installed/'callas-janelas').read_bytes(),(ROOT/'janelas/callas-janelas.py').read_bytes())
             self.assertEqual((installed/'callas-monitores').read_bytes(),(ROOT/'monitores/callas-monitores.py').read_bytes())
             stage=target/'usr/local/share/callas-os/security-stage'
-            for name in ('callas-release.py','callas-game-logs.py','put-update.sh','VERSION'):
+            for name in ('callas-release.py','callas-game-logs.py','put-update.sh','VERSION',
+                         'callas-update-gui.py','callas-update-gui-install.py'):
                 self.assertEqual((stage/name).read_bytes(),(source/name).read_bytes())
+            # Install the exact staged GUI into a disposable new-system prefix.
+            spec=importlib.util.spec_from_file_location('staged_gui_installer',stage/'callas-update-gui-install.py')
+            gui_installer=importlib.util.module_from_spec(spec);spec.loader.exec_module(gui_installer)
+            prefix=target/'usr/local'
+            entry,gui=gui_installer.deploy(stage/'callas-update-gui.py',prefix)
+            home=target/'home/fixture'
+            gui_installer.configure_user(home,entry,gui)
+            self.assertEqual(gui.read_bytes(),(UP/'callas-update-gui.py').read_bytes())
+            self.assertIn(b'Terminal=false',entry)
+            self.assertIn(str(gui).encode(),entry)
+            self.assertEqual((home/'Documentos/Callas OS/Atualizador do sistema.desktop').read_bytes(),entry)
+            self.assertEqual((prefix/'share/applications'/gui_installer.ID).read_bytes(),entry)
             counts=Counter(counter.read_text().splitlines())
             self.assertEqual(counts['callas-janelas.py'],1,'window helper downloaded twice')
             self.assertEqual(counts['callas-monitores.py'],1,'monitor helper downloaded twice')
+            self.assertEqual(counts['callas-update-gui.py'],1,'GUI downloaded twice')
+            self.assertEqual(counts['callas-update-gui-install.py'],1,'GUI installer downloaded twice')
 
     def test_installer_prepares_current_shared_helpers_without_duplicate_downloads(self):
         self.run_installer_preparation()
@@ -169,7 +184,7 @@ curl() {
             helper.chmod(0o600)
             with self.assertRaisesRegex(ValueError,'inseguro'):release.stage_complete(root,os.getuid()+1)
 
-    def run_legacy_bootstrap(self, future=False, unsafe=False):
+    def run_legacy_bootstrap(self, future=False, unsafe=False, missing_gui=False):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);source=root/'source';stage=root/'stage';source.mkdir();stage.mkdir()
             counter=root/'requests';ref='a'*40
@@ -193,7 +208,9 @@ def request(url):
             for name,body in bodies.items():
                 target=source/Path(name).name;target.write_bytes(body)
                 tree['tree'].append({'path':name,'type':'blob','mode':'100644','sha':hashlib.sha1(b'blob '+str(len(body)).encode()+b'\0'+body).hexdigest()})
-                if not name.endswith(('/callas-game-logs.py','/future-helper.py')):
+                excluded=('/callas-game-logs.py','/future-helper.py')
+                if missing_gui: excluded+=('/callas-update-gui.py','/callas-update-gui-install.py')
+                if not name.endswith(excluded):
                     dest=stage/Path(name).name;dest.write_bytes(body);dest.chmod(0o600)
             (root/'tree.json').write_text(json.dumps(tree))
             (stage/'update-assets.json').write_text('{}');(stage/'update-assets.json').chmod(0o600)
@@ -212,12 +229,18 @@ def request(url):
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             self.assertTrue((stage/'callas-game-logs.py').is_file())
             if future:self.assertTrue((stage/'future-helper.py').is_file())
+            if missing_gui:
+                self.assertTrue((stage/'callas-update-gui.py').is_file())
+                self.assertTrue((stage/'callas-update-gui-install.py').is_file())
             self.assertTrue(counter.exists())
             before=counter.read_bytes()
             self.assertTrue(all('/'+ref in line for line in before.decode().splitlines()))
             result=subprocess.run(['bash','-c',code],env=env,capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             self.assertEqual(counter.read_bytes(),before,'complete stage downloaded again')
+
+    def test_old_launcher_missing_graphical_updater_downloads_both_helpers(self):
+        self.run_legacy_bootstrap(missing_gui=True)
 
     def test_old_launcher_missing_game_helper_expands_once(self):self.run_legacy_bootstrap()
     def test_future_helpers_do_not_require_another_shell_allowlist(self):self.run_legacy_bootstrap(future=True)
