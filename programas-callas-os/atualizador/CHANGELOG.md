@@ -1,5 +1,13 @@
 # Histórico do Callas OS
 
+## 3.9.1 — 2026-11-15
+
+- Corrige os dois atalhos GPU Screen Recorder deixados pela migração da interface GTK para o overlay nativo. O Update remove somente `gpu-screen-recorder-gtk` quando a interface nova está instalada e a antiga está fechada; mantém motor de captura, replay, serviços e configurações. Falhas ou interface antiga em uso interrompem a etapa para nova tentativa.
+- A instalação limpa continua usando somente a interface nova e o mesmo auxiliar compartilhado. A manutenção preserva explicitamente o overlay e seu pacote de notificações.
+
+Validação: 271 testes offline executados, 270 aprovados e um opcional ignorado; sintaxe Bash/Python conferida. Remoção real apenas do pacote GTK nesta máquina, com overlay e captura/replay mantendo os mesmos PIDs; cache do menu KDE atualizado. Sem execução de Update completo, instalação limpa ou alteração de kernel/NVIDIA.
+
+
 ## 3.9.0 — 2026-11-15
 
 - Torna as atualizações exclusivamente manuais pela Central. Instalação limpa, Callas OS Update e reaplicação do modo manual desativam os timers atuais e antigos, sem criar nova agenda nem reativar atualizações ao reiniciar.

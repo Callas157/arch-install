@@ -88,6 +88,33 @@ class MediaAppsTests(unittest.TestCase):
         updater=(UPDATER/'callas-config-update.sh').read_text()
         self.assertLess(updater.index('/usr/local/libexec/callas-spotify-permissions "$usuario"'),updater.index('/usr/local/libexec/callas-version --complete'))
 
+    def test_legacy_gtk_migration_is_targeted_and_safe_to_repeat(self):
+        security=(UPDATER/'callas-security.sh').read_text()
+        function=security.split('# BEGIN GSR MIGRATION\n',1)[1].split('# END GSR MIGRATION',1)[0]
+        for gtk,ui,active,remove_status,expected,removed in (
+            (0,0,1,0,0,True), (1,0,1,0,0,False),
+            (0,1,1,0,1,False), (0,0,0,0,1,False),
+            (2,0,1,0,1,False), (0,0,2,0,1,False),
+            (0,0,1,1,1,True),
+        ):
+            with self.subTest(gtk=gtk,ui=ui,active=active,remove_status=remove_status),tempfile.TemporaryDirectory() as temp:
+                root=Path(temp)
+                prelude=f'''pacman() {{
+                    if [[ $1 == -Qq ]]; then
+                        if [[ $2 == gpu-screen-recorder-gtk ]]; then return {gtk}; else return {ui}; fi
+                    fi
+                    printf '%s\\n' "$*" >> {shlex.quote(str(root/'removed'))}
+                    return {remove_status}
+                }}
+                pgrep() {{ return {active}; }}
+                '''
+                result=subprocess.run(['bash','-c','set -e\n'+prelude+function+'\nmigrate_gsr_gtk'],capture_output=True,text=True)
+                self.assertEqual(result.returncode,expected,result.stdout+result.stderr)
+                self.assertEqual((root/'removed').exists(),removed)
+                if removed:
+                    self.assertEqual((root/'removed').read_text().strip(),'-R --noconfirm gpu-screen-recorder-gtk')
+        self.assertIn('  migrate_gsr_gtk\n',security)
+
     def test_native_overlay_is_preferred_when_flatpak_is_also_present(self):
         session=(ROOT/'sessao/callas-inicio-kde.sh').read_text()
         section=session[session.index('gsr_id = '):session.index('\nvibrance_ativo = ')]

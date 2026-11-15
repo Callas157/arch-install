@@ -114,6 +114,34 @@ exec > >(tee "$logdir/security.log") 2>&1
 logpid=$!
 trap finish EXIT
 # Process substitution preserves live progress without a pipeline subshell.
+# BEGIN GSR MIGRATION
+migrate_gsr_gtk() {
+  local code
+  if pacman -Qq gpu-screen-recorder-gtk >/dev/null 2>&1; then :; else
+    code=$?
+    [[ $code == 1 ]] && return 0
+    echo 'Falha ao consultar a interface GTK do gravador.' >&2
+    return 1
+  fi
+  pacman -Qq gpu-screen-recorder-ui >/dev/null 2>&1 || {
+    echo 'Interface nova ausente; interface GTK preservada.' >&2; return 1;
+  }
+  # Match the complete executable name in argv, not the truncated comm name
+  # or the shared capture engine, which may be recording for gsr-ui.
+  if pgrep -f '(^|/)gpu-screen-recorder-gtk([[:space:]]|$)' >/dev/null; then
+    echo 'Interface GTK em uso; feche-a e repita o Update para remover a duplicação.' >&2
+    return 1
+  else
+    code=$?
+    [[ $code == 1 ]] || { echo 'Falha ao consultar processos do gravador.' >&2; return 1; }
+  fi
+  # Exact removal only: no recursive dependency cleanup, service restart or
+  # deletion of user settings. pacman checks reverse dependencies and hooks.
+  pacman -R --noconfirm gpu-screen-recorder-gtk || return 1
+  printf 'Interface GTK antiga removida; overlay, captura e configurações preservados.\n'
+}
+# END GSR MIGRATION
+
 seguranca() {
   printf 'Segurança do Callas OS: %s\n' "$(date -Is)"
   # Preserve local-package policy for reviewed AUR packages; require trusted
@@ -167,6 +195,7 @@ PY
   fi
   nvidia_after=$(pacman -Q nvidia-utils nvidia-open-dkms lib32-nvidia-utils nvidia-settings libxnvctrl 2>/dev/null || :)
   [[ $nvidia_before == "$nvidia_after" ]] || { echo 'A pilha NVIDIA mudou inesperadamente.' >&2; return 1; }
+  migrate_gsr_gtk
 
   # G920: the official usb_modeswitch package already supplies the c261 ->
   # HID rule/profile. In HID mode (c262), the stock hid_logitech_hidpp driver
