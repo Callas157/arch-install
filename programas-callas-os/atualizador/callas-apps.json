@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "applications": [
+    {"name": "gpu-screen-recorder-ui", "source": "repo", "state": "present", "phase": "security"},
+    {"name": "gpu-screen-recorder-gtk", "source": "repo", "state": "absent", "phase": "security", "replacement": "gpu-screen-recorder-ui"},
+    {"name": "spotify", "source": "aur", "state": "present", "phase": "apps"},
+    {"name": "haruna", "source": "repo", "state": "present", "phase": "apps"},
+    {"name": "gnome-boxes", "source": "repo", "state": "present", "phase": "apps"},
+    {"name": "com.vysp3r.ProtonPlus", "source": "flatpak", "state": "present", "phase": "flatpaks"},
+    {"name": "io.github.kolunmi.Bazaar", "source": "flatpak", "state": "present", "phase": "flatpaks"},
+    {"name": "io.missioncenter.MissionCenter", "source": "flatpak", "state": "present", "phase": "flatpaks"}
+  ]
+}

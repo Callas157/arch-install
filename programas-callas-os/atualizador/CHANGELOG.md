@@ -1,5 +1,14 @@
 # Histórico do Callas OS
 
+## 3.10.0 — 2026-11-15
+
+- Centraliza os aplicativos distribuídos pelo Update em catálogo verificado no mesmo commit do GitHub. Compara pacotes nativos, Flatpaks e registros locais antes de aplicar adições, remoções e substituições; preserva aplicativos pessoais. A retirada de uma entrada previamente gerenciada gera remoção; entradas `absent` também alcançam máquinas anteriores ao catálogo.
+- Registra CPU AMD/Intel e GPUs NVIDIA/AMD/Intel pelo inventário local, sem trocar drivers. Instala substitutos antes de remover aplicativos antigos e adia remoções de programas em uso. Confirma resultados e preserva a propriedade de instalações parciais para retomada.
+- Inclui aplicativos e auxiliares instalados nos checkpoints: app removido localmente ou auxiliar alterado impede a saída antecipada, mesmo sem novo commit. A instalação limpa usa o catálogo e o executor do mesmo estágio, sem alteração no instalador ou nas cópias embutidas. Mantém o modo manual, a migração GTK e as proteções de kernel/NVIDIA.
+
+Validação: 284 testes offline executados, 283 aprovados e um opcional ignorado; sintaxe Python/Bash e diff conferidos. Varredura real somente de leitura nesta máquina (AMD/NVIDIA), sem pendências no catálogo; demais combinações de fabricantes simuladas. Sem transações de pacotes, execução de Update completo, instalação limpa ou validação de boot nesta entrega.
+
+
 ## 3.9.1 — 2026-11-15
 
 - Corrige os dois atalhos GPU Screen Recorder deixados pela migração da interface GTK para o overlay nativo. O Update remove somente `gpu-screen-recorder-gtk` quando a interface nova está instalada e a antiga está fechada; mantém motor de captura, replay, serviços e configurações. Falhas ou interface antiga em uso interrompem a etapa para nova tentativa.

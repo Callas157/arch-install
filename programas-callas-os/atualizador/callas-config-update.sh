@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.15.01"
+VERSAO="2026.11.15.02"
 export PATH=/usr/bin:/bin
 export CALLAS_KERNEL_UPDATE_CONTEXT=config
 umask 077
@@ -125,6 +125,7 @@ forcar=0
 [[ ${1:-} != --force ]] || forcar=1
 # Deploy verified helpers cheaply; policy/package/boot work is checkpointed below.
 /usr/bin/bash "$CALLAS_RELEASE_DIR/callas-security.sh" "$usuario" --helpers-only
+python "$CALLAS_RELEASE_DIR/callas-apps.py" --scan
 state_helper=(python "$CALLAS_RELEASE_DIR/callas-update-state.py")
 force_args=()
 (( ! forcar )) || force_args=(--force)
@@ -172,6 +173,8 @@ fi
 
 # CALLAS_PHASE_BEGIN apps
 if phase_needed apps; then
+python "$CALLAS_RELEASE_DIR/callas-apps.py" --apply apps "$usuario"
+if python "$CALLAS_RELEASE_DIR/callas-apps.py" --wants spotify; then
 # Complete the native application set on existing installations as well.
 # The initial AUR helper keeps checksum/PGP verification enabled and builds as
 # the normal user, never via passwordless sudo. Existing Spotify is preserved.
@@ -189,7 +192,9 @@ fi
 
 /usr/local/libexec/callas-spotify-permissions "$usuario"
 # End native Spotify preparation.
+fi
 
+if python "$CALLAS_RELEASE_DIR/callas-apps.py" --wants haruna; then
 # BEGIN native Haruna preparation
 printf '\n==> Verificando Haruna nativo (reprodutor de vídeo)\n'
 if pacman -Q haruna >/dev/null 2>&1; then
@@ -203,7 +208,9 @@ fi
 pacman -Q haruna >/dev/null 2>&1 ||
   erro 'Haruna nativo não encontrado após a instalação; atualização não concluída.'
 # END native Haruna preparation
+fi
 
+if python "$CALLAS_RELEASE_DIR/callas-apps.py" --wants gnome-boxes; then
 # BEGIN native Boxes migration
 printf '\n==> Verificando GNOME Boxes nativo (redirecionamento USB)\n'
 if pacman -Q gnome-boxes >/dev/null 2>&1; then
@@ -240,6 +247,7 @@ if command -v flatpak >/dev/null; then
 fi
 printf 'GNOME Boxes nativo preparado. Dados das VMs preservados; VMs do Flatpak podem precisar de importação manual.\n'
 # END native Boxes migration
+fi
 
 phase_done apps
 fi
@@ -390,17 +398,8 @@ fi
 
 # CALLAS_PHASE_BEGIN flatpaks
 if phase_needed flatpaks; then
-# Flatpaks padrão do Callas OS.
-if command -v flatpak >/dev/null; then
-  flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || :
-  for app in com.vysp3r.ProtonPlus io.github.kolunmi.Bazaar io.missioncenter.MissionCenter; do
-    if ! flatpak info --system "$app" >/dev/null 2>&1; then
-      flatpak install --system --noninteractive --assumeyes flathub "$app" ||
-        erro "Não consegui instalar $app."
-    fi
-  done
-fi
-
+# Catálogo compartilhado com a instalação limpa; dados pessoais preservados.
+python "$CALLAS_RELEASE_DIR/callas-apps.py" --apply flatpaks "$usuario"
 
 phase_done flatpaks
 fi

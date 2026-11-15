@@ -23,6 +23,9 @@ windows=load(ROOT/'janelas/callas-janelas.py','fallbackwindows')
 release=load(UP/'callas-release.py','incrementalrelease')
 
 class IncrementalTests(unittest.TestCase):
+ def setUp(self):
+  fixture=patch.object(state,'application_status',return_value={})
+  fixture.start(); self.addCleanup(fixture.stop)
  def stage(self,root):
   stage=root/'stage';stage.mkdir()
   for name in set(sum((list(v) for v in state.DEPENDENCIES.values()),[]))|{'callas-config-update.sh'}:

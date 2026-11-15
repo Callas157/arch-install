@@ -61,7 +61,7 @@ class IsolationTests(unittest.TestCase):
     def test_apps_checkpoint_requires_haruna(self):
         spec = importlib.util.spec_from_file_location('isolated_state', UP / 'callas-update-state.py')
         state = importlib.util.module_from_spec(spec); spec.loader.exec_module(state)
-        self.assertIn('/usr/bin/haruna', state.REQUIRED['apps'])
+        self.assertIn('callas-apps.json', state.DEPENDENCIES['apps'])
 
 class GeneralGateTests(unittest.TestCase):
     def test_missing_enforcement_aborts_before_pacman(self):

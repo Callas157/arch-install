@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 """Per-user, content-based update checkpoints and verified visual assets."""
 import hashlib
+import importlib.util
+from importlib.machinery import SourceFileLoader
 import json
 import os
 from pathlib import Path
@@ -12,20 +14,35 @@ import urllib.request
 
 STATE=Path('/var/lib/callas-os')
 DEPENDENCIES={
-    'security':('callas-update-gui.py','callas-update-gui-install.py','callas-baterias-install.py','callas-baterias.tar.gz','callas-security.sh','callas-game-logs.py','callas-native.py','callas-kernel-policy.py'),
-    'apps':('callas-spotify-permissions.sh','callas-aur-install.py','callas-native.py','callas-kernel-check.sh'),
+    'security':('callas-apps.py','callas-apps.json','callas-update-gui.py','callas-update-gui-install.py','callas-baterias-install.py','callas-baterias.tar.gz','callas-security.sh','callas-game-logs.py','callas-native.py','callas-kernel-policy.py'),
+    'apps':('callas-apps.py','callas-apps.json','callas-spotify-permissions.sh','callas-aur-install.py','callas-native.py','callas-kernel-check.sh'),
     'tools':('callas-monitores.py','callas-janelas.py','callas-inicio-kde.sh','callas-kde-desligamento-login.sh'),
     'boot':('callas.script','callas.plymouth'),
-    'flatpaks':(), 'browser':(), 'desktop':(),
+    'flatpaks':('callas-apps.py','callas-apps.json'), 'browser':(), 'desktop':(),
     'session':('callas-game-logs.py','callas-inicio-kde.sh','callas-janelas.py','callas-nekofetch.sh','callas-version.py'),
 }
 REQUIRED={
     'security':('/usr/local/lib/callas-update/callas-update-gui.py','/usr/local/libexec/callas-update-gui-install','/usr/local/share/callas-os/baterias/callas_baterias.py','/usr/local/libexec/callas-baterias-install','/etc/systemd/user/callas-baterias.service','/etc/udev/rules.d/71-callas-baterias.rules','/etc/xdg/autostart/callas-baterias.desktop','/etc/callas-os/security-version','/etc/systemd/system/callas-game-events.service','/etc/sudoers.d/20-callas-security','/etc/udev/rules.d/70-callas-g920.rules','/etc/pacman.d/hooks/00-callas-kernel-policy.hook','/etc/pacman.d/hooks/00-callas-kernel-deny-remove.hook'),
-    'apps':('/opt/spotify/Apps','/usr/bin/gnome-boxes','/usr/bin/haruna'),
+    'apps':(),
     'tools':('/usr/local/share/applications/io.github.Callas157.Monitores.desktop','/etc/systemd/user/callas-janelas.service'),
     'boot':('/boot/grub/grub.cfg','/boot/initramfs-linux.img','/boot/initramfs-linux-lts.img'),
     'flatpaks':(), 'browser':('/etc/brave/policies/managed/callas-bonjourr.json',), 'desktop':('/etc/xdg/kicker-extra-favoritesrc',), 'session':('/etc/systemd/user/callas-game-logs.service',),
 }
+
+
+# Check the deployed helpers too, so a missing/changed helper cannot be hidden
+# by an unchanged release SHA or by otherwise intact desktop anchors.
+REQUIRED['security'] += tuple('/usr/local/libexec/' + name for name in (
+    'callas-apps', 'callas-apps.json', 'callas-update-state', 'callas-native',
+    'callas-aur', 'callas-aur-install', 'callas-autostart', 'callas-kernel-policy',
+    'callas-game-logs', 'callas-spotify-permissions', 'callas-version',
+    'callas-nekofetch', 'callas-release', 'callas-logs', 'callas-kernel-check',
+    'put-update', 'callas-storage', 'callas-maintenance'))
+REQUIRED['tools'] += tuple('/usr/local/libexec/' + name for name in (
+    'callas-monitores', 'callas-janelas', 'callas-inicio-kde', 'callas-kde-desligamento-login'))
+for application_phase in ('security', 'apps', 'flatpaks'):
+    REQUIRED[application_phase] += ('/var/lib/callas-os/apps-managed-' + application_phase + '.json',)
+
 
 def atomic(path,data,mode=0o600):
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -64,9 +81,25 @@ def state(user):
     try:return json.loads(state_file(user).read_text())
     except FileNotFoundError:return {}
 
+def application_status(phase):
+    if phase not in ('security', 'apps', 'flatpaks'):
+        return {}
+    path = Path(__file__).with_name('callas-apps.py')
+    if not path.exists(): path = path.with_suffix('')
+    loader = SourceFileLoader('state_apps', str(path))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    helper = importlib.util.module_from_spec(spec); loader.exec_module(helper)
+    entries = [entry for entry in helper.catalog() if entry['phase'] == phase]
+    managed = helper.previous(phase)
+    installed = helper.inventory()
+    names = {(helper.family(entry), entry['name']) for entry in [*entries, *managed]}
+    return {'installed': {source + ':' + name: installed[source].get(name) for source, name in sorted(names)},
+            'pending': helper.plan(entries, installed, managed)}
+
+
 def installed_files(phase):
     """Observe managed anchors without hashing user data or volatile directories."""
-    result = {}
+    result = {'_applications': application_status(phase)}
     for name in REQUIRED[phase]:
         path = Path(name)
         if path.is_symlink():
@@ -95,6 +128,7 @@ def intact(user):
     observed = data.get('_installed', {})
     return all(phase in data and phase in observed
                and observed[phase] == installed_files(phase)
+               and not application_status(phase).get('pending')
                and all(Path(p).exists() for p in REQUIRED[phase])
                for phase in DEPENDENCIES)
 
@@ -104,6 +138,7 @@ def needed(phase,stage,user,force=False):
     recorded = data.get('_installed', {})
     return (force or data.get(phase) != fingerprint(phase,stage)
             or phase not in recorded or recorded[phase] != installed_files(phase)
+            or bool(application_status(phase).get('pending'))
             or any(not Path(p).exists() for p in REQUIRED[phase]))
 
 def complete(phase,stage,user):

@@ -8,7 +8,7 @@ usuario=${SUDO_USER:-${1:-}}
 [[ -n $usuario && $usuario != root ]] && id "$usuario" >/dev/null || exit 1
 stage=${CALLAS_RELEASE_DIR:?Arquivos de atualização não preparados}
 [[ -d $stage && ! -L $stage && $(stat -c %u "$stage") == 0 ]] || exit 1
-for name in callas-kernel-policy.py callas-game-logs.py callas-update-state.py callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
+for name in callas-apps.py callas-apps.json callas-kernel-policy.py callas-game-logs.py callas-update-state.py callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
   [[ -f $stage/$name && ! -L $stage/$name && $(stat -c %u "$stage/$name") == 0 ]] || {
     echo "Arquivo verificado ausente/inseguro: $name" >&2; exit 1;
   }
@@ -33,10 +33,12 @@ fi
 # No lingering passwordless pacman access, even after an interrupted old update.
 rm -f /etc/sudoers.d/put-update /etc/sudoers.d/99-callas-instalacao
 rm -f /etc/put-update-aur.sudoers /etc/put-update-paru.conf
-for name in callas-kernel-policy.py callas-game-logs.py callas-update-state.py callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
+for name in callas-apps.py callas-apps.json callas-kernel-policy.py callas-game-logs.py callas-update-state.py callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
   source_file="$stage/$name"
   [[ -f $source_file && ! -L $source_file && $(stat -c %u "$source_file") == 0 ]] || exit 1
   case $name in
+    callas-apps.py) target=callas-apps ;;
+    callas-apps.json) target=callas-apps.json ;;
     callas-kernel-policy.py) target=callas-kernel-policy ;;
     callas-game-logs.py) target=callas-game-logs ;;
     callas-update-state.py) target=callas-update-state ;;
@@ -54,7 +56,11 @@ for name in callas-kernel-policy.py callas-game-logs.py callas-update-state.py c
     callas-maintenance.py) target=callas-maintenance ;;
     callas-native.py) target=callas-native ;;
   esac
-  cmp -s "$source_file" "/usr/local/libexec/$target" || install -o root -g root -m 0755 "$source_file" "/usr/local/libexec/$target"
+  if [[ $name == callas-apps.json ]]; then
+    cmp -s "$source_file" "/usr/local/libexec/$target" || install -o root -g root -m 0644 "$source_file" "/usr/local/libexec/$target"
+  else
+    cmp -s "$source_file" "/usr/local/libexec/$target" || install -o root -g root -m 0755 "$source_file" "/usr/local/libexec/$target"
+  fi
 done
 printf '%s\n' "$usuario" > /etc/callas-os/log-user
 printf '%s\n' "${CALLAS_RELEASE_REF:-installation}" > /etc/callas-os/security-release
@@ -114,34 +120,6 @@ exec > >(tee "$logdir/security.log") 2>&1
 logpid=$!
 trap finish EXIT
 # Process substitution preserves live progress without a pipeline subshell.
-# BEGIN GSR MIGRATION
-migrate_gsr_gtk() {
-  local code
-  if pacman -Qq gpu-screen-recorder-gtk >/dev/null 2>&1; then :; else
-    code=$?
-    [[ $code == 1 ]] && return 0
-    echo 'Falha ao consultar a interface GTK do gravador.' >&2
-    return 1
-  fi
-  pacman -Qq gpu-screen-recorder-ui >/dev/null 2>&1 || {
-    echo 'Interface nova ausente; interface GTK preservada.' >&2; return 1;
-  }
-  # Match the complete executable name in argv, not the truncated comm name
-  # or the shared capture engine, which may be recording for gsr-ui.
-  if pgrep -f '(^|/)gpu-screen-recorder-gtk([[:space:]]|$)' >/dev/null; then
-    echo 'Interface GTK em uso; feche-a e repita o Update para remover a duplicação.' >&2
-    return 1
-  else
-    code=$?
-    [[ $code == 1 ]] || { echo 'Falha ao consultar processos do gravador.' >&2; return 1; }
-  fi
-  # Exact removal only: no recursive dependency cleanup, service restart or
-  # deletion of user settings. pacman checks reverse dependencies and hooks.
-  pacman -R --noconfirm gpu-screen-recorder-gtk || return 1
-  printf 'Interface GTK antiga removida; overlay, captura e configurações preservados.\n'
-}
-# END GSR MIGRATION
-
 seguranca() {
   printf 'Segurança do Callas OS: %s\n' "$(date -Is)"
   # Preserve local-package policy for reviewed AUR packages; require trusted
@@ -180,7 +158,7 @@ PY
   # full Arch upgrade when every requirement is already available.
   if [[ ${2:-} != --installation ]]; then
     missing=()
-    for package in ufw plasma-firewall python python-dbus python-gobject kscreen base-devel git rebuild-detector pacman-contrib acl gpu-screen-recorder-ui usb_modeswitch; do
+    for package in ufw plasma-firewall python python-dbus python-gobject kscreen base-devel git rebuild-detector pacman-contrib acl usb_modeswitch; do
       if pacman -Qq "$package" >/dev/null 2>&1; then :; else
         code=$?; [[ $code == 1 ]] || { echo 'Falha ao consultar o banco de pacotes.' >&2; return 1; }
         missing+=("$package")
@@ -195,7 +173,7 @@ PY
   fi
   nvidia_after=$(pacman -Q nvidia-utils nvidia-open-dkms lib32-nvidia-utils nvidia-settings libxnvctrl 2>/dev/null || :)
   [[ $nvidia_before == "$nvidia_after" ]] || { echo 'A pilha NVIDIA mudou inesperadamente.' >&2; return 1; }
-  migrate_gsr_gtk
+  python "$stage/callas-apps.py" --apply security "$usuario"
 
   # G920: the official usb_modeswitch package already supplies the c261 ->
   # HID rule/profile. In HID mode (c262), the stock hid_logitech_hidpp driver
@@ -362,6 +340,10 @@ SPOTIFY_HOOK
     /usr/local/libexec/callas-spotify-permissions "$usuario"
   fi
 
+  if [[ ${2:-} == --installation ]]; then
+    python "$stage/callas-apps.py" --apply apps "$usuario"
+    python "$stage/callas-apps.py" --apply flatpaks "$usuario"
+  fi
   # Shared by clean-install --installation and option 5 --config-update.
   # pyside6 is installed only through callas-native's protected transaction.
   python "$stage/callas-baterias-install.py" --install-system "$usuario" \

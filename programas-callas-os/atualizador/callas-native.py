@@ -31,9 +31,9 @@ if blocked:
 
 def guarded_transaction(arguments, runner=None):
     """Guard the resolved transaction, including dependencies and replacements."""
-    if not arguments or arguments[0] not in ('-S', '-U'):
-        raise ValueError('Somente instalações explícitas são permitidas neste fluxo.')
-    options = {'--needed', '--noconfirm', '--asdeps'}
+    if not arguments or arguments[0] not in ('-S', '-U', '-R'):
+        raise ValueError('Somente instalações ou remoções explícitas são permitidas neste fluxo.')
+    options = {'--noconfirm'} if arguments[0] == '-R' else {'--needed', '--noconfirm', '--asdeps'}
     if any(arg.startswith('-') and arg not in options for arg in arguments[1:]):
         raise ValueError('Sincronização e atualização geral não são permitidas neste fluxo.')
     with tempfile.TemporaryDirectory(prefix='callas-install-', dir='/var/tmp') as temp:
