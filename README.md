@@ -102,39 +102,36 @@ Explore também a [coleção de wallpapers](assets/wallpapers/).
 
 ## Atualizações
 
-Abra **Atualizador do sistema** no menu do KDE ou pelo atalho em **Documentos → Callas OS**. A interface gráfica mostra a saída e o progresso das operações; solicita autorização administrativa quando necessário.
+Abra **Central Callas OS** nos **Favoritos do menu de aplicativos do KDE**. A interface mostra o progresso das operações e solicita a senha do sistema quando precisa de autorização administrativa.
 
 As funções disponíveis são:
 
 | Opção | O que faz |
 | --- | --- |
 | **1. Limpeza e manutenção** | Limpeza, espaço em disco e backups |
-| **2. Atualizar aplicativos nativos** | Aplicativos compatíveis com a base já instalada; preserva kernels |
-| **3. Atualizar Discord** | Atualização dedicada do Discord; preserva kernels |
-| **4. Atualizar geral** | Arch, AUR, Flatpaks e Discord; único fluxo que autoriza atualizar kernels, com teste prévio da NVIDIA fixada e validação final de boot |
-| **5. Callas OS Update** | Configurações, ferramentas, correções e migrações de aplicativos previstas pelo projeto; preserva kernels, headers, NVIDIA e o agendamento existente |
+| **2. Aplicativos nativos** | Atualiza aplicativos compatíveis com a base já instalada; preserva kernels |
+| **3. Monitores** | Detecta as telas conectadas e permite escolher o monitor principal para painel, notificações e login |
+| **4. Atualizar geral** | Atualiza Arch, AUR e Flatpaks; único fluxo que autoriza atualizar kernels, com verificação da NVIDIA fixada e validação final de boot |
+| **5. Callas OS Update** | Aplica configurações, ferramentas, correções e migrações de aplicativos do projeto; preserva kernels, headers, NVIDIA e o agendamento existente |
+| **6. Codex** | Baixa e instala o chat opcional e adiciona seu acesso ao menu KDE; quando instalado, abre o aplicativo. Entre com sua própria conta ChatGPT/OpenAI |
+
+O **Codex não é instalado junto com o sistema**: o download começa somente ao escolher o botão na Central.
 
 O agendamento padrão verifica atualizações gerais **mensais** e de aplicativos nativos **semanais**. Se o PC estiver desligado, a pendência é retomada numa verificação posterior.
 
-Antes de trocar kernel e headers pela opção 4, o sistema tenta compilar a NVIDIA fixada em área temporária isolada com o par candidato. Se falhar ou não for possível verificar com segurança — inclusive se as ferramentas de compilação também forem mudar — a transação inteira é interrompida antes de alterar os pacotes. O kernel anterior e a NVIDIA são preservados; não há troca automática do driver nem atualização parcial como alternativa. A validação final de módulos, initramfs e GRUB continua obrigatória após uma transação aprovada. Máquinas existentes recebem essa proteção pela opção 5.
+**Kernel e NVIDIA:** antes de trocar kernel e headers, a opção 4 testa a compilação da NVIDIA fixada em uma área isolada. Se a verificação falhar ou não puder ser concluída com segurança, a transação é interrompida e os pacotes anteriores são preservados. Não há troca automática do driver para liberar a atualização. Após uma transação aprovada, módulos, initramfs e GRUB ainda precisam ser validados. Consulte os [detalhes da proteção de kernel e NVIDIA](programas-callas-os/instrucoes/atualizacao-kernel.md).
 
-Uma transação bloqueada pode continuar pendente nas próximas tentativas. O diagnóstico informa o motivo; a proteção não é desativada automaticamente para liberar a atualização.
+Depois de uma atualização geral concluída, você pode **reiniciar ou deixar para depois**. Logs e backups ficam em **Documentos → Callas OS → Callas OS Logs / Callas OS Backups**. Se uma operação ficar pendente, consulte os detalhes na Central.
 
-Depois de uma atualização geral concluída com sucesso, você pode **reiniciar ou deixar para depois**. Logs e backups de configurações ficam em **Documentos → Callas OS**.
+Feche o Brave antes da opção 5 para permitir a aplicação das preferências visuais. Antes de atualizar o GNOME Boxes, desligue as VMs e feche o aplicativo. Na migração do Flatpak para o pacote nativo, os dados em `~/.var/app/org.gnome.Boxes/` são preservados, mas as VMs podem precisar de importação manual.
 
-O **Callas OS Update** compara o conteúdo da entrega no GitHub com os registros das etapas aplicadas e verifica os arquivos locais gerenciados de referência. Etapas iguais são preservadas; alterações ou arquivos ausentes tornam a etapa correspondente pendente. Downloads em cache só são reutilizados quando correspondem ao hash publicado no commit consultado.
-
-No **Callas Baterias**, atualizar apenas o instalador ou reparar atalhos preserva o aplicativo em execução. O serviço só é reiniciado quando mudam seus arquivos de execução ou sua unidade; preferências e início automático desativado são respeitados.
-
-Feche o Brave antes da opção 5 para permitir a aplicação das preferências visuais pendentes.
-
-**GNOME Boxes:** a partir da versão 3.3.3, a instalação nova inclui o pacote nativo. Em sistemas existentes, a opção **5. Callas OS Update** instala e verifica `gnome-boxes` antes de remover `org.gnome.Boxes` do sistema e do usuário que executou a atualização. Se a instalação nativa falhar, o Flatpak é preservado.
-
-Antes da atualização, desligue as VMs e feche o Boxes. A remoção preserva os discos e as configurações do Flatpak em `~/.var/app/org.gnome.Boxes/`, mas as VMs podem precisar ser importadas manualmente na versão nativa; essa migração de VMs não é automática. O redirecionamento USB fica nas preferências da VM e depende do dispositivo conectado ao computador que hospeda o Boxes.
+<p align="center">
+  <img src="assets/central-callas-os/central-callas-os.png" alt="Central Callas OS com as opções Limpeza e manutenção, Aplicativos nativos, Monitores, Atualizar geral, Callas OS Update e Codex" width="900">
+</p>
 
 ---
 
-**Versão atual: 3.6.2** · [VERSION](programas-callas-os/atualizador/VERSION) · [Histórico de mudanças](programas-callas-os/atualizador/CHANGELOG.md)
+**Versão atual: 3.8.0** · [VERSION](programas-callas-os/atualizador/VERSION) · [Histórico de mudanças](programas-callas-os/atualizador/CHANGELOG.md)
 
 Projeto em desenvolvimento. Mantenha seus backups em dia.
 
