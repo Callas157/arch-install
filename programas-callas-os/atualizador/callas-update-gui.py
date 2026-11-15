@@ -3,6 +3,7 @@
 import codecs
 import errno
 import fcntl
+import json
 import os
 from pathlib import Path
 import pty
@@ -11,7 +12,7 @@ import re
 import subprocess
 import sys
 
-from PySide6.QtCore import Qt, QTimer, QSocketNotifier, QSize
+from PySide6.QtCore import Qt, QTimer, QSocketNotifier, QSize, QProcess, QProcessEnvironment
 from PySide6.QtGui import QIcon, QPalette, QColor, QFont, QPixmap
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
@@ -51,7 +52,7 @@ def progress_state(text):
 
 def action_command(action):
     user = pwd.getpwuid(os.getuid()).pw_name
-    if action in ('nativos', 'discord', 'sistema', 'flatpaks'):
+    if action in ('nativos', 'sistema', 'flatpaks'):
         return [BACKEND, '--manual', action]
     if action in ('clean', 'report', 'orphans'):
         return ['/usr/local/libexec/callas-maintenance', '--' + action, user]
@@ -64,6 +65,7 @@ def option_icon(name):
     paths = {
         'edit-clear': '<path d="m9 4 11 11-7 7L2 11zM6 15l7-7M13 22h9"/>',
         'applications-all': '<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/>',
+        'video-display': '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 22h8m-4-5v5"/>',
         'discord': '<path d="M7 5 3 7 1 17l5 3 2-3h8l2 3 5-3-2-10-4-2-1 2H8z"/><circle cx="8" cy="12" r="1"/><circle cx="16" cy="12" r="1"/>',
         'system-software-update': '<path d="M20 8a8 8 0 0 0-14-2L3 9m0-5v5h5M4 16a8 8 0 0 0 14 2l3-3m0 5v-5h-5"/>',
         'system-upgrade': '<path d="M12 21V3m-7 7 7-7 7 7M4 17v4h16v-4"/>',
@@ -79,10 +81,108 @@ def option_icon(name):
     pixmap = QPixmap(); pixmap.loadFromData(svg.encode(), 'SVG')
     return QIcon(pixmap)
 
+class MonitorDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Monitores — definir monitor principal')
+        self.setMinimumWidth(520)
+        self.worker = None
+        self.snapshot = []
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel('Definir monitor principal', objectName='stage'))
+        self.message = QLabel('Detectando monitores…')
+        self.message.setWordWrap(True)
+        layout.addWidget(self.message)
+        self.choices = QVBoxLayout()
+        layout.addLayout(self.choices)
+        self.refresh = QPushButton('Atualizar lista')
+        self.refresh.clicked.connect(self.detect)
+        layout.addWidget(self.refresh)
+        settings = QPushButton('Configurações de telas do KDE')
+        settings.clicked.connect(lambda: subprocess.Popen(['systemsettings', 'kcm_kscreen']))
+        layout.addWidget(settings)
+        self.back = QPushButton('Voltar')
+        self.back.clicked.connect(self.reject)
+        layout.addWidget(self.back)
+        self.detect()
+
+    def execute(self, args, callback):
+        self.refresh.setEnabled(False)
+        self.back.setEnabled(False)
+        for i in range(self.choices.count()): self.choices.itemAt(i).widget().setEnabled(False)
+        process = QProcess(self)
+        self.worker = process
+        env = QProcessEnvironment.systemEnvironment()
+        env.insert('SUDO_ASKPASS', str(Path(__file__).resolve().with_name('callas-update-askpass')))
+        env.insert('CALLAS_MONITOR_GUI', '1')
+        env.insert('PYTHONUNBUFFERED', '1')
+        process.setProcessEnvironment(env)
+        def finished(code, *_):
+            if self.worker is not process: return
+            output = bytes(process.readAllStandardOutput()).decode(errors='replace')
+            error = bytes(process.readAllStandardError()).decode(errors='replace')
+            self.worker = None
+            self.refresh.setEnabled(True)
+            self.back.setEnabled(True)
+            callback(code, output, error)
+            process.deleteLater()
+        process.finished.connect(finished)
+        process.errorOccurred.connect(lambda error: finished(1) if error == QProcess.FailedToStart else None)
+        process.start('/usr/local/libexec/callas-monitores', args)
+
+    def detect(self):
+        if self.worker is not None: return
+        while self.choices.count(): self.choices.takeAt(0).widget().deleteLater()
+        self.message.setText('Detectando monitores…')
+        self.execute(['--list-json'], self.detected)
+
+    def detected(self, code, output, error):
+        try:
+            if code: raise RuntimeError(error or 'Não foi possível detectar os monitores.')
+            self.snapshot = json.loads(output)
+            if not self.snapshot: raise RuntimeError('Nenhum monitor ativo encontrado.')
+            self.message.setText(f'{len(self.snapshot)} monitor(es) ativo(s). Escolha a tela principal.')
+            for monitor in self.snapshot:
+                size = monitor.get('size', {})
+                primary = monitor.get('priority') == 1
+                label = f"{monitor['name']} — {size.get('width', '?')} × {size.get('height', '?')}"
+                label += ' — Principal atual' if primary else ' — Definir como principal'
+                button = QPushButton(option_icon('video-display'), label)
+                button.setEnabled(not primary)
+                button.clicked.connect(lambda checked=False, name=monitor['name']: self.select(name))
+                self.choices.addWidget(button)
+        except (ValueError, KeyError, TypeError, RuntimeError) as exc:
+            self.message.setText(str(exc))
+
+    def select(self, name):
+        if self.worker is not None: return
+        if QMessageBox.question(self, 'Definir monitor principal',
+            f'Definir {name} como principal para o painel, notificações e login?') != QMessageBox.Yes: return
+        self.message.setText('Aplicando configuração. Autorize o ajuste do login quando solicitado…')
+        self.execute(['--set-primary', name, '--expected', json.dumps([o['name'] for o in self.snapshot]),
+                      '--gui-auth'], self.applied)
+
+    def applied(self, code, output, error):
+        if code:
+            self.message.setText('Não foi possível concluir. As etapas já confirmadas podem ter sido aplicadas. '
+                                 'O backup foi preservado quando criado. Atualize a lista para conferir.')
+            QMessageBox.warning(self, 'Monitores', (error + '\n' + output).strip())
+        else:
+            self.detect()
+            QMessageBox.information(self, 'Monitores', 'Monitor principal configurado. Confira o login na próxima entrada.')
+
+    def reject(self):
+        if self.worker is None: super().reject()
+
+    def closeEvent(self, event):
+        if self.worker is not None: event.ignore()
+        else: event.accept()
+
 class Window(QWidget):
     def __init__(self):
         super().__init__()
         self.process = None
+        self.monitor_dialog = None
         self.master = None
         self.notifier = None
         self.decoder = codecs.getincrementaldecoder('utf-8')('replace')
@@ -90,7 +190,7 @@ class Window(QWidget):
         self.action = None
         self.pending = ''
         self.reboot_pending = False
-        self.setWindowTitle('Atualizador do sistema')
+        self.setWindowTitle('Central Callas OS')
         self.setWindowIcon(option_icon('system-software-update'))
         self.resize(900, 770)
         self.setMinimumSize(690, 620)
@@ -120,7 +220,7 @@ class Window(QWidget):
         emblem.setPixmap(icon.pixmap(56, 56))
         emblem.setAlignment(Qt.AlignCenter)
         layout.addWidget(emblem)
-        title = QLabel('Atualizador do sistema', objectName='title')
+        title = QLabel('Central Callas OS', objectName='title')
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
         subtitle = QLabel('Cuide do seu Callas OS em um só lugar', objectName='subtitle')
@@ -133,7 +233,7 @@ class Window(QWidget):
         entries = (
             ('Limpeza e manutenção', 'edit-clear', self.maintenance),
             ('Aplicativos nativos', 'applications-all', lambda: self.start('nativos')),
-            ('Atualizar Discord', 'discord', lambda: self.start('discord')),
+            ('Monitores', 'video-display', self.monitors),
             ('Atualizar geral', 'system-software-update', lambda: self.start('sistema')),
             ('Callas OS Update', 'system-upgrade', lambda: self.start('callas')),
             ('Sair', 'application-exit', self.close),
@@ -221,6 +321,16 @@ class Window(QWidget):
         layout.addWidget(self.button('Voltar', 'application-exit', dialog.reject), alignment=Qt.AlignHCenter)
         dialog.exec()
         if selected: self.start(selected[0])
+
+    def monitors(self):
+        if self.process is not None: return
+        if self.monitor_dialog is not None:
+            self.monitor_dialog.raise_(); self.monitor_dialog.activateWindow(); return
+        self.monitor_dialog = MonitorDialog(self)
+        try: self.monitor_dialog.exec()
+        finally:
+            self.monitor_dialog.deleteLater()
+            self.monitor_dialog = None
 
     def start(self, action):
         if self.process is not None: return
@@ -349,7 +459,7 @@ class Window(QWidget):
 
 def main():
     app = QApplication(sys.argv)
-    app.setApplicationName('Atualizador do sistema'); app.setDesktopFileName(ID)
+    app.setApplicationName('Central Callas OS'); app.setDesktopFileName(ID)
     if sys.argv[1:] == ['--askpass']:
         value, ok = QInputDialog.getText(None, 'Autorizar atualização', 'Senha de administrador:', QLineEdit.Password)
         if ok: sys.stdout.write(value + '\n'); return 0
@@ -363,7 +473,8 @@ def main():
     try: fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         socket = QLocalSocket(); socket.connectToServer(name)
-        if socket.waitForConnected(1500): socket.write(b'activate'); socket.waitForBytesWritten(1000)
+        if socket.waitForConnected(1500):
+            socket.write(b'monitors' if '--monitors' in sys.argv[1:] else b'activate'); socket.waitForBytesWritten(1000)
         return 0
     QLocalServer.removeServer(name)
     server = QLocalServer(); server.listen(name)
@@ -376,10 +487,15 @@ def main():
     window = Window()
     def activate():
         connection = server.nextPendingConnection()
-        if connection: connection.close(); connection.deleteLater()
+        if connection:
+            connection.waitForReadyRead(1000)
+            requested = bytes(connection.readAll())
+            connection.close(); connection.deleteLater()
+            if requested == b'monitors': QTimer.singleShot(0, window.monitors)
         window.showNormal(); window.raise_(); window.activateWindow()
     server.newConnection.connect(activate)
     window.show()
+    if '--monitors' in sys.argv[1:]: QTimer.singleShot(0, window.monitors)
     return app.exec()
 
 if __name__ == '__main__': sys.exit(main())

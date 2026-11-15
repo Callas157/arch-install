@@ -214,10 +214,10 @@ class CalendarTests(unittest.TestCase):
             self.assertEqual(result.stdout.strip(),expected)
     def test_menu_labels_and_dispatch(self):
         text=(U/'put-update.sh').read_text()
-        for value in ('1. Limpeza e manutenção','2. Atualizar aplicativos nativos','3. Atualizar Discord','4. Atualizar geral','5. Callas OS Update','6. Sair'):
+        for value in ('1. Limpeza e manutenção','2. Atualizar aplicativos nativos','3. Monitores — definir monitor principal','4. Atualizar geral','5. Callas OS Update','6. Sair'):
             self.assertIn(value,text)
         start=text.index('            2) modo='); branch=text[start:text.index('            5)',start)]
-        result=subprocess.run(['bash','-c','for opcao in 2 3 4; do case $opcao in\n'+branch+'\nesac; echo "$opcao:$modo"; done'],capture_output=True,text=True,check=True)
-        self.assertEqual(result.stdout.splitlines(),['2:nativos','3:discord','4:sistema'])
+        result=subprocess.run(['bash','-c','for opcao in 2 4; do case $opcao in\n'+branch+'\nesac; echo "$opcao:$modo"; done'],capture_output=True,text=True,check=True)
+        self.assertEqual(result.stdout.splitlines(),['2:nativos','4:sistema'])
 
 if __name__=='__main__': unittest.main()

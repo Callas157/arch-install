@@ -76,6 +76,23 @@ class MonitorTests(unittest.TestCase):
             run.assert_not_called()
         self.assertFalse(m.STATE.exists())
 
+    def test_graphical_choice_rejects_stale_monitor_list_before_mutation(self):
+        with patch.object(m, 'outputs', return_value=[{'name': 'DP-1', 'id': 1}]), patch.object(m, 'run') as run:
+            with self.assertRaisesRegex(RuntimeError, 'monitores mudaram'):
+                m.choose('DP-1', ['DP-1', 'HDMI-A-1'], True)
+            run.assert_not_called()
+        self.assertFalse(m.STATE.exists())
+
+    def test_graphical_choice_uses_askpass_and_named_output(self):
+        a = {'id': 1, 'name': 'HDMI-A-1', 'priority': 1}
+        b = {'id': 2, 'name': 'DP-3', 'priority': 2}
+        with patch.object(m, 'outputs', side_effect=[[a, b], [a, b], [a | {'priority': 2}, b | {'priority': 1}]]), \
+             patch('builtins.input', side_effect=AssertionError('GUI must not ask for terminal input')), \
+             patch.object(m, 'run') as run, patch.object(m, 'apply_desktop'), patch.object(m.subprocess, 'run'):
+            m.choose('DP-3', ['HDMI-A-1', 'DP-3'], True)
+        self.assertIn(('sudo', '-A', '-v'), [c.args for c in run.call_args_list])
+        self.assertEqual(json.loads((m.STATE / 'monitors.json').read_text())['primary'], 'DP-3')
+
     def test_native_rules_preserve_existing_and_learn_half_screen(self):
         path = self.base / 'kwinrulesrc'
         path.write_text('[General]\nrules=custom\ncount=1\n[custom]\nDescription=Meu editor\nwmclass=kate\nposition=17,29\npositionrule=4\n')
@@ -103,6 +120,17 @@ class MonitorTests(unittest.TestCase):
         cfg = configparser.ConfigParser()
         cfg.read(self.base / 'kwinrulesrc')
         self.assertFalse(any(cfg[s].get('wmclass') == 'brave' for s in cfg.sections()))
+
+    def test_favorite_migration_uses_explicit_three_string_dbus_signature(self):
+        from unittest.mock import Mock
+        session = Mock()
+        with patch.object(m, 'bus', return_value=session): m.favorite()
+        self.assertEqual(session.call_blocking.call_count, 2)
+        first, second = [c.args for c in session.call_blocking.call_args_list]
+        self.assertEqual(first[3:5], ('UnlinkResourceFromActivity', 'sss'))
+        self.assertEqual(second[3:5], ('LinkResourceToActivity', 'sss'))
+        self.assertIn(m.APP_ID, first[5][1])
+        self.assertIn('AtualizadorDoSistema', second[5][1])
 
     def test_favorites_are_imported_once(self):
         with patch.object(m, 'favorite') as fav:

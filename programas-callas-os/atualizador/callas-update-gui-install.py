@@ -25,14 +25,14 @@ def atomic(path, data, mode=0o644):
 def desktop(gui, icon):
     return f'''[Desktop Entry]
 Type=Application
-Name=Atualizador do sistema
-Comment=Atualizações e manutenção do Callas OS
+Name=Central Callas OS
+Comment=Atualizações, manutenção e monitor principal
 Exec=/usr/bin/python3 "{gui}"
 TryExec=/usr/bin/python3
 Icon={icon}
 Terminal=false
 Categories=System;
-Keywords=atualizador;atualização;Arch;pacman;Flatpak;Discord;
+Keywords=atualizador;atualização;Arch;pacman;Flatpak;monitores;telas;central;
 StartupNotify=true
 StartupWMClass=io.github.Callas157.AtualizadorDoSistema
 '''.encode()

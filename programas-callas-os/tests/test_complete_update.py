@@ -129,7 +129,7 @@ etapa() { printf '%s\\n' "$1" >> "$ORDER"; [[ $1 != "$FAIL" ]]; }
                 self.assertEqual(result.returncode, int(bool(fail)))
                 self.assertEqual(log.read_text().splitlines(), ['Ponto de recuperação pré-update',
                     'Arch e aplicativos dos repositórios', 'AUR e recompilações necessárias',
-                    'Flatpaks e Discord', 'Kernels padrão/LTS, DKMS e boot'])
+                    'Flatpaks', 'Kernels padrão/LTS, DKMS e boot'])
 
     def test_reboot_notice_only_after_successful_transaction_and_log(self):
         function = self.text[self.text.index('registrar_atualizacao() {'):self.text.index('\nnotificar_falha_usuario()')]

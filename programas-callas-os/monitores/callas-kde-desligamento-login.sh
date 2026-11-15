@@ -523,6 +523,8 @@ if [[ ${1:-} == --sistema && $EUID == 0 && $# -ge 2 ]]; then
         desfazer) modo_sistema desfazer; exit ;;
     esac
 fi
+sudo_gui=()
+[[ ${CALLAS_MONITOR_GUI:-0} == 1 ]] && sudo_gui=(-A)
 [[ $EUID != 0 ]] || erro 'rode com bash no Konsole, como seu usuário. O script pede sudo quando precisar.'
 acao_usuario=aplicar
 if [[ ${1:-} == --monitor ]]; then acao_usuario=monitor; shift; fi
@@ -530,7 +532,7 @@ if [[ ${1:-} == --monitor ]]; then acao_usuario=monitor; shift; fi
 [[ -f /etc/arch-release ]] || erro 'este script é para Arch Linux.'
 script=$(realpath -- "${BASH_SOURCE[0]}")
 if [[ ${1:-} == --desfazer ]]; then
-    exec sudo /usr/bin/bash -- "$script" --sistema desfazer
+    exec sudo "${sudo_gui[@]}" /usr/bin/bash -- "$script" --sistema desfazer
 fi
 [[ ${XDG_SESSION_TYPE:-} == wayland ]] || erro 'rode dentro da sessão Plasma Wayland.'
 principal=${1:-DP-3}
@@ -543,5 +545,5 @@ if [[ -x /usr/bin/python3 ]]; then
     fi
 fi
 printf 'Monitor escolhido para o login: %s\n' "$principal"
-sudo -v
-sudo /usr/bin/bash -- "$script" --sistema "$acao_usuario" "$principal" < "$novo_login"
+sudo "${sudo_gui[@]}" -v
+sudo "${sudo_gui[@]}" /usr/bin/bash -- "$script" --sistema "$acao_usuario" "$principal" < "$novo_login"

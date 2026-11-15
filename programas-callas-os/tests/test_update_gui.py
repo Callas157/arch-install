@@ -32,7 +32,7 @@ class UpdaterGuiTests(unittest.TestCase):
         self.assertTrue(gui.reboot_needed(None, None, True))
 
     def test_all_actions_are_explicit_without_shell_interpolation(self):
-        self.assertEqual(gui.action_command('discord'), [gui.BACKEND, '--manual', 'discord'])
+        with self.assertRaises(ValueError): gui.action_command('discord')
         self.assertEqual(gui.action_command('callas'), ['/usr/local/libexec/callas-release'])
         with self.assertRaises(ValueError): gui.action_command('sistema; reboot')
 
@@ -50,6 +50,35 @@ class UpdaterGuiTests(unittest.TestCase):
             self.assertEqual((home / 'Documentos/Callas OS/Atualizador do sistema.desktop').read_bytes(), entry)
             self.assertIn(str(target), (home / 'Documentos/Callas OS/atualizador-do-sistema.sh').read_text())
             self.assertEqual((target.parent / 'callas-update-askpass').stat().st_mode & 0o777, 0o755)
+
+    def test_monitor_choices_show_all_outputs_and_current_primary(self):
+        with patch.object(gui.MonitorDialog, 'detect'):
+            dialog = gui.MonitorDialog()
+        dialog.detected(0, '[{"name":"DP-1","priority":1,"size":{"width":1920,"height":1080}},'
+                           '{"name":"HDMI-A-1","priority":2},{"name":"DP-3","priority":3}]', '')
+        self.assertEqual(dialog.choices.count(), 3)
+        self.assertIn('Principal atual', dialog.choices.itemAt(0).widget().text())
+        self.assertFalse(dialog.choices.itemAt(0).widget().isEnabled())
+        self.assertTrue(dialog.choices.itemAt(2).widget().isEnabled())
+        with patch.object(gui.QMessageBox, 'question', return_value=gui.QMessageBox.No), patch.object(dialog, 'execute') as execute:
+            dialog.select('DP-3')
+            execute.assert_not_called()
+        with patch.object(gui.QMessageBox, 'question', return_value=gui.QMessageBox.Yes), patch.object(dialog, 'execute') as execute:
+            dialog.choices.itemAt(2).widget().click()
+            args = execute.call_args.args[0]
+            self.assertEqual(args[:2], ['--set-primary', 'DP-3'])
+            self.assertIn('--gui-auth', args)
+            self.assertIn('HDMI-A-1', args[3])
+        dialog.close()
+
+    def test_monitor_empty_and_error_are_visible(self):
+        with patch.object(gui.MonitorDialog, 'detect'):
+            dialog = gui.MonitorDialog()
+        dialog.detected(0, '[]', '')
+        self.assertIn('Nenhum monitor', dialog.message.text())
+        dialog.detected(1, '', 'Sessão indisponível')
+        self.assertEqual(dialog.message.text(), 'Sessão indisponível')
+        dialog.close()
 
     def test_symlink_is_not_overwritten(self):
         with tempfile.TemporaryDirectory() as tmp:

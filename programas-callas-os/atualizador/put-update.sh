@@ -202,91 +202,6 @@ atualizar_aur() (
     exit "$codigo"
 )
 
-atualizar_discord_integrado() (
-    falhar() {
-        printf 'Erro: %s\n' "$*" >&2
-        exit 1
-    }
-
-    case "${1:-}" in
-        "") acao=atualizar ;;
-        --pacman) acao=pacman ;;
-        --agendado) acao=agendado ;;
-        --sessao) acao=sessao ;;
-        -h|--help)
-            printf 'Uso: bash %s --discord [--pacman]\n' "${0##*/}"
-            printf 'Atualiza somente o Discord nativo.\n'
-            exit 0
-            ;;
-        *) falhar "Opção desconhecida: $1. Use --help." ;;
-    esac
-    [[ $# -le 1 ]] || falhar 'Passe apenas uma opção.'
-    (( EUID != 0 )) || falhar 'Rode com seu usuário normal. O modo --pacman pede sudo quando necessário.'
-
-    config_dir=${XDG_CONFIG_HOME:-"$HOME/.config"}
-    discord_dir="$config_dir/discord"
-    aviso_discord='Discord Stable nativo não encontrado no perfil. Abra o Discord pelo menu, aguarde a janela principal carregar e tente novamente.'
-    [[ -d $discord_dir ]] || {
-        [[ $acao == agendado ]] && { printf '%s\n' "$aviso_discord"; return 0; }
-        falhar "$aviso_discord"
-    }
-
-    if ! lancador=$(command -v discord); then
-        for candidato in /opt/Discord/Discord /opt/discord/Discord /usr/share/discord/Discord /usr/lib/discord/Discord; do
-            [[ -x $candidato ]] && { lancador=$candidato; break; }
-        done
-    fi
-    [[ -n ${lancador:-} ]] || falhar 'O lançador nativo discord não foi encontrado.'
-
-    pids_discord() {
-        pgrep -u "$EUID" -x 'Discord|discord' || true
-    }
-
-    estava_aberto=0
-    if [[ -n $(pids_discord) ]]; then
-        estava_aberto=1
-        printf 'Fechando o Discord para atualizar...\n'
-        kill -TERM $(pids_discord) 2>/dev/null || true
-        for _ in {1..40}; do
-            [[ -z $(pids_discord) ]] && break
-            sleep 0.25
-        done
-        [[ -z $(pids_discord) ]] || falhar 'O Discord ainda está aberto.'
-    fi
-
-    reabrir() {
-        (( estava_aberto )) || return 0
-        printf 'Reabrindo o Discord...\n'
-        if [[ $acao == agendado || $acao == sessao ]]; then
-            systemd-run --user --collect --slice=app.slice --property=Type=exec \
-                -- "$lancador" --start-minimized >/dev/null 2>&1 || return 1
-        else
-            nohup "$lancador" --start-minimized </dev/null >/dev/null 2>&1 &
-        fi
-    }
-    trap reabrir EXIT
-
-    if [[ $acao == pacman ]]; then
-        pacman -Q discord >/dev/null || falhar 'O pacote discord não está instalado pelo pacman.'
-        sudo /usr/local/libexec/callas-native --install discord || falhar 'Falha na instalação pontual do Discord; nenhuma atualização geral foi iniciada.'
-    fi
-
-    bootstrap=
-    for candidato in "$(dirname -- "$(realpath -- "$lancador")")/updater_bootstrap" \
-        /usr/share/discord/updater_bootstrap /opt/Discord/updater_bootstrap /opt/discord/updater_bootstrap; do
-        [[ -x $candidato ]] && { bootstrap=$candidato; break; }
-    done
-
-    if [[ -n $bootstrap ]]; then
-        printf 'Verificando atualização do Discord nativo...\n'
-        timeout --kill-after=10s 10m "$bootstrap" --no-zenity \
-            "$discord_dir" stable https://updates.discord.com/ >/dev/null ||
-            falhar 'A atualização do Discord nativo falhou.'
-    else
-        printf 'Atualizador interno do Discord não encontrado; o pacote será mantido pelo pacman/AUR.\n'
-    fi
-)
-
 criar_ponto_recuperacao() {
     /usr/local/libexec/callas-storage --system "$1"
 }
@@ -359,7 +274,7 @@ atualizar_sistema() {
     etapa 'Ponto de recuperação pré-update' criar_ponto_recuperacao "$usuario" || return
     etapa 'Arch e aplicativos dos repositórios' atualizar_arch "$origem" || return
     etapa 'AUR e recompilações necessárias' atualizar_aur || falhou=1
-    etapa 'Flatpaks e Discord' atualizar_apps "$usuario" "$home" || falhou=1
+    etapa 'Flatpaks' atualizar_apps "$usuario" "$home" || falhou=1
     # Always validate boot at the end, even if an application failed earlier.
     etapa 'Kernels padrão/LTS, DKMS e boot' /usr/local/libexec/callas-kernel-check || falhou=1
     return "$falhou"
@@ -383,8 +298,6 @@ atualizar_flatpaks() {
 atualizar_apps() {
     local usuario=$1 home=$2 falhou=0
     atualizar_flatpaks "$usuario" "$home" || falhou=1
-    etapa 'Discord nativo' como_usuario "$usuario" "$home" "$program" --discord-agendado ||
-        falhou=1
     return "$falhou"
 }
 
@@ -400,7 +313,6 @@ atualizar_nativos() {
         codigo=$?
         if (( codigo == 2 )); then adiados=1; else falhou=1; fi
     }
-    etapa 'Discord nativo' como_usuario "$usuario" "$home" "$program" --discord-agendado || falhou=1
     (( falhou == 0 )) || return 1
     (( adiados == 0 )) || return 2
 }
@@ -418,10 +330,6 @@ registrar_atualizacao() {
             sistema) atualizar_sistema "$origem" "$usuario" "$home" || codigo=$? ;;
             apps|nativos) atualizar_nativos "$usuario" "$home" || codigo=$? ;;
             flatpaks) atualizar_flatpaks "$usuario" "$home" || codigo=$? ;;
-            discord)
-                etapa 'Discord nativo' como_usuario "$usuario" "$home" \
-                    "$program" --discord-sessao || codigo=$?
-                ;;
         esac
         printf '===== Fim da atualização | %s | código %s =====\n' "$(date -Is)" "$codigo"
         exit "$codigo"
@@ -514,14 +422,14 @@ instalar_entrada_menu() {
     cat > "$arquivo" <<DESKTOP
 [Desktop Entry]
 Type=Application
-Name=Atualizador do sistema
-Comment=Atualizações automáticas e manuais do Arch, Flatpak e Discord
+Name=Central Callas OS
+Comment=Atualizações automáticas e manuais do Arch e Flatpak
 Exec=$program --menu
 TryExec=$program
 Icon=system-software-update
 Terminal=true
 Categories=System;
-Keywords=atualizador;atualização;Arch;pacman;Flatpak;Discord;
+Keywords=atualizador;atualização;Arch;pacman;Flatpak;monitores;central;
 DESKTOP
     install -D -m 0644 -T -- "$arquivo" "$atalho_menu"
     printf 'Atualizador do sistema disponível no menu de aplicativos.\n'
@@ -702,14 +610,14 @@ menu() {
         exec konsole -e /usr/bin/bash "$origem" --menu
     fi
     while true; do
-        printf '\n=== Atualizador do sistema ===\n'
+        printf '\n=== Central Callas OS ===\n'
         if [[ -x /usr/local/libexec/callas-version ]]; then
             /usr/local/libexec/callas-version --label || :
         fi
         printf '%s\n' \
             '1. Limpeza e manutenção' \
             '2. Atualizar aplicativos nativos' \
-            '3. Atualizar Discord' \
+            '3. Monitores — definir monitor principal' \
             '4. Atualizar geral' \
             '5. Callas OS Update' \
             '6. Sair'
@@ -720,7 +628,7 @@ menu() {
                 continue
                 ;;
             2) modo=nativos ;;
-            3) modo=discord ;;
+            3) /usr/bin/python3 /usr/local/lib/callas-update/callas-update-gui.py --monitors; continue ;;
             4) modo=sistema ;;
             5)
                 if atualizar_config_callas; then
@@ -757,21 +665,6 @@ menu() {
 }
 
 case ${1:-} in
-    --discord-boot|--discord-agendado)
-        (( EUID != 0 && $# == 1 )) || erro 'Esta opção é usada pelo serviço de atualização.'
-        atualizar_discord_integrado --agendado
-        ;;
-    --discord-sessao)
-        (( EUID != 0 && $# == 1 )) || erro 'Esta opção é usada pelo menu de atualização.'
-        atualizar_discord_integrado --sessao
-        ;;
-    --discord)
-        shift
-        case ${1:-} in
-            --boot|--agendado|--sessao) erro 'Use --discord para atualização manual.' ;;
-        esac
-        atualizar_discord_integrado "$@"
-        ;;
     --check)
         (( EUID == 0 && $# == 2 )) || erro 'Esta opção é usada pelo serviço de atualização.'
         exec flock -x -o "$lock_atualizador" "$program" --verificar-agenda "$2"
@@ -784,7 +677,7 @@ case ${1:-} in
     --manual)
         (( EUID == 0 && $# == 2 )) || erro 'Esta opção é usada pelo menu de atualização.'
         [[ -n ${SUDO_USER:-} && $SUDO_USER != root ]] || erro 'Abra o menu com seu usuário normal.'
-        [[ $2 == sistema || $2 == apps || $2 == nativos || $2 == flatpaks || $2 == discord ]] || erro 'Modo manual inválido.'
+        [[ $2 == sistema || $2 == apps || $2 == nativos || $2 == flatpaks ]] || erro 'Modo manual inválido.'
         printf 'Preparando a atualização. Se outra estiver em andamento, ela vai terminar primeiro.\n'
         exec flock -x -o "$lock_atualizador" "$program" --registrar "$SUDO_USER" "$2" manual
         ;;

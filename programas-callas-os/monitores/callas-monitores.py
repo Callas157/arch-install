@@ -136,12 +136,17 @@ print("CALLAS_OK");
     print('Painel e notificações no principal; novos arquivos da Área de Trabalho aparecem nele.')
 
 
-def choose():
+def choose(primary=None, expected=None, gui_auth=False):
     current = outputs()
+    if expected is not None and sorted(o['name'] for o in current) != sorted(expected):
+        raise RuntimeError('Os monitores mudaram. Atualize a lista novamente.')
     for n, o in enumerate(current, 1):
         size = o.get('size', {})
         print(f"{n}. {o['name']} — {size.get('width', '?')} × {size.get('height', '?')} — prioridade {o.get('priority', '?')}")
-    answer = input('Qual será o principal? [0 cancela]: ').strip()
+    if primary is None:
+        answer = input('Qual será o principal? [0 cancela]: ').strip()
+    else:
+        answer = next((str(i) for i, o in enumerate(current, 1) if o['name'] == primary), '')
     if answer == '0':
         return
     if not answer.isdigit() or not 1 <= int(answer) <= len(current):
@@ -154,7 +159,7 @@ def choose():
         raise RuntimeError('Os monitores mudaram. Abra a lista novamente.')
     backup()
     # Authorize login changes before touching the desktop; never restart SDDM.
-    run('sudo', '-v')
+    run('sudo', *(['-A'] if gui_auth else []), '-v')
     order = [chosen] + sorted((o for o in current if o != chosen), key=lambda o: o.get('priority', 100))
     run('kscreen-doctor', *(f"output.{o['id']}.priority.{i}" for i, o in enumerate(order, 1)))
     active = outputs()
@@ -171,11 +176,13 @@ def choose():
 
 
 def favorite():
-    import dbus
-    obj = bus().get_object('org.kde.ActivityManager', '/ActivityManager/Resources/Linking')
-    interface = dbus.Interface(obj, 'org.kde.ActivityManager.ResourcesLinking')
-    for ident in (APP_ID, 'io.github.Callas157.AtualizadorDoSistema.desktop'):
-        interface.LinkResourceToActivity('org.kde.plasma.favorites.applications', 'applications:' + ident, ':global')
+    session = bus()
+    # Explicit signature avoids dbus-python selecting the two-argument overload.
+    for method, ident in (('UnlinkResourceFromActivity', APP_ID),
+                          ('LinkResourceToActivity', 'io.github.Callas157.AtualizadorDoSistema.desktop')):
+        session.call_blocking('org.kde.ActivityManager', '/ActivityManager/Resources/Linking',
+            'org.kde.ActivityManager.ResourcesLinking', method, 'sss',
+            ('org.kde.plasma.favorites.applications', 'applications:' + ident, ':global'))
 
 
 def install_system():
@@ -184,12 +191,13 @@ def install_system():
     target = Path('/usr/local/share/applications') / APP_ID
     atomic(target, '''[Desktop Entry]
 Type=Application
-Name=Callas OS — Monitores
+Name=Monitores
 Comment=Escolher monitor principal, login, painel, atalhos e notificações
-Exec=/usr/local/libexec/callas-monitores
-TryExec=/usr/local/libexec/callas-monitores
+Exec=/usr/bin/python3 /usr/local/lib/callas-update/callas-update-gui.py --monitors
+TryExec=/usr/bin/python3 /usr/local/lib/callas-update/callas-update-gui.py --monitors
 Icon=preferences-desktop-display
-Terminal=true
+Terminal=false
+NoDisplay=true
 Categories=System;Settings;HardwareSettings;
 Keywords=monitor;tela;principal;DisplayPort;HDMI;Callas;
 ''', 0o644)
@@ -206,15 +214,19 @@ X-KDE-autostart-phase=2
 def session_setup():
     # Never reassign priority or move panels each boot: KScreen persists the choice.
     # One-time favorites import supports existing Kickoff profiles and manual unpinning.
-    if not (STATE / 'monitor-favorites-v1').exists():
+    if not (STATE / 'monitor-favorites-v2').exists():
         favorite()
-        atomic(STATE / 'monitor-favorites-v1', '1\n')
+        atomic(STATE / 'monitor-favorites-v2', '1\n')
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--install-system', action='store_true')
     parser.add_argument('--session', action='store_true')
+    parser.add_argument('--list-json', action='store_true')
+    parser.add_argument('--set-primary')
+    parser.add_argument('--expected', type=json.loads)
+    parser.add_argument('--gui-auth', action='store_true')
     args = parser.parse_args()
     if args.install_system:
         install_system()
@@ -223,6 +235,12 @@ def main():
         raise RuntimeError('Abra pelo menu do KDE como usuário normal.')
     if os.environ.get('XDG_SESSION_TYPE') != 'wayland':
         raise RuntimeError('Esta ferramenta requer Plasma Wayland.')
+    if args.list_json:
+        print(json.dumps(outputs()))
+        return
+    if args.set_primary:
+        choose(args.set_primary, args.expected, args.gui_auth)
+        return
     if args.session:
         session_setup()
         return

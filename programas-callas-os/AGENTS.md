@@ -11,7 +11,7 @@ Estas regras devem ser lidas antes de qualquer tarefa, em cada novo chat e retom
 | Opção | Escopo permitido |
 | --- | --- |
 | 2 — Atualizar aplicativos nativos | Atualizar aplicativos com as proteções existentes; preservar kernel, headers e NVIDIA. |
-| 3 — Atualizar Discord | Atualizar somente o Discord e o suporte autorizado para ele; preservar kernel, headers e NVIDIA. |
+| 3 — Monitores | Escolher o monitor principal na sessão do usuário; não atualizar pacotes. |
 | 4 — Atualizar geral | Fluxo separado para atualização geral, inclusive kernel/headers, sujeito à validação de compatibilidade e à preservação da NVIDIA fixada. |
 | 5 — Callas OS Update | Adição ou remoção de aplicativos conforme a entrega autorizada e atualização de configurações do Linux/Callas OS. Nunca atualizar kernel ou driver NVIDIA. |
 

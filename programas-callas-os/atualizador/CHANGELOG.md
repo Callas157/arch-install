@@ -1,5 +1,14 @@
 # Histórico do Callas OS
 
+## 3.7.0 — 2026-11-15
+
+- Renomeia a interface para Central Callas OS, preservando o ID e os favoritos existentes. Substitui Atualizar Discord por Monitores, com submenu gráfico para detectar as telas ativas, indicar a principal atual e selecionar outra pelo mouse.
+- Reaproveita o ajuste de prioridade, painel, notificações e login existente. Confirma a escolha, verifica mudanças na lista de telas e usa autorização gráfica para o login. Não altera resolução, frequência, escala ou disposição física. Mantém o atalho antigo de monitores como acesso compatível ao submenu, oculto do menu; migra seu favorito para a Central uma vez.
+- Retira a execução dedicada do atualizador interno do Discord dos fluxos manuais e automáticos. A manutenção normal do pacote permanece no pacman/AUR. Não adiciona envio de arquivos ao GitHub.
+- Compartilha os arquivos entre instalação limpa e Update, com cópias embutidas sincronizadas. Backup original do instalador 3.6.2 verificado no Drive por conteúdo e SHA-256 antes da edição; preserva kernel, NVIDIA e agenda.
+
+Validação: 262 testes offline executados sem falhas, com um opcional ignorado; sintaxe de 56 arquivos Python e 9 Bash conferida. Inclui três telas simuladas, principal atual, cancelamento, seleção pelo botão, desconexão e autorização gráfica simulada. Detecção somente leitura na sessão real encontrou DP-3 e HDMI-A-1. Nenhuma troca real de monitor principal, novo login, instalação Arch limpa ou boot foi validado.
+
 ## 3.6.2 — 2026-11-15
 
 - Corrige a transição da 3.6.0 para a 3.6.1: uma alteração apenas no próprio instalador do Callas Baterias agora atualiza somente esse auxiliar. O pacote do aplicativo não mudou entre essas versões; reinstalar e reiniciar o serviço nesse caso era desnecessário.
