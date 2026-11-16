@@ -17,7 +17,7 @@ DEPENDENCIES={
     'security':('callas-apps.py','callas-apps.json','callas-update-gui.py','callas-update-gui-install.py','callas-baterias-install.py','callas-baterias.tar.gz','callas-security.sh','callas-game-logs.py','callas-native.py','callas-kernel-policy.py'),
     'apps':('callas-apps.py','callas-apps.json','callas-spotify-permissions.sh','callas-aur-install.py','callas-native.py','callas-kernel-check.sh'),
     'tools':('callas-monitores.py','callas-janelas.py','callas-inicio-kde.sh','callas-kde-desligamento-login.sh'),
-    'boot':('callas.script','callas.plymouth'),
+    'boot':('callas.script','callas.plymouth','callas-boot-theme.py'),
     'flatpaks':('callas-apps.py','callas-apps.json'), 'browser':(), 'desktop':(),
     'session':('callas-game-logs.py','callas-inicio-kde.sh','callas-janelas.py','callas-nekofetch.sh','callas-version.py'),
 }
@@ -25,7 +25,7 @@ REQUIRED={
     'security':('/usr/local/lib/callas-update/callas-update-gui.py','/usr/local/libexec/callas-update-gui-install','/usr/local/share/callas-os/baterias/callas_baterias.py','/usr/local/libexec/callas-baterias-install','/etc/systemd/user/callas-baterias.service','/etc/udev/rules.d/71-callas-baterias.rules','/etc/xdg/autostart/callas-baterias.desktop','/etc/callas-os/security-version','/etc/systemd/system/callas-game-events.service','/etc/sudoers.d/20-callas-security','/etc/udev/rules.d/70-callas-g920.rules','/etc/pacman.d/hooks/00-callas-kernel-policy.hook','/etc/pacman.d/hooks/00-callas-kernel-deny-remove.hook'),
     'apps':(),
     'tools':('/usr/local/share/applications/io.github.Callas157.Monitores.desktop','/etc/systemd/user/callas-janelas.service'),
-    'boot':('/boot/grub/grub.cfg','/boot/initramfs-linux.img','/boot/initramfs-linux-lts.img'),
+    'boot':('/etc/grub.d/09_callas','/boot/grub/themes/callas/loading.cfg','/boot/grub/themes/callas/background.png','/boot/grub/grub.cfg','/boot/initramfs-linux.img','/boot/initramfs-linux-lts.img'),
     'flatpaks':(), 'browser':('/etc/brave/policies/managed/callas-bonjourr.json',), 'desktop':('/etc/xdg/kicker-extra-favoritesrc',), 'session':('/etc/systemd/user/callas-game-logs.service',),
 }
 

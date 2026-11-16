@@ -337,6 +337,8 @@ curl -fsSL "$CALLAS_ASSET_BASE/grub/theme.txt" \
   -o /mnt/usr/share/callas-os/grub/theme.txt
 curl -fsSL "$CALLAS_ASSET_BASE/grub/background.png" \
   -o /mnt/usr/share/callas-os/grub/background.png
+curl -fsSL "$CALLAS_ASSET_BASE/grub/loading.cfg" \
+  -o /mnt/usr/share/callas-os/grub/loading.cfg
 
 # Plymouth
 curl -fsSL "$CALLAS_ASSET_BASE/plymouth/callas/callas.plymouth" \
@@ -2216,6 +2218,7 @@ test -s /boot/vmlinuz-linux-lts && test -s /boot/initramfs-linux-lts.img
 install -d /boot/grub/themes/callas
 install -m 0644 /usr/share/callas-os/grub/theme.txt /boot/grub/themes/callas/theme.txt
 install -m 0644 /usr/share/callas-os/grub/background.png /boot/grub/themes/callas/background.png
+install -m 0644 /usr/share/callas-os/grub/loading.cfg /boot/grub/themes/callas/loading.cfg
 
 # GRUB UEFI: instalação limpa experimental, preservando a partição EFI em /boot.
 # Plymouth permanece integrado ao initramfs; sem atrasos artificiais no carregamento.
@@ -2276,6 +2279,7 @@ sed -i "s/CALLAS_EFI_UUID/$efi_uuid/g" /etc/grub.d/09_callas
 sed -i "s/CALLAS_ROOT_UUID/$uuid_raiz/g" /etc/grub.d/09_callas
 sed -i "s|CALLAS_NVIDIA_ARGS|$nvidia_args|g" /etc/grub.d/09_callas
 chmod 0755 /etc/grub.d/09_callas
+python /usr/local/share/callas-os/security-stage/callas-boot-theme.py --entries /etc/grub.d/09_callas
 
 # Desativa a geração automática do Arch. O arquivo permanece no sistema e pode
 # ser reativado manualmente em recuperação, mas não entra no grub.cfg normal.

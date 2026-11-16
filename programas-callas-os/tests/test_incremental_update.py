@@ -200,10 +200,17 @@ pacman() { [[ $1 != -Syu ]] || exit 88; return 0; }
   text=(UP/'callas-config-update.sh').read_text()
   phase=text.split('# CALLAS_PHASE_BEGIN boot\n',1)[1].split('# CALLAS_PHASE_END boot\n',1)[0]
   copy=text[text.index('copy_changed() {'):text.index('# CALLAS_PHASE_BEGIN security')]
-  for changed,fail,expected_init,expected_grub in (('',False,0,0),('grub/background.png',False,0,1),('plymouth/callas/background.jpg',False,1,0),('plymouth/callas/background.jpg',True,1,0)):
+  for changed,fail,expected_init,expected_grub in (('',False,0,0),('grub/background.png',False,0,1),('plymouth/callas/background.jpg',False,1,0),('plymouth/callas/background.jpg','init',1,0),('grub/background.png','grub',0,1),('pending-grub',False,0,1),('pending-initramfs',False,1,0)):
    with self.subTest(changed=changed,fail=fail),tempfile.TemporaryDirectory() as temp:
     root=Path(temp)
     for path in ('boot/grub/themes/callas','usr/share/plymouth/themes/callas','usr/share/plymouth/themes/script','usr/local/libexec','etc/plymouth','stage','logs','bin'):(root/path).mkdir(parents=True,exist_ok=True)
+    shutil.copy2(UP/'callas-boot-theme.py',root/'stage/callas-boot-theme.py')
+    spec=importlib.util.spec_from_file_location('boot_fixture',UP/'callas-boot-theme.py')
+    boot=importlib.util.module_from_spec(spec);spec.loader.exec_module(boot)
+    installer=(UP.parents[1]/'instalar-arch.sh').read_text()
+    entries=installer.split("cat > /etc/grub.d/09_callas <<'GRUB_CALLAS'\n",1)[1].split('\nGRUB_CALLAS',1)[0]+'\n'
+    (root/'etc/grub.d').mkdir(parents=True)
+    (root/'etc/grub.d/09_callas').write_text(boot.migrate(entries))
     for name in ('callas.script','callas.plymouth'):
      (root/'stage'/name).write_text('theme')
      (root/'usr/share/plymouth/themes/callas'/name).write_text('theme')
@@ -213,11 +220,14 @@ pacman() { [[ $1 != -Syu ]] || exit 88; return 0; }
     (root/'etc/plymouth/plymouthd.conf').write_text('[Daemon]\nTheme=callas\nShowDelay=0\nUseFirmwareBackground=false\n')
     (root/'boot/grub/grub.cfg').write_text('menuentry Callas\nlinux /vmlinuz-linux root=x\nlinux /vmlinuz-linux-lts root=x\n')
     for name in ('initramfs-linux.img','initramfs-linux-lts.img'):(root/'boot'/name).write_text('initramfs')
+    if changed=='pending-grub':(root/'boot/grub/.callas-theme-pending').touch()
+    if changed=='pending-initramfs':(root/'boot/.callas-initramfs-pending').touch()
     fake='''#!/bin/bash
 printf '%s\n' "${0##*/}" >> "$TEST_ROOT/calls"
 case ${0##*/} in
 mkinitcpio) [[ $FAIL_INIT != 1 ]] ;;
 grub-mkconfig) cp "$TEST_ROOT/boot/grub/grub.cfg" "$2" ;;
+grub-script-check) [[ $FAIL_GRUB != 1 ]] ;;
 *) exit 0 ;;
 esac
 '''
@@ -232,12 +242,24 @@ asset() { asset_changed=0; [[ $1 != "$CHANGE_ASSET" ]] || asset_changed=1; }
 '''
     code=prefix+copy+phase
     for path in ('/boot/','/usr/share/','/usr/local/','/etc/'):code=code.replace(path,str(root)+path)
-    env=dict(os.environ,TEST_ROOT=str(root),CHANGE_ASSET=changed,FAIL_INIT='1' if fail else '0',PATH=str(root/'bin')+':'+os.environ['PATH'],CALLAS_RELEASE_DIR=str(root/'stage'),logstage=str(root/'logs'))
+    env=dict(os.environ,TEST_ROOT=str(root),CHANGE_ASSET=changed,FAIL_INIT='1' if fail=='init' else '0',FAIL_GRUB='1' if fail=='grub' else '0',PATH=str(root/'bin')+':'+os.environ['PATH'],CALLAS_RELEASE_DIR=str(root/'stage'),logstage=str(root/'logs'))
     result=subprocess.run(['bash','-c',code],env=env,capture_output=True,text=True)
     self.assertEqual(result.returncode==0,not fail,result.stdout+result.stderr)
     calls=(root/'calls').read_text().splitlines()
     self.assertEqual(calls.count('mkinitcpio'),expected_init)
     self.assertEqual(calls.count('grub-mkconfig'),expected_grub)
     self.assertEqual((root/'completed').exists(),not fail)
+    if fail:
+     pending=root/('boot/.callas-initramfs-pending' if fail=='init' else 'boot/grub/.callas-theme-pending')
+     self.assertTrue(pending.exists())
+     env.update(FAIL_INIT='0',FAIL_GRUB='0',CHANGE_ASSET='')
+     resumed=subprocess.run(['bash','-c',code],env=env,capture_output=True,text=True)
+     self.assertEqual(resumed.returncode,0,resumed.stdout+resumed.stderr)
+     self.assertFalse(pending.exists())
+     self.assertTrue((root/'completed').exists())
+     calls=(root/'calls').read_text().splitlines()
+     self.assertEqual(calls.count('mkinitcpio'),2 if fail=='init' else 0)
+     self.assertEqual(calls.count('grub-mkconfig'),2 if fail=='grub' else 0)
+
 
 if __name__=='__main__':unittest.main()

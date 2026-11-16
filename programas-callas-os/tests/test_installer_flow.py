@@ -74,7 +74,7 @@ exec 3>&1 4>&2
             base=Path(temp)
             for name in ('etc','etc/sudoers.d','etc/systemd','etc/default','var/tmp','var/log','boot/grub','home/fixture/.config','home/fixture/.local/bin','opt/brave-bin','share/callas-os/grub','share/plymouth/themes','local/bin','local/libexec','local/share/callas-os/security-stage','fakebin','modules/main','modules/lts'):
                 (base/name).mkdir(parents=True,exist_ok=True)
-            for name,content in {'etc/locale.gen':'#pt_BR.UTF-8 UTF-8\n#en_US.UTF-8 UTF-8\n','etc/pacman.conf':'[options]\n#[multilib]\n#Include = /etc/pacman.d/mirrorlist\n','etc/pam.d/sddm':'pam_kwallet\n','etc/mkinitcpio.conf':'HOOKS=()\nMODULES=()\n','etc/grub.d/10_linux':'placeholder','share/callas-os/grub/theme.txt':'theme','share/callas-os/grub/background.png':'image'}.items():
+            for name,content in {'etc/locale.gen':'#pt_BR.UTF-8 UTF-8\n#en_US.UTF-8 UTF-8\n','etc/pacman.conf':'[options]\n#[multilib]\n#Include = /etc/pacman.d/mirrorlist\n','etc/pam.d/sddm':'pam_kwallet\n','etc/mkinitcpio.conf':'HOOKS=()\nMODULES=()\n','etc/grub.d/10_linux':'placeholder','share/callas-os/grub/theme.txt':'theme','share/callas-os/grub/background.png':'image','share/callas-os/grub/loading.cfg':'# transition'}.items():
                 path=base/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(content)
             (base/'etc/passwd').write_text('root:x:0:0:root:/root:/bin/bash\nfixture:x:0:0:test:/home/fixture:/bin/bash\nsddm:x:0:0:test:/var/lib/sddm:/bin/bash\n')
             (base/'etc/group').write_text('root:x:0:\nfixture:x:0:\nsddm:x:0:\n')
@@ -124,6 +124,7 @@ elif name=='kwriteconfig6':
                 if name=='callas-inicio-kde': text=text.replace('if (( EUID == 0 )); then','if false; then')
                 path=base/'local/libexec'/name;path.write_text(text);path.chmod(0o755)
             stage=base/'local/share/callas-os/security-stage'
+            shutil.copy(UPDATER/'callas-boot-theme.py',stage/'callas-boot-theme.py')
             shutil.copy(UPDATER/'callas-version.py',stage/'callas-version.py')
             shutil.copy(UPDATER/'callas-version.py',base/'local/libexec/callas-version');(base/'local/libexec/callas-version').chmod(0o755)
             (stage/'VERSION').write_text('3.2.2\n');(stage/'commit').write_text('a'*40+'\n')

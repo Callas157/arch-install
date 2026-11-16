@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSAO="2026.11.15.02"
+VERSAO="2026.11.15.03"
 export PATH=/usr/bin:/bin
 export CALLAS_KERNEL_UPDATE_CONTEXT=config
 umask 077
@@ -315,16 +315,22 @@ fi
 
 # CALLAS_PHASE_BEGIN boot
 if phase_needed boot; then
-# GRUB: restaura apenas o tema estável do Callas OS.
-# Não altera terminal-box nem tenta forçar transparência.
+# GRUB: transição em tela cheia; não abre janela de terminal sobre o tema.
 install -d /boot/grub/themes/callas
 
 grub_changed=0
 initramfs_changed=0
+[[ ! -e /boot/grub/.callas-theme-pending ]] || grub_changed=1
+[[ ! -e /boot/.callas-initramfs-pending ]] || initramfs_changed=1
 asset grub/theme.txt /boot/grub/themes/callas/theme.txt
 (( asset_changed == 0 )) || grub_changed=1
 asset grub/background.png /boot/grub/themes/callas/background.png
 (( asset_changed == 0 )) || grub_changed=1
+asset grub/loading.cfg /boot/grub/themes/callas/loading.cfg
+(( asset_changed == 0 )) || grub_changed=1
+boot_entries_result=$(python "$CALLAS_RELEASE_DIR/callas-boot-theme.py" --entries /etc/grub.d/09_callas) ||
+  erro "Entradas GRUB incompatíveis; configuração de boot não foi regenerada."
+[[ $boot_entries_result != changed ]] || grub_changed=1
 [[ -s /boot/grub/grub.cfg ]] || grub_changed=1
 
 rm -f /boot/grub/themes/callas/terminal_box_c.png
@@ -333,6 +339,7 @@ rm -f /etc/pacman.d/hooks/99-callas-grub-silencioso.hook
 
 
 if (( grub_changed )); then
+touch /boot/grub/.callas-theme-pending
 grub_tmp=$(mktemp /boot/grub/.grub.cfg.callas.XXXXXX)
 if grub-mkconfig -o "$grub_tmp" && [[ -s "$grub_tmp" ]] &&
    grub-script-check "$grub_tmp" &&
@@ -341,6 +348,7 @@ if grub-mkconfig -o "$grub_tmp" && [[ -s "$grub_tmp" ]] &&
    grep -Eq '(^|[[:space:]/])vmlinuz-linux-lts([[:space:]]|$)' "$grub_tmp"; then
   chmod 0600 "$grub_tmp"
   mv -f "$grub_tmp" /boot/grub/grub.cfg
+  rm -f /boot/grub/.callas-theme-pending
 else
   rm -f "$grub_tmp"
   erro "Falha ao validar a configuração do GRUB; o grub.cfg anterior foi preservado."
@@ -355,6 +363,8 @@ install -d "$plymouth_dir"
 
 copy_changed "$CALLAS_RELEASE_DIR/callas.plymouth" "$plymouth_dir/callas.plymouth"
 copy_changed "$CALLAS_RELEASE_DIR/callas.script" "$plymouth_dir/callas.script"
+asset logo/callas-plasma-icon.png "$plymouth_dir/logo.png"
+(( asset_changed == 0 )) || initramfs_changed=1
 asset plymouth/callas/background.jpg "$plymouth_dir/background.jpg"
 (( asset_changed == 0 )) || initramfs_changed=1
 
@@ -379,6 +389,7 @@ for kernel in linux linux-lts; do
   [[ -s /boot/initramfs-$kernel.img ]] || initramfs_changed=1
 done
 if (( initramfs_changed )); then
+touch /boot/.callas-initramfs-pending
 if command -v plymouth-set-default-theme >/dev/null 2>&1; then
   plymouth-set-default-theme callas ||
     erro "Não consegui definir o tema Callas OS como Plymouth padrão."
@@ -389,6 +400,7 @@ mkinitcpio -P || erro "Falha ao reconstruir o initramfs com o novo Plymouth."
   erro "O initramfs do kernel principal ficou ausente após atualizar o Plymouth."
 [[ -s /boot/initramfs-linux-lts.img ]] ||
   erro "O initramfs do kernel LTS ficou ausente após atualizar o Plymouth."
+rm -f /boot/.callas-initramfs-pending
 
 fi
 /usr/local/libexec/callas-kernel-check --verify-only

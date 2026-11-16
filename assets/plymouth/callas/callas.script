@@ -10,8 +10,11 @@ logo.sprite = Sprite(logo.image);
 title.image = Image.Text("Callas OS", 0.92, 0.97, 1.00);
 title.sprite = Sprite(title.image);
 
-dots.image = Image.Text("•   •   •", 0.05, 0.78, 1.00);
-dots.sprite = Sprite(dots.image);
+dots.image = Image.Text("•", 0.05, 0.78, 1.00);
+dots.first = Sprite(dots.image);
+dots.second = Sprite(dots.image);
+dots.third = Sprite(dots.image);
+animation.phase = 0;
 
 subtitle.image = Image.Text("Carregando o sistema...", 0.76, 0.86, 0.94);
 subtitle.sprite = Sprite(subtitle.image);
@@ -35,8 +38,10 @@ fun position_all() {
     title.sprite.SetX(center_x - title.image.GetWidth() / 2);
     title.sprite.SetY(Window.GetY() + Window.GetHeight() * 0.56);
 
-    dots.sprite.SetX(center_x - dots.image.GetWidth() / 2);
-    dots.sprite.SetY(Window.GetY() + Window.GetHeight() * 0.62);
+    dots.y = Window.GetY() + Window.GetHeight() * 0.62;
+    dots.first.SetPosition(center_x - 28 - dots.image.GetWidth() / 2, dots.y, 2);
+    dots.second.SetPosition(center_x - dots.image.GetWidth() / 2, dots.y, 2);
+    dots.third.SetPosition(center_x + 28 - dots.image.GetWidth() / 2, dots.y, 2);
 
     progress_box.x = center_x - progress_box.image.GetWidth() / 2;
     progress_box.y = Window.GetY() + Window.GetHeight() * 0.70;
@@ -73,6 +78,16 @@ fun progress_callback(duration, progress) {
     position_all();
 }
 
+# O callback de refresh continua ativo mesmo quando o progresso não muda.
+# Nada aqui retarda o boot ou simula porcentagens de leitura do kernel.
+fun refresh_callback() {
+    animation.phase += 0.09;
+    dots.first.SetOpacity(0.25 + 0.75 * (Math.Sin(animation.phase) + 1) / 2);
+    dots.second.SetOpacity(0.25 + 0.75 * (Math.Sin(animation.phase - 1.2) + 1) / 2);
+    dots.third.SetOpacity(0.25 + 0.75 * (Math.Sin(animation.phase - 2.4) + 1) / 2);
+    position_all();
+}
+
 position_all();
-Plymouth.SetRefreshFunction(position_all);
+Plymouth.SetRefreshFunction(refresh_callback);
 Plymouth.SetBootProgressFunction(progress_callback);

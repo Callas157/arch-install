@@ -1,5 +1,13 @@
 # Histórico do Callas OS
 
+## 3.11.0 — 2026-11-15
+
+- Adiciona transição do menu GRUB para o wallpaper em tela cheia durante a leitura de kernel/initramfs, sem mensagens em janela preta nem espera artificial. Mantém os três segundos e as entradas de recuperação/diagnóstico.
+- Anima os três pontos do Plymouth independentemente do progresso. Instalação limpa e Update usam o mesmo migrador e os mesmos assets; preserva argumentos do kernel e NVIDIA.
+- A leitura bloqueante no GRUB continua com imagem estática; a animação começa quando o Plymouth inicia. Não elimina o tempo de leitura nem promete boot em três segundos no total.
+
+Validação: 289 testes offline executados, 288 aprovados e um opcional ignorado; sintaxe Bash/GRUB e parser nativo do Plymouth conferidos. Transição do menu para wallpaper em tela cheia validada em GRUB UEFI isolado no QEMU, usando o loading.cfg da entrega. Simuladas falhas de GRUB/initramfs seguidas de retomada. Sem execução do Update no computador principal, boot completo da distribuição ou instalação Arch real; animação e integração completa aguardam teste na VM.
+
 ## 3.10.0 — 2026-11-15
 
 - Centraliza os aplicativos distribuídos pelo Update em catálogo verificado no mesmo commit do GitHub. Compara pacotes nativos, Flatpaks e registros locais antes de aplicar adições, remoções e substituições; preserva aplicativos pessoais. A retirada de uma entrada previamente gerenciada gera remoção; entradas `absent` também alcançam máquinas anteriores ao catálogo.
