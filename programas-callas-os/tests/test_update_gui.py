@@ -109,6 +109,37 @@ class UpdaterGuiTests(unittest.TestCase):
         self.assertEqual(window.stage.text(), 'Concluído com sucesso')
         window.close(); window.deleteLater()
 
+    def test_system_and_callas_offer_reboot_only_after_success_without_package_changes(self):
+        class Process:
+            def __init__(self, code): self.returncode = code
+            def poll(self): return self.returncode
+        for action in ('sistema', 'callas'):
+            for code in (0, 1, 2):
+                with self.subTest(action=action, code=code):
+                    window = gui.Window()
+                    self.assertTrue(window.restart_panel.isHidden())
+                    master, slave = gui.pty.openpty(); os.close(slave)
+                    window.master = master; os.set_blocking(master, False)
+                    window.notifier = gui.QSocketNotifier(master, gui.QSocketNotifier.Read, window)
+                    window.process = Process(code); window.action = action; window.before = {}
+                    with patch.object(gui, 'package_state', return_value={}), \
+                         patch.object(gui.Path, 'exists', return_value=False), \
+                         patch.object(gui.subprocess, 'run') as reboot:
+                        window.poll()
+                        self.assertEqual(window.restart_panel.isHidden(), code != 0)
+                        self.assertEqual(window.reboot_pending, code == 0)
+                        reboot.assert_not_called()
+                        if code == 0:
+                            from PySide6.QtWidgets import QPushButton
+                            buttons = window.restart_panel.findChildren(QPushButton)
+                            self.assertEqual([button.text() for button in buttons], ['Reiniciar agora', 'Mais tarde'])
+                            buttons[1].click()
+                            self.assertTrue(window.restart_panel.isHidden())
+                            reboot.assert_not_called()
+                    window.close(); window.deleteLater()
+        from PySide6.QtCore import QCoreApplication, QEvent
+        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+
     def test_window_and_process_error_success_deferral(self):
         from PySide6.QtWidgets import QApplication
         self.app = APP

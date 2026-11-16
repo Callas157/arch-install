@@ -325,11 +325,11 @@ class Window(QWidget):
         footer.addStretch()
         self.restart_panel = QWidget()
         rl = QVBoxLayout(self.restart_panel); rl.setContentsMargins(0, 0, 0, 0)
-        rl.addWidget(QLabel('Atualização concluída. Reinicie para aplicar as mudanças.'))
+        rl.addWidget(QLabel('Atualização concluída. Deseja reiniciar agora?'))
         rr = QHBoxLayout(); rr.addStretch()
-        rr.addWidget(self.button('Mais tarde', 'appointment-soon', self.defer_reboot))
         reboot = self.button('Reiniciar agora', 'system-reboot', self.restart)
         reboot.setObjectName('primary'); rr.addWidget(reboot)
+        rr.addWidget(self.button('Mais tarde', 'appointment-soon', self.defer_reboot))
         rl.addLayout(rr)
         self.restart_panel.hide(); footer.addWidget(self.restart_panel)
         layout.addLayout(footer)
@@ -483,9 +483,12 @@ class Window(QWidget):
             try: after = package_state()
             except (OSError, subprocess.SubprocessError, RuntimeError): after = None
             if self.action in ('sistema', 'nativos', 'callas', 'flatpaks'):
-                self.reboot_pending = reboot_needed(self.before, after, Path('/run/reboot-required').exists())
+                self.reboot_pending = (self.action in ('sistema', 'callas') or
+                                       reboot_needed(self.before, after, Path('/run/reboot-required').exists()))
                 self.restart_panel.setVisible(self.reboot_pending)
-                if after is None or self.before is None:
+                if self.action in ('sistema', 'callas'):
+                    self.status.setText('Atualização concluída. Você pode reiniciar agora ou deixar para mais tarde.')
+                elif after is None or self.before is None:
                     self.status.setText('Concluído. Não foi possível verificar automaticamente a necessidade de reinício.')
         elif code == 2 and self.action in ('nativos', 'flatpaks'):
             self.bar.setValue(0); self.stage.setText('Algumas atualizações ficaram pendentes')

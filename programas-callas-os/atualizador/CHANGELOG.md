@@ -1,5 +1,13 @@
 # Histórico do Callas OS
 
+## 3.11.1 — 2026-11-15
+
+- Mostra “Reiniciar agora” e “Mais tarde”, lado a lado no canto inferior direito da Central, após conclusão bem-sucedida de Atualizar geral ou Callas OS Update. A oferta independe de mudança na versão dos pacotes, cobrindo atualizações de GRUB/Plymouth e configurações. Não apresenta reinício como obrigatório.
+- Mantém os botões ocultos durante a execução, em erros e atualizações incompletas. “Mais tarde” apenas fecha a oferta; “Reiniciar agora” mantém a confirmação existente. Sem reinício automático.
+- A instalação limpa e o Update distribuem a mesma interface verificada pelo auxiliar compartilhado; não foi necessário alterar o instalador.
+
+Validação: 290 testes offline executados, 289 aprovados e um opcional ignorado. Interface Qt exercitada com sucesso, falha e conclusão incompleta nos dois fluxos, inclusive sem mudança de pacotes; botão “Mais tarde” e ausência de reinício automático conferidos. Prévia visual Qt inspecionada; integração compartilhada de instalação limpa e Update coberta pela suíte. Nenhuma atualização administrativa ou reinicialização real foi executada.
+
 ## 3.11.0 — 2026-11-15
 
 - Adiciona transição do menu GRUB para o wallpaper em tela cheia durante a leitura de kernel/initramfs, sem mensagens em janela preta nem espera artificial. Mantém os três segundos e as entradas de recuperação/diagnóstico.
