@@ -50,8 +50,8 @@ class DiscordPlacementTests(unittest.TestCase):
     def test_full_rules_recovery_preserves_spotify_steam_brave_and_custom_sections(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);path=root/'kwinrulesrc';cfg=configparser.ConfigParser(interpolation=None);cfg.optionxform=str
-            cfg['General']={'rules':'discord,spotify,steam,brave,brave-browser,custom','count':'6'}
-            for app in ('discord','spotify','steam','brave','brave-browser'):
+            cfg['General']={'rules':'discord,spotify,steam,brave,brave-browser,brave-origin,brave-origin-browser,custom','count':'8'}
+            for app in ('discord','spotify','steam','brave','brave-browser','brave-origin','brave-origin-browser'):
                 cfg[app]=dict(Description='Callas OS: lembrar '+app,wmclass=app,position='810,335',positionrule='4',
                     size='960,1080',sizerule='4',screen='0',screenrule='4',maximizehorizrule='4',maximizevertrule='4')
             cfg['discord'].update(ignoregeometry='true',ignoregeometryrule='2')

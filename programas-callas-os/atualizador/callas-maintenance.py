@@ -21,7 +21,7 @@ PINNED = ('nvidia-utils', 'nvidia-open-dkms', 'nvidia-open', 'nvidia-open-lts',
 PROTECTED = set(PINNED) | {'base', 'base-devel', 'linux', 'linux-lts', 'linux-headers', 'linux-lts-headers',
     'linux-firmware', 'systemd', 'pacman', 'sudo', 'python', 'networkmanager', 'sddm', 'plasma-desktop',
     'pyside6', 'konsole', 'dolphin', 'steam', 'discord', 'spotify', 'qbittorrent', 'solaar', 'gnome-boxes',
-    'brave-bin', 'paru', 'paru-bin', 'xone-dkms', 'xone-dongle-firmware', 'usb_modeswitch',
+    'brave-bin', 'brave-origin-bin', 'paru', 'paru-bin', 'xone-dkms', 'xone-dongle-firmware', 'usb_modeswitch',
     'gpu-screen-recorder', 'gpu-screen-recorder-ui', 'gpu-screen-recorder-notification', 'gpu-screen-recorder-gtk', 'nvibrant-bin'}
 STORAGE = None
 BUILD_ROOT = Path('/var/lib/callas-os/aur-builds')

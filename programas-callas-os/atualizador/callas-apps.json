@@ -60,6 +60,13 @@
       "description": "Compactador e extrator de arquivos"
     },
     {
+      "name": "brave-origin-bin",
+      "source": "aur",
+      "title": "Brave Origin",
+      "icon": "brave-origin",
+      "description": "Navegador padrão das novas instalações Callas OS"
+    },
+    {
       "source": "aur",
       "name": "brave-bin",
       "title": "Brave",

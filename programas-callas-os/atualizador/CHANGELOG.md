@@ -1,5 +1,14 @@
 # Histórico do Callas OS
 
+## 3.15.0 — 2026-11-17
+
+- Troca o navegador das novas instalações para Brave Origin (`brave-origin-bin`), com associação HTTP/HTTPS/HTML, preferência do KDE e atalho do painel. Mantém o Brave tradicional disponível na Central e adiciona o Origin à mesma lista com ícone persistente. Não declara nenhum navegador como instalação automática do Update, não remove o tradicional nem altera o navegador padrão de máquinas existentes.
+- Centraliza a configuração dos dois navegadores em `callas-browser`: políticas compartilhadas de Bonjourr/SteamDB e preferências recomendadas, pt-BR, KWallet, barra de título, botão inicial/favoritos e busca de abas. Perfis e flags permanecem separados. Instalação limpa e Update usam o mesmo auxiliar verificado; o hook de instalação/atualização dos dois pacotes reaplica somente os padrões de sistema.
+- Preserva contas, extensões pessoais, preferências desconhecidas e perfis em uso. Não substitui JSON inválido, recusa caminhos simbólicos e confere alterações concorrentes antes da gravação. Configura perfis Default e adicionais; o backup do Update agora inclui as preferências de ambos, flags, políticas e preferências iniciais. Inclui Origin nas regras de memória de janelas e na limpeza de autostarts sem iniciá-lo automaticamente.
+- Backup anterior 3.14.0 do instalador confirmado no Google Drive por leitura integral e SHA-256 antes da edição; retenção conferida com dez backups. Mantém cópias embutidas sincronizadas e preserva o escopo de aplicativos, kernel, NVIDIA e modo manual.
+
+Validação: 328 testes offline executados, 327 aprovados e um opcional ignorado; sintaxe de 85 arquivos Python e nove Bash conferida. Configuração completa do instalador executada em namespace isolado com comandos de pacotes/hardware simulados, incluindo Origin como padrão; perfis temporários testados com preservação de contas/extensões, navegador aberto, JSON inválido e seleção das fontes de backup. Revisão independente sem impedimentos. Nenhum navegador ou perfil real desta máquina foi alterado; sem instalação real de pacotes, download das extensões num perfil novo, Update completo ou boot real.
+
 ## 3.14.0 — 2026-11-17
 
 - Integra manutenção, monitores, aplicativos padrão e desinstalação como páginas internas da janela principal da Central, com retorno à tela inicial. Mantém os controles de progresso e detalhes existentes para atualizações/manutenção. Não abre janelas de navegação adicionais.

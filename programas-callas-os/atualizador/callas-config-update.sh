@@ -422,120 +422,25 @@ if phase_needed browser; then
 browser_pending=0
 # Browser extensions also apply to installations with the older boot layout.
 # Use the same extension IDs; existing profiles and extension settings stay intact.
-install -d /etc/brave/policies/managed
-cat > /etc/brave/policies/managed/callas-bonjourr.json <<'EOF'
-{
-  "ExtensionSettings": {
-    "dlnejlppicbjfcfcedcflplfjajinajd": {
-      "installation_mode": "normal_installed",
-      "update_url": "https://clients2.google.com/service/update2/crx"
-    },
-    "kdbmhfkmnlmbkgbabkdealhhbfhlmmon": {
-      "installation_mode": "normal_installed",
-      "update_url": "https://clients2.google.com/service/update2/crx"
-    }
-  }
-}
-EOF
-chmod 0644 /etc/brave/policies/managed/callas-bonjourr.json
-
-# Brave em Português do Brasil. O Bonjourr usa navigator.language no
-# primeiro carregamento para escolher o idioma padrão.
-como_usuario python3 - <<'FLAGS'
-from pathlib import Path
-p=Path.home()/'.config/brave-flags.conf'
-p.parent.mkdir(parents=True, exist_ok=True)
-lines=p.read_text().splitlines() if p.exists() else []
-lines=[line for line in lines if not line.startswith('--lang=')]
-if '--password-store=kwallet6' not in lines: lines.append('--password-store=kwallet6')
-lines.append('--lang=pt-BR')
-p.write_text('\n'.join(lines)+'\n')
-FLAGS
-
-# Brave + Bonjourr + SteamDB
-install -d /etc/brave/policies/managed /etc/brave/policies/recommended /usr/share/callas-os
-
-cat > /etc/brave/policies/recommended/callas-defaults.json <<'EOF'
-{
-  "RestoreOnStartup": 5,
-  "ShowHomeButton": true,
-  "HomepageIsNewTabPage": true,
-  "BookmarkBarEnabled": true
-}
-EOF
-
+# Stable Brave and Origin share policies; profile/flags remain separate.
 asset bonjourr/callas-profile.json /usr/share/callas-os/bonjourr-profile.json
-
-# Reaplica apenas as preferências visuais conhecidas, sem recriar o perfil.
-# Com o navegador aberto, preserva Preferences para evitar concorrência.
-brave_pref="$home/.config/BraveSoftware/Brave-Browser/Default/Preferences"
-if ! pgrep -u "$usuario" -f '(^|/)(brave|brave-browser)( |$)' >/dev/null 2>&1; then
-  if [[ -f "$brave_pref" ]]; then
-    como_usuario python3 - "$brave_pref" <<'BRAVE_REPAIR'
-import json, os, sys, tempfile
-from pathlib import Path
-path = Path(sys.argv[1])
-# Never substitute an empty object for an unreadable/corrupt existing profile.
-before = path.stat()
-with path.open(encoding='utf-8') as stream: data = json.load(stream)
-if not isinstance(data, dict): raise ValueError('Preferences não contém objeto JSON; arquivo preservado')
-data.setdefault('browser', {})['custom_chrome_frame'] = False
-data['browser']['show_home_button'] = True
-data['homepage_is_newtabpage'] = True
-data.setdefault('bookmark_bar', {})['show_on_all_tabs'] = True
-data.setdefault('intl', {})['accept_languages'] = 'pt-BR,pt,en-US,en'
-data['intl']['selected_languages'] = 'pt-BR,pt,en-US,en'
-data.setdefault('tab_search', {})['pinned_to_tabstrip'] = True
-data.setdefault('everything_menu', {})['pinned_to_tabstrip'] = True
-actions = data.setdefault('toolbar', {}).setdefault('pinned_actions', [])
-if 'kActionTabSearch' not in actions: actions.append('kActionTabSearch')
-fd, temp = tempfile.mkstemp(prefix='.callas-preferences-', dir=path.parent)
-try:
-    with os.fdopen(fd, 'w') as stream:
-        json.dump(data, stream, ensure_ascii=False, separators=(',', ':'))
-        stream.flush(); os.fsync(stream.fileno())
-    after = path.stat()
-    if (before.st_ino, before.st_mtime_ns, before.st_size) != (after.st_ino, after.st_mtime_ns, after.st_size):
-        raise RuntimeError('Preferences mudou durante a migração; arquivo preservado')
-    os.replace(temp, path)
-finally:
-    if os.path.exists(temp): os.unlink(temp)
-BRAVE_REPAIR
-  elif [[ -d /opt/brave-bin ]]; then
-    initial=/opt/brave-bin/initial_preferences
-    python3 - "$initial" <<'EOF'
-import json, os, sys
-path=sys.argv[1]
-data={}
-try:
-    with open(path, "r", encoding="utf-8") as f:
-        data=json.load(f)
-except Exception:
-    pass
-data.setdefault("browser", {})["custom_chrome_frame"]=False
-data["browser"]["show_home_button"]=True
-data["homepage_is_newtabpage"]=True
-data.setdefault("bookmark_bar", {})["show_on_all_tabs"]=True
-data.setdefault("intl", {})["accept_languages"]="pt-BR,pt,en-US,en"
-data["intl"]["selected_languages"]="pt-BR,pt,en-US,en"
-data.setdefault("tab_search", {})["pinned_to_tabstrip"]=True
-data.setdefault("everything_menu", {})["pinned_to_tabstrip"]=True
-actions=data.setdefault("toolbar", {}).setdefault("pinned_actions", [])
-if "kActionTabSearch" not in actions:
-    actions.append("kActionTabSearch")
-with open(path, "w", encoding="utf-8") as f:
-    json.dump(data, f, ensure_ascii=False, indent=2)
-EOF
-  fi
+python "$CALLAS_RELEASE_DIR/callas-browser.py" --system
+if como_usuario /usr/local/libexec/callas-browser --user; then
+  :
 else
-  browser_pending=1
-  aviso 'Brave aberto: perfil preservado. Feche o navegador e reaplique a opção 5 para reparar as preferências visuais.'
+  browser_status=$?
+  if [[ $browser_status == 2 ]]; then
+    browser_pending=1
+    aviso 'Um navegador Brave está aberto: perfil preservado. Feche-o e repita o Update.'
+  else
+    erro 'Não consegui configurar os navegadores Brave; preferências inválidas ou alteradas foram preservadas.'
+  fi
 fi
 
 if (( ! browser_pending )); then
   phase_done browser
 else
-  printf 'Preferências do Brave pendentes; os demais passos foram aplicados.\n'
+  printf 'Preferências do Brave/Origin pendentes; os demais passos foram aplicados.\n'
 fi
 fi
 # CALLAS_PHASE_END browser

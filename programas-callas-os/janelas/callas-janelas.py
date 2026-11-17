@@ -219,7 +219,7 @@ def remember_rules(windows):
         cfg.add_section('General')
     ids = [s for s in cfg['General'].get('rules', '').split(',') if s]
     # Only the requested apps. Separate roles keep dialogs out of the main rule.
-    targets = ('discord', 'spotify', 'brave', 'brave-browser')
+    targets = ('discord', 'spotify', 'brave', 'brave-browser', 'brave-origin', 'brave-origin-browser')
     samples = {}
     counts = {}
     for w in windows:

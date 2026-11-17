@@ -72,7 +72,7 @@ exec 3>&1 4>&2
         if probe.returncode: self.skipTest('user namespace unavailable')
         with tempfile.TemporaryDirectory() as temp:
             base=Path(temp)
-            for name in ('etc','etc/sudoers.d','etc/systemd','etc/default','var/tmp','var/log','boot/grub','home/fixture/.config','home/fixture/.local/bin','opt/brave-bin','share/callas-os/grub','share/plymouth/themes','local/bin','local/libexec','local/share/callas-os/security-stage','fakebin','modules/main','modules/lts'):
+            for name in ('etc','etc/sudoers.d','etc/systemd','etc/default','var/tmp','var/log','boot/grub','home/fixture/.config','home/fixture/.local/bin','opt/brave-bin','opt/brave-origin-bin','share/callas-os/grub','share/plymouth/themes','local/bin','local/libexec','local/share/callas-os/security-stage','fakebin','modules/main','modules/lts'):
                 (base/name).mkdir(parents=True,exist_ok=True)
             for name,content in {'etc/locale.gen':'#pt_BR.UTF-8 UTF-8\n#en_US.UTF-8 UTF-8\n','etc/pacman.conf':'[options]\n#[multilib]\n#Include = /etc/pacman.d/mirrorlist\n','etc/pam.d/sddm':'pam_kwallet\n','etc/mkinitcpio.conf':'HOOKS=()\nMODULES=()\n','etc/grub.d/10_linux':'placeholder','share/callas-os/grub/theme.txt':'theme','share/callas-os/grub/background.png':'image','share/callas-os/grub/loading.cfg':'# transition'}.items():
                 path=base/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(content)
@@ -89,7 +89,7 @@ exec 3>&1 4>&2
             (base/'local/libexec/callas-logs').write_text('#!/bin/sh\ncat >> /var/log/kernel-recorded.log\n')
             (base/'local/libexec/callas-logs').chmod(0o755)
             fake='''#!/usr/bin/python3
-import os,sys,json
+import os,sys,json,configparser
 from pathlib import Path
 name=Path(sys.argv[0]).name;a=sys.argv[1:]
 with open('/var/log/events','a') as f: f.write(name+' '+repr(a)+'\\n')
@@ -110,7 +110,12 @@ elif name=='grub-install':
 elif name=='kreadconfig6': print('emptySession')
 elif name=='kwriteconfig6':
  p=Path(os.environ['HOME'])/'.config'/a[a.index('--file')+1];p.parent.mkdir(parents=True,exist_ok=True)
- with p.open('a') as f: f.write(' '.join(a)+'\\n')
+ cfg=configparser.ConfigParser(interpolation=None,strict=False);cfg.optionxform=str
+ if p.exists():cfg.read(p)
+ groups=[a[i+1] for i,x in enumerate(a) if x=='--group'];section=']['.join(groups)
+ if not cfg.has_section(section):cfg.add_section(section)
+ cfg.set(section,a[a.index('--key')+1],a[-1])
+ with p.open('w') as f:cfg.write(f)
 '''
             for command in ('pacman','pacman-key','locale-gen','hwclock','visudo','chown','systemctl','udevadm','runuser','flatpak','findmnt','grub-mkconfig','grub-install','grub-script-check','plymouth-set-default-theme','mkinitcpio','lsinitcpio','modinfo','dkms','mountpoint','curl','gpg','xdg-user-dirs-update','plasma-apply-lookandfeel','kwriteconfig6','kreadconfig6','steam','discord','solaar','dbus-run-session'):
                 path=base/'fakebin'/command;path.write_text(fake);path.chmod(0o755)
@@ -127,6 +132,10 @@ elif name=='kwriteconfig6':
             shutil.copy(UPDATER/'callas-boot-theme.py',stage/'callas-boot-theme.py')
             shutil.copy(UPDATER/'callas-version.py',stage/'callas-version.py')
             shutil.copy(UPDATER/'callas-version.py',base/'local/libexec/callas-version');(base/'local/libexec/callas-version').chmod(0o755)
+            browser=(UPDATER/'callas-browser.py').read_text().replace("if os.geteuid() == 0: raise ValueError('Configure o perfil como usuário normal.')", "if False: raise ValueError('Configure o perfil como usuário normal.')")
+            (base/'local/libexec/callas-browser').write_text(browser); (base/'local/libexec/callas-browser').chmod(0o755)
+            desktop=base/'share/applications/brave-origin.desktop'; desktop.parent.mkdir(parents=True,exist_ok=True)
+            desktop.write_text('[Desktop Entry]\nType=Application\nName=Brave Origin\n')
             (stage/'VERSION').write_text('3.2.2\n');(stage/'commit').write_text('a'*40+'\n')
             (stage/'callas-security.sh').write_text('mkdir -p /usr/local/share/applications\nprintf "[Desktop Entry]\\nExec=/usr/local/libexec/put-update --menu\\n" > /usr/local/share/applications/io.github.Callas157.AtualizadorDoSistema.desktop\n/usr/local/libexec/callas-kernel-check\n')
             (base/'child.sh').write_text(child_script())
@@ -168,6 +177,10 @@ elif name=='kwriteconfig6':
             preferences=json.loads((base/'opt/brave-bin/initial_preferences').read_text())
             self.assertFalse(preferences['browser']['custom_chrome_frame'])
             self.assertIn('kActionTabSearch',preferences['toolbar']['pinned_actions'])
+            self.assertEqual(preferences,json.loads((base/'opt/brave-origin-bin/initial_preferences').read_text()))
+            self.assertIn('brave-origin.desktop',(base/'home/fixture/.config/mimeapps.list').read_text())
+            self.assertIn('callas-aur-install fixture brave-origin-bin',events)
+            self.assertNotIn('callas-aur-install fixture brave-bin',events)
             self.assertTrue((base/'local/share/applications/io.github.Callas157.Monitores.desktop').exists())
             self.assertTrue((base/'local/share/applications/io.github.Callas157.AtualizadorDoSistema.desktop').exists())
             self.assertEqual(json.loads((base/'etc/callas-os/release.json').read_text())['status'],'complete')

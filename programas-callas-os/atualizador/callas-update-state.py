@@ -14,11 +14,11 @@ import urllib.request
 
 STATE=Path('/var/lib/callas-os')
 DEPENDENCIES={
-    'security':('callas-defaults.py','default-app-icons.json','callas-uninstall.py','callas-apps.py','callas-apps.json','callas-update-gui.py','callas-update-gui-install.py','callas-baterias-install.py','callas-baterias.tar.gz','callas-security.sh','callas-game-logs.py','callas-native.py','callas-kernel-policy.py'),
+    'security':('callas-browser.py','callas-defaults.py','default-app-icons.json','callas-uninstall.py','callas-apps.py','callas-apps.json','callas-update-gui.py','callas-update-gui-install.py','callas-baterias-install.py','callas-baterias.tar.gz','callas-security.sh','callas-game-logs.py','callas-native.py','callas-kernel-policy.py'),
     'apps':('callas-apps.py','callas-apps.json','callas-spotify-permissions.sh','callas-aur-install.py','callas-native.py','callas-kernel-check.sh'),
     'tools':('callas-monitores.py','callas-janelas.py','callas-inicio-kde.sh','callas-kde-desligamento-login.sh'),
     'boot':('callas.script','callas.plymouth','callas-boot-theme.py'),
-    'flatpaks':('callas-apps.py','callas-apps.json'), 'browser':(), 'desktop':(),
+    'flatpaks':('callas-apps.py','callas-apps.json'), 'browser':('callas-browser.py',), 'desktop':(),
     'session':('callas-game-logs.py','callas-inicio-kde.sh','callas-janelas.py','callas-nekofetch.sh','callas-version.py'),
 }
 REQUIRED={
@@ -26,19 +26,19 @@ REQUIRED={
     'apps':(),
     'tools':('/usr/local/share/applications/io.github.Callas157.Monitores.desktop','/etc/systemd/user/callas-janelas.service'),
     'boot':('/etc/grub.d/09_callas','/boot/grub/themes/callas/loading.cfg','/boot/grub/themes/callas/background.png','/boot/grub/grub.cfg','/boot/initramfs-linux.img','/boot/initramfs-linux-lts.img'),
-    'flatpaks':(), 'browser':('/etc/brave/policies/managed/callas-bonjourr.json',), 'desktop':('/etc/xdg/kicker-extra-favoritesrc',), 'session':('/etc/systemd/user/callas-game-logs.service',),
+    'flatpaks':(), 'browser':('/etc/brave/policies/managed/callas-bonjourr.json','/etc/brave/policies/recommended/callas-defaults.json'), 'desktop':('/etc/xdg/kicker-extra-favoritesrc',), 'session':('/etc/systemd/user/callas-game-logs.service',),
 }
 
 
 # Check the deployed helpers too, so a missing/changed helper cannot be hidden
 # by an unchanged release SHA or by otherwise intact desktop anchors.
 REQUIRED['security'] += tuple('/usr/local/libexec/' + name for name in (
-    'callas-defaults', 'callas-uninstall', 'callas-apps', 'callas-apps.json', 'callas-update-state', 'callas-native',
+    'callas-browser', 'callas-defaults', 'callas-uninstall', 'callas-apps', 'callas-apps.json', 'callas-update-state', 'callas-native',
     'callas-aur', 'callas-aur-install', 'callas-autostart', 'callas-kernel-policy',
     'callas-game-logs', 'callas-spotify-permissions', 'callas-version',
     'callas-nekofetch', 'callas-release', 'callas-logs', 'callas-kernel-check',
     'put-update', 'callas-storage', 'callas-maintenance'))
-REQUIRED['security'] += ('/usr/local/share/callas-os/default-app-icons.json',)
+REQUIRED['security'] += ('/usr/local/share/callas-os/default-app-icons.json', '/etc/pacman.d/hooks/95-callas-browser-defaults.hook')
 REQUIRED['tools'] += tuple('/usr/local/libexec/' + name for name in (
     'callas-monitores', 'callas-janelas', 'callas-inicio-kde', 'callas-kde-desligamento-login'))
 for application_phase in ('security', 'apps', 'flatpaks'):

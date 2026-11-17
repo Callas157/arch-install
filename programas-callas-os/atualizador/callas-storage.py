@@ -306,7 +306,17 @@ def snapshot(backups, kind, user):
         sources = ['/etc/callas-os/release.json', '/etc/default/grub', '/boot/grub/grub.cfg', '/etc/xdg/kicker-extra-favoritesrc',
                    '/etc/xdg/autostart/callas-limpar-atalhos-desktop.desktop',
                    home / '.config/powerdevilrc', home / '.config/ksmserverrc',
-                   home / '.config/BraveSoftware/Brave-Browser/Default/Preferences']
+                   '/etc/brave/policies/managed/callas-bonjourr.json',
+                   '/etc/brave/policies/recommended/callas-defaults.json']
+        for package, profile, flags in (('brave-bin', 'Brave-Browser', 'brave-flags.conf'),
+                                        ('brave-origin-bin', 'Brave-Origin', 'brave-origin-flags.conf')):
+            sources += [home / '.config' / flags, Path('/opt') / package / 'initial_preferences']
+            folder = home / '.config/BraveSoftware' / profile
+            if any(p.is_symlink() for p in (folder, *folder.parents)) or not folder.is_dir(): continue
+            for directory in folder.iterdir():
+                if (directory.name == 'Default' or directory.name.startswith('Profile ')) and not directory.is_symlink():
+                    pref = directory / 'Preferences'
+                    if pref.is_file() and not pref.is_symlink(): sources.append(pref)
         sources += list(Path('/usr/local/libexec').glob('callas-*'))
         return backups.create('Callas OS Update', sources)
 

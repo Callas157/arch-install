@@ -307,6 +307,7 @@ install -m 0755 "$CALLAS_SECURITY_TMP/callas-janelas.py" /mnt/usr/local/libexec/
 install -m 0755 "$CALLAS_SECURITY_TMP/callas-autostart.py" /mnt/usr/local/libexec/callas-autostart
 install -m 0755 "$CALLAS_SECURITY_TMP/callas-aur-install.py" /mnt/usr/local/libexec/callas-aur-install
 install -m 0755 "$CALLAS_SECURITY_TMP/callas-native.py" /mnt/usr/local/libexec/callas-native
+install -m 0755 "$CALLAS_SECURITY_TMP/callas-browser.py" /mnt/usr/local/libexec/callas-browser
 install -m 0755 "$CALLAS_SECURITY_TMP/callas-logs.py" /mnt/usr/local/libexec/callas-logs
 install -m 0755 "$CALLAS_SECURITY_TMP/callas-version.py" /mnt/usr/local/libexec/callas-version
 install -d -m 0700 /mnt/usr/local/share/callas-os/security-stage
@@ -1134,7 +1135,7 @@ def aplicativo(nome, campos):
         ("steam", r"(?<![\w-])steam(?![\w-])|com\.valvesoftware\.steam"),
         ("solaar", r"solaar"),
         ("gsr", r"gpu[ ._-]*screen[ ._-]*recorder|gsr-ui"),
-        ("extra", r"spotify|brave(?:-browser|-bin)?"),
+        ("extra", r"spotify|brave(?:-origin)?(?:-browser|-bin)?"),
     ):
         if re.search(padrao, texto):
             return app
@@ -1980,7 +1981,9 @@ if ! install -d "$plasma_updates" ||
    ! cat > "$plasma_updates/callas-panel-v1.js" <<'PLASMA_PANEL'
 const callasIcon = fileExists("/usr/share/icons/hicolor/256x256/apps/callas-plasma-icon.png");
 const callasLaunchers = ["applications:org.kde.dolphin.desktop"];
-if (fileExists("/usr/share/applications/brave-browser.desktop")) {
+if (fileExists("/usr/share/applications/brave-origin.desktop")) {
+    callasLaunchers.push("applications:brave-origin.desktop");
+} else if (fileExists("/usr/share/applications/brave-browser.desktop")) {
     callasLaunchers.push("applications:brave-browser.desktop");
 }
 
@@ -2153,7 +2156,6 @@ Default Wallet=kdewallet
 Leave Open=true
 Close When Idle=false
 KWRC
-printf '%s\n' '--password-store=kwallet6' '--lang=pt-BR' > "$home/.config/brave-flags.conf"
 cat > /usr/local/bin/configurar-carteira <<'CARTEIRA'
 #!/usr/bin/bash
 sleep 10
@@ -2428,7 +2430,7 @@ instalar_aur() {
   }
 }
 instalar_aur paru-bin || :
-instalar_aur brave-bin || :
+instalar_aur brave-origin-bin
 if (( nvidia )); then instalar_aur nvibrant-bin || :; fi
 # The AUR helper resolves the current recipe's validpgpkeys and verifies the
 # package; avoid an outdated hardcoded Spotify signing-key URL.
@@ -2445,70 +2447,13 @@ if instalar_aur xone-dkms xone-dongle-firmware; then
 fi
 if (( broadcom )); then instalar_aur broadcom-wl-dkms || :; fi
 
-# ---------------- Brave + Bonjourr + SteamDB ----------------
-# Bonjourr é pré-instalado pela política do Brave. As preferências abaixo
-# funcionam como padrão do Callas OS e continuam alteráveis pelo usuário.
-install -d /etc/brave/policies/managed /etc/brave/policies/recommended /usr/share/callas-os
-
-cat > /etc/brave/policies/managed/callas-bonjourr.json <<'CALLAS_BRAVE_EXTENSION'
-{
-  "ExtensionSettings": {
-    "dlnejlppicbjfcfcedcflplfjajinajd": {
-      "installation_mode": "normal_installed",
-      "update_url": "https://clients2.google.com/service/update2/crx"
-    },
-    "kdbmhfkmnlmbkgbabkdealhhbfhlmmon": {
-      "installation_mode": "normal_installed",
-      "update_url": "https://clients2.google.com/service/update2/crx"
-    }
-  }
-}
-CALLAS_BRAVE_EXTENSION
-chmod 0644 /etc/brave/policies/managed/callas-bonjourr.json
-
-cat > /etc/brave/policies/recommended/callas-defaults.json <<'CALLAS_BRAVE_DEFAULTS'
-{
-  "RestoreOnStartup": 5,
-  "ShowHomeButton": true,
-  "HomepageIsNewTabPage": true,
-  "BookmarkBarEnabled": true
-}
-CALLAS_BRAVE_DEFAULTS
-
+# ---------------- Brave tradicional e Origin: mesma configuração ----------------
 curl -fsSL --retry 2 "$asset_base/bonjourr/callas-profile.json" \
   -o /usr/share/callas-os/bonjourr-profile.json ||
   aviso 'Não consegui baixar o perfil padrão do Bonjourr.'
-
-# Preferências que não possuem política própria no Brave são pré-carregadas no
-# primeiro perfil. No Linux, false em browser.custom_chrome_frame significa
-# usar barra de título e bordas do sistema.
-if [[ -d /opt/brave-bin ]]; then
-  BRAVE_INITIAL=/opt/brave-bin/initial_preferences
-  python3 - "$BRAVE_INITIAL" <<'CALLAS_BRAVE_PREFS'
-import json, os, sys
-path=sys.argv[1]
-data={}
-try:
-    with open(path, "r", encoding="utf-8") as f:
-        data=json.load(f)
-except Exception:
-    data={}
-data.setdefault("browser", {})["custom_chrome_frame"]=False
-data["browser"]["show_home_button"]=True
-data["homepage_is_newtabpage"]=True
-data.setdefault("bookmark_bar", {})["show_on_all_tabs"]=True
-data.setdefault("intl", {})["accept_languages"]="pt-BR,pt,en-US,en"
-data["intl"]["selected_languages"]="pt-BR,pt,en-US,en"
-data.setdefault("tab_search", {})["pinned_to_tabstrip"]=True
-data.setdefault("everything_menu", {})["pinned_to_tabstrip"]=True
-actions=data.setdefault("toolbar", {}).setdefault("pinned_actions", [])
-if "kActionTabSearch" not in actions:
-    actions.append("kActionTabSearch")
-os.makedirs(os.path.dirname(path), exist_ok=True)
-with open(path, "w", encoding="utf-8") as f:
-    json.dump(data, f, ensure_ascii=False, indent=2)
-CALLAS_BRAVE_PREFS
-fi
+browser_helper=/usr/local/libexec/callas-browser
+python3 "$browser_helper" --system
+como_usuario env XDG_CONFIG_HOME="$home/.config" python3 "$browser_helper" --user --default-origin
 
 if command -v nvibrant >/dev/null; then
   cat > "$home/.local/bin/DigitalVibrance.sh" <<'VIBRANCE'

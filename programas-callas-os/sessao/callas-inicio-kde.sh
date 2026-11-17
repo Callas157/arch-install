@@ -86,7 +86,7 @@ def aplicativo(nome, campos):
         ("steam", r"(?<![\w-])steam(?![\w-])|com\.valvesoftware\.steam"),
         ("solaar", r"solaar"),
         ("gsr", r"gpu[ ._-]*screen[ ._-]*recorder|gsr-ui"),
-        ("extra", r"spotify|brave(?:-browser|-bin)?"),
+        ("extra", r"spotify|brave(?:-origin)?(?:-browser|-bin)?"),
     ):
         if re.search(padrao, texto):
             return app
