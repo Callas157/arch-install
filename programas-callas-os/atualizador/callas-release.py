@@ -21,6 +21,7 @@ RAW = "https://raw.githubusercontent.com/Callas157/arch-install"
 FILES = (
     "programas-callas-os/atualizador/callas-boot-theme.py",
     "programas-callas-os/atualizador/callas-apps.py",
+    "programas-callas-os/atualizador/callas-uninstall.py",
     "programas-callas-os/atualizador/callas-apps.json",
     "programas-callas-os/atualizador/callas-update-gui.py",
     "programas-callas-os/atualizador/callas-update-gui-install.py",

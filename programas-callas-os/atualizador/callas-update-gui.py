@@ -22,9 +22,11 @@ from PySide6.QtGui import QIcon, QPalette, QColor, QFont, QPixmap
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QGridLayout, QPushButton, QLabel, QProgressBar, QPlainTextEdit, QFrame,
-    QLineEdit, QMessageBox, QInputDialog, QStyle, QDialog)
+    QLineEdit, QMessageBox, QInputDialog, QStyle, QDialog, QCheckBox,
+    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView)
 
 BACKEND = '/usr/local/libexec/put-update'
+UNINSTALL_HELPER = '/usr/local/libexec/callas-uninstall'
 ID = 'io.github.Callas157.AtualizadorDoSistema'
 CRITICAL = ('linux', 'linux-lts', 'linux-zen', 'linux-hardened', 'systemd', 'glibc',
             'nvidia-utils', 'nvidia-open-dkms', 'mesa', 'linux-firmware')
@@ -107,6 +109,7 @@ def option_icon(name):
         pixmap = QPixmap(); pixmap.loadFromData(CODEX_ICON.encode(), 'SVG')
         return QIcon(pixmap)
     paths = {
+        'edit-delete': '<path d="M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7"/>',
         'edit-clear': '<path d="m9 4 11 11-7 7L2 11zM6 15l7-7M13 22h9"/>',
         'applications-all': '<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/>',
         'video-display': '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 22h8m-4-5v5"/>',
@@ -222,6 +225,179 @@ class MonitorDialog(QDialog):
         if self.worker is not None: event.ignore()
         else: event.accept()
 
+class UninstallDialog(QDialog):
+    """Keep inventory and package-manager work off the GUI thread."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Desinstalar aplicativos — Central Callas OS')
+        self.resize(parent.size() if parent else QSize(900, 770))
+        self.setMinimumSize(690, 620)
+        self.apps = []
+        self.process = None
+        self._output = bytearray()
+        self._error = bytearray()
+        self.busy = False
+        layout = QVBoxLayout(self); layout.setContentsMargins(28, 25, 28, 24); layout.setSpacing(14)
+        layout.addWidget(QLabel('Desinstalar aplicativos', objectName='title'))
+        intro = QLabel('Escolha um aplicativo para remover. Seus arquivos pessoais serão preservados.\n'
+                       'Componentes essenciais ficam protegidos; dependências não são removidas em cascata.')
+        intro.setWordWrap(True); layout.addWidget(intro)
+        self.search = QLineEdit(); self.search.setPlaceholderText('Buscar por nome, pacote ou origem…')
+        self.search.textChanged.connect(self.filter_apps); layout.addWidget(self.search)
+        self.protected = QCheckBox('Mostrar componentes protegidos (somente consulta)')
+        self.protected.toggled.connect(self.filter_apps); layout.addWidget(self.protected)
+        self.table = QTableWidget(0, 4)
+        self.table.setHorizontalHeaderLabels(['Aplicativo', 'Origem', 'Versão', 'Situação'])
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.verticalHeader().hide()
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.table.itemSelectionChanged.connect(self.selection_changed)
+        layout.addWidget(self.table, 1)
+        self.info = QLabel(''); self.info.setWordWrap(True); self.info.setTextFormat(Qt.PlainText)
+        layout.addWidget(self.info)
+        self.status = QLabel(''); self.status.setWordWrap(True); self.status.setTextFormat(Qt.PlainText)
+        layout.addWidget(self.status)
+        self.progress = QProgressBar(); self.progress.setRange(0, 0); self.progress.setTextVisible(False)
+        layout.addWidget(self.progress)
+        self.details = QPlainTextEdit(); self.details.setReadOnly(True)
+        self.details.setMaximumBlockCount(3000); self.details.setMaximumHeight(140); self.details.hide()
+        layout.addWidget(self.details)
+        row = QHBoxLayout()
+        self.reload = QPushButton('Atualizar lista'); self.reload.clicked.connect(self.refresh)
+        self.back = QPushButton('Voltar'); self.back.clicked.connect(self.reject)
+        self.remove = QPushButton('Desinstalar'); self.remove.setObjectName('primary')
+        self.remove.setIcon(option_icon('edit-delete')); self.remove.clicked.connect(self.uninstall)
+        row.addWidget(self.reload); row.addStretch(); row.addWidget(self.back); row.addWidget(self.remove)
+        layout.addLayout(row)
+        QTimer.singleShot(0, self.refresh)
+
+    def selected(self):
+        row = self.table.currentRow()
+        return self.table.item(row, 0).data(Qt.UserRole) if row >= 0 and self.table.item(row, 0) else None
+
+    def selection_changed(self):
+        app = self.selected()
+        self.remove.setEnabled(bool(app) and not app['blocked'] and not self.busy)
+        self.info.setText((app['id'] + '\n' + app['reason']) if app else 'Selecione um aplicativo para ver os detalhes.')
+
+    def filter_apps(self, *_):
+        selected = self.selected()
+        query = self.search.text().casefold().strip()
+        visible = [app for app in self.apps if (self.protected.isChecked() or not app['blocked'])
+                   and query in (app['name'] + ' ' + app['id'] + ' ' + app['source']).casefold()]
+        self.table.setRowCount(0)
+        for app in visible:
+            row = self.table.rowCount(); self.table.insertRow(row)
+            for col, value in enumerate((app['name'], app['source'], app.get('version', ''),
+                                         'Protegido' if app['blocked'] else 'Aplicativo')):
+                item = QTableWidgetItem(value); item.setToolTip(app['reason'])
+                if col == 0: item.setData(Qt.UserRole, app)
+                self.table.setItem(row, col, item)
+            if selected and (app['kind'], app['id']) == (selected['kind'], selected['id']):
+                self.table.selectRow(row)
+        self.selection_changed()
+
+    def set_busy(self, busy):
+        self.busy = busy
+        self.reload.setEnabled(not busy); self.back.setEnabled(not busy)
+        self.table.setEnabled(not busy); self.search.setEnabled(not busy); self.protected.setEnabled(not busy)
+        self.progress.setVisible(busy); self.selection_changed()
+
+    def run_helper(self, args, privileged, callback):
+        if self.process is not None: return
+        if not Path(UNINSTALL_HELPER).is_file():
+            self.status.setText('Atualize a Central pelo Callas OS Update para instalar o auxiliar de desinstalação.')
+            self.set_busy(False); return
+        self.set_busy(True)
+        process = QProcess(self); self.process = process
+        self._output = bytearray(); self._error = bytearray()
+        env = QProcessEnvironment.systemEnvironment()
+        env.remove('CALLAS_KERNEL_UPDATE_CONTEXT')
+        env.insert('PYTHONUNBUFFERED', '1')
+        env.insert('SUDO_ASKPASS', str(Path(__file__).resolve().with_name('callas-update-askpass')))
+        process.setProcessEnvironment(env)
+        process.readyReadStandardOutput.connect(lambda: self._output.extend(bytes(process.readAllStandardOutput())))
+        process.readyReadStandardError.connect(lambda: self._error.extend(bytes(process.readAllStandardError())))
+        done = False
+        def finished(code, *_):
+            nonlocal done
+            if done: return
+            done = True
+            self._output.extend(bytes(process.readAllStandardOutput()))
+            self._error.extend(bytes(process.readAllStandardError()))
+            output = self._output.decode('utf-8', 'replace'); error = self._error.decode('utf-8', 'replace')
+            self.process = None; process.deleteLater(); self.set_busy(False)
+            callback(code, output, error)
+        process.finished.connect(finished)
+        process.errorOccurred.connect(lambda error: finished(1) if error == QProcess.FailedToStart else None)
+        argv = [UNINSTALL_HELPER, *args]
+        if privileged: argv = ['/usr/bin/sudo', '-A', '--', *argv]
+        process.start(argv[0], argv[1:])
+        process.closeWriteChannel()
+
+    def refresh(self, *_ , message=''):
+        if self.busy: return
+        self.status.setText('Identificando aplicativos instalados…')
+        def loaded(code, output, error):
+            try:
+                if code: raise RuntimeError(error or 'Não foi possível consultar os aplicativos.')
+                apps = json.loads(output)
+                if not isinstance(apps, list): raise ValueError('Lista de aplicativos inválida.')
+                self.apps = apps; self.filter_apps()
+                count = sum(not app['blocked'] for app in apps)
+                self.status.setText((message + '\n' if message else '') + f'{count} aplicativos disponíveis. Componentes protegidos ficam ocultos.')
+            except (ValueError, RuntimeError) as exc:
+                self.apps = []; self.filter_apps(); self.status.setText(str(exc))
+        self.run_helper(['--list'], False, loaded)
+
+    def uninstall(self):
+        app = self.selected()
+        if self.busy or not app: return
+        if app['blocked']:
+            QMessageBox.warning(self, 'Componente protegido', app['reason']); return
+        admin = app['kind'] in ('native', 'flatpak-system')
+        confirmation = QMessageBox(self)
+        confirmation.setWindowTitle('Confirmar desinstalação'); confirmation.setTextFormat(Qt.PlainText)
+        confirmation.setText(f"Desinstalar {app['name']}?\n\nOrigem: {app['source']}\n{app['id']}\n\n"
+                             'Feche o aplicativo antes de continuar. Seus dados pessoais serão preservados.\n'
+                             'O Callas OS Update respeitará esta escolha.' +
+                             ('\nA autorização administrativa será solicitada se necessário.' if admin else ''))
+        confirmation.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        confirmation.setDefaultButton(QMessageBox.No)
+        confirmation.button(QMessageBox.Yes).setText('Desinstalar')
+        confirmation.button(QMessageBox.No).setText('Cancelar')
+        if confirmation.exec() != QMessageBox.Yes: return
+        self.details.clear(); self.details.show()
+        self.status.setText('Desinstalando ' + app['name'] + '…')
+        def removed(code, output, error):
+            self.details.setPlainText((output + '\n' + error).strip())
+            logger = Path('/usr/local/libexec/callas-logs')
+            if logger.is_file():
+                try:
+                    log = f"Desinstalar: {app['name']} | {app['kind']} | {app['id']}\nCódigo: {code}\n{output}\n{error}"
+                    subprocess.run([str(logger), '--write', 'Aplicativos'], input=log.encode(),
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+                except (OSError, subprocess.SubprocessError):
+                    self.details.appendPlainText('Não foi possível salvar o log em Documentos.')
+            if code:
+                self.status.setText('Desinstalação não concluída. A autorização pode ter sido cancelada. Veja os detalhes.')
+                QMessageBox.warning(self, 'Desinstalação não concluída', error or output or 'Não foi possível iniciar a operação.')
+            else:
+                self.refresh(message=app['name'] + ' desinstalado. Dados pessoais preservados.')
+        self.run_helper(['--remove', app['kind'], app['id']], admin, removed)
+
+    def reject(self):
+        if not self.busy: super().reject()
+
+    def closeEvent(self, event):
+        if self.busy:
+            self.status.setText('Aguarde a operação terminar antes de fechar esta janela.'); event.ignore()
+        else: event.accept()
+
+
 class Window(QWidget):
     def __init__(self):
         super().__init__()
@@ -281,6 +457,7 @@ class Window(QWidget):
             ('Atualizar geral', 'system-software-update', lambda: self.start('sistema')),
             ('Callas OS Update', 'system-upgrade', lambda: self.start('callas')),
             ('Codex', 'codex', self.codex),
+            ('Desinstalar aplicativos', 'edit-delete', self.uninstall_apps),
             ('Sair', 'application-exit', self.close),
         )
         for i, (label, name, callback) in enumerate(entries):
@@ -376,6 +553,12 @@ class Window(QWidget):
         finally:
             self.monitor_dialog.deleteLater()
             self.monitor_dialog = None
+
+    def uninstall_apps(self):
+        if self.process is not None: return
+        dialog = UninstallDialog(self)
+        dialog.exec()
+        dialog.deleteLater()
 
     def codex(self):
         if self.process is not None: return
@@ -528,7 +711,7 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName('Central Callas OS'); app.setDesktopFileName(ID)
     if sys.argv[1:] == ['--askpass']:
-        value, ok = QInputDialog.getText(None, 'Autorizar atualização', 'Senha de administrador:', QLineEdit.Password)
+        value, ok = QInputDialog.getText(None, 'Autorizar operação', 'Senha de administrador:', QLineEdit.Password)
         if ok: sys.stdout.write(value + '\n'); return 0
         return 1
     if os.geteuid() == 0:
@@ -549,7 +732,7 @@ def main():
     for role, color in [(QPalette.Window, '#1d242d'), (QPalette.WindowText, '#edf2f7'),
         (QPalette.Base, '#181e25'), (QPalette.Text, '#edf2f7'), (QPalette.Button, '#303945'),
         (QPalette.ButtonText, '#edf2f7'), (QPalette.Highlight, '#378dcc'),
-        (QPalette.HighlightedText, '#ffffff')]: palette.setColor(role, QColor(color))
+        (QPalette.HighlightedText, '#ffffff'), (QPalette.PlaceholderText, '#aebac7')]: palette.setColor(role, QColor(color))
     app.setPalette(palette)
     window = Window()
     def activate():

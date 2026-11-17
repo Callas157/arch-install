@@ -143,7 +143,7 @@ curl() {
             self.assertEqual((installed/'callas-monitores').read_bytes(),(ROOT/'monitores/callas-monitores.py').read_bytes())
             stage=target/'usr/local/share/callas-os/security-stage'
             for name in ('callas-release.py','callas-game-logs.py','put-update.sh','VERSION',
-                         'callas-update-gui.py','callas-update-gui-install.py'):
+                         'callas-update-gui.py','callas-update-gui-install.py','callas-uninstall.py'):
                 self.assertEqual((stage/name).read_bytes(),(source/name).read_bytes())
             # Install the exact staged GUI into a disposable new-system prefix.
             spec=importlib.util.spec_from_file_location('staged_gui_installer',stage/'callas-update-gui-install.py')

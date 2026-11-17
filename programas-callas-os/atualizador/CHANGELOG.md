@@ -1,5 +1,14 @@
 # Histórico do Callas OS
 
+## 3.12.0 — 2026-11-16
+
+- Adiciona “Desinstalar aplicativos” à Central, com janela do mesmo tamanho, busca, origem/versão e confirmação. Identifica aplicativos nativos/AUR pelo proprietário dos atalhos do sistema, Flatpaks de sistema/usuário, o Codex opcional da Central e AppImages no perfil do usuário. Componentes essenciais ficam ocultos por padrão e bloqueados mesmo quando exibidos para consulta.
+- Revalida o alvo antes de remover. Nativos usam `pacman -R` protegido, sem cascata, limpeza de dependências ou atualização geral; dependências necessárias a outros pacotes impedem a remoção. Flatpaks usam a referência completa, sem apagar dados nem runtimes. Detecta aplicativos em uso e serializa remoções administrativas com as atualizações da Central.
+- Preserva arquivos pessoais, login, conversas, anexos e modelos do Codex. Não executa desinstaladores baixados nem apaga diretórios genéricos; AppImages precisam ser arquivos identificáveis, pertencentes ao usuário, sem caminhos simbólicos. Operações pessoais dispensam sudo; pacotes nativos e Flatpaks de sistema usam a autorização gráfica existente, reaproveitando a validade da senha.
+- Registra escolhas locais para o catálogo e as preparações complementares não reinstalarem aplicativos removidos pela Central. Salva logs em Documentos. Instalação limpa e Update distribuem o mesmo auxiliar e interface verificados; instalador e cópias embutidas não precisaram de alteração.
+
+Validação: 303 testes offline executados, 302 aprovados e um opcional ignorado; sintaxe Python/Bash, diff e prévias Qt conferidos. Inventário real somente de leitura; remoção CLI real de um AppImage artificial em pasta temporária e testes de preservação do Codex em perfil simulado. Demais transações nativas/Flatpak e autorizações simuladas, sem remover aplicativos instalados, executar Update completo, instalação Arch limpa ou boot real.
+
 ## 3.11.1 — 2026-11-15
 
 - Mostra “Reiniciar agora” e “Mais tarde”, lado a lado no canto inferior direito da Central, após conclusão bem-sucedida de Atualizar geral ou Callas OS Update. A oferta independe de mudança na versão dos pacotes, cobrindo atualizações de GRUB/Plymouth e configurações. Não apresenta reinício como obrigatório.

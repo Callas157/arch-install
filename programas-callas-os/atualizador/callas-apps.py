@@ -4,6 +4,8 @@
 The verified catalog manages application presence, not Arch version upgrades.
 Project helpers/configurations are compared by the existing content checkpoints.
 """
+from contextlib import contextmanager
+import fcntl
 import importlib.util
 from importlib.machinery import SourceFileLoader
 import json
@@ -110,8 +112,48 @@ def family(entry):
     return 'flatpak' if entry['source'] == 'flatpak' else 'native'
 
 
+@contextmanager
+def application_lock():
+    """Serialize catalog reconciliation and interactive machine-wide removals."""
+    STATE.mkdir(parents=True, exist_ok=True)
+    with (STATE / 'apps-operation.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
+def removed_choices():
+    """Machine-local opt-outs, written only after explicit Central removal."""
+    path = STATE / 'apps-user-removed.json'
+    try:
+        data = json.loads(path.read_text())
+    except FileNotFoundError:
+        return set()
+    if (not isinstance(data, list) or any(not isinstance(key, str) or not
+            re.fullmatch(r'(native|flatpak):[a-zA-Z0-9][a-zA-Z0-9@_.+\-]*', key) for key in data)):
+        raise ValueError('Registro de desinstalações inválido; aplicativos preservados.')
+    return set(data)
+
+
+def remember_removal(source, name):
+    key = source + ':' + name
+    if not re.fullmatch(r'(native|flatpak):[a-zA-Z0-9][a-zA-Z0-9@_.+\-]*', key):
+        raise ValueError('Escolha de remoção inválida')
+    choices = removed_choices() | {key}
+    STATE.mkdir(parents=True, exist_ok=True)
+    target = STATE / 'apps-user-removed.json'
+    fd, temporary = tempfile.mkstemp(prefix='.removed-', dir=STATE)
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            json.dump(sorted(choices), stream); stream.write('\n')
+            stream.flush(); os.fsync(stream.fileno()); os.fchmod(stream.fileno(), 0o644)
+        os.replace(temporary, target)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
 def plan(entries, installed, managed):
     actions = []
+    choices = removed_choices()
     current = {(family(entry), entry['name']) for entry in entries}
     # Only previously managed present applications become removals by omission.
     # An explicit absent entry also handles machines predating these receipts.
@@ -119,7 +161,8 @@ def plan(entries, installed, managed):
                if entry['state'] == 'present' and (family(entry), entry['name']) not in current]
     for entry in [*entries, *retired]:
         present = entry['name'] in installed[family(entry)]
-        if entry['state'] == 'present' and not present:
+        if (entry['state'] == 'present' and not present
+                and family(entry) + ':' + entry['name'] not in choices):
             actions.append(dict(entry, action='install'))
         elif entry['state'] == 'absent' and present:
             actions.append(dict(entry, action='remove'))
@@ -239,14 +282,16 @@ def scan():
 def main():
     args = sys.argv[1:]
     if len(args) == 2 and args[0] == '--wants':
-        return 0 if any(e['name'] == args[1] and e['state'] == 'present' for e in catalog()) else 1
+        return 0 if any(e['name'] == args[1] and e['state'] == 'present'
+                        and family(e) + ':' + e['name'] not in removed_choices() for e in catalog()) else 1
     if args == ['--scan']:
         scan(); return 0
     if len(args) == 3 and args[0] == '--apply' and args[1] in (*PHASES, 'all'):
         if os.geteuid() != 0:
             raise ValueError('Requer root')
-        for phase in PHASES if args[1] == 'all' else (args[1],):
-            apply(phase, args[2])
+        with application_lock():
+            for phase in PHASES if args[1] == 'all' else (args[1],):
+                apply(phase, args[2])
         return 0
     raise ValueError('Argumentos inválidos')
 
