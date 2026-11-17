@@ -19,6 +19,29 @@ class DefaultsTests(unittest.TestCase):
         self.spotify = dict(name='spotify', source='aur', title='Spotify', icon='spotify', description='Música')
         self.haruna = dict(name='haruna', source='repo', title='Haruna', icon='haruna', description='Vídeos')
 
+    def test_widget_offer_uses_personal_package_status_and_no_package_queries(self):
+        entry = dict(name='com.github.prayag2.modernclock', source='plasmoid', title='Relógio Moderno',
+                     icon='clock', description='Relógio')
+        widget = type('Widget', (), {'package_installed': lambda self: True,
+                                    'PAYLOAD': Path(__file__)})()
+        with patch.object(self.helper, 'widget_module', return_value=widget), patch.object(self.helper, 'query') as query:
+            row = self.helper.metadata(entry, {'native':{}, 'flatpak':{}})
+        self.assertTrue(row['installed'])
+        self.assertEqual(row['id'], 'plasmoid:com.github.prayag2.modernclock')
+        self.assertEqual(row['download'], 'Incluído no Callas OS')
+        query.assert_not_called()
+
+    def test_personal_widget_restore_never_uses_native_package_installation(self):
+        entry = dict(name='com.github.prayag2.modernclock', source='plasmoid', title='Relógio Moderno',
+                     icon='clock', description='Relógio')
+        with patch.object(self.helper, 'defaults', return_value=[entry]), \
+                patch.object(self.helper.os, 'geteuid', return_value=1000), \
+                patch.object(self.helper, 'widget_module') as widget, \
+                patch.object(self.helper, 'apps_module') as apps:
+            self.helper.restore('fixture', ['plasmoid:com.github.prayag2.modernclock'])
+            widget.return_value.install.assert_called_once_with()
+            apps.assert_not_called()
+
     def test_restore_only_selected_and_clear_only_confirmed_choice(self):
         installed = {'native': {}, 'flatpak': {}}
         def install(entry, user): installed['native'][entry['name']] = '1'

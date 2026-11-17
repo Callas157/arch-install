@@ -8,6 +8,11 @@ usuario=${SUDO_USER:-${1:-}}
 [[ -n $usuario && $usuario != root ]] && id "$usuario" >/dev/null || exit 1
 stage=${CALLAS_RELEASE_DIR:?Arquivos de atualização não preparados}
 [[ -d $stage && ! -L $stage && $(stat -c %u "$stage") == 0 ]] || exit 1
+for name in callas-widget.py relogio-moderno.plasmoid; do
+  [[ -f $stage/$name && ! -L $stage/$name && $(stat -c %u "$stage/$name") == 0 ]] || {
+    echo "Arquivo verificado ausente/inseguro: $name" >&2; exit 1;
+  }
+done
 for name in callas-browser.py callas-defaults.py callas-uninstall.py callas-apps.py callas-apps.json callas-kernel-policy.py callas-game-logs.py callas-update-state.py callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
   [[ -f $stage/$name && ! -L $stage/$name && $(stat -c %u "$stage/$name") == 0 ]] || {
     echo "Arquivo verificado ausente/inseguro: $name" >&2; exit 1;
@@ -68,6 +73,10 @@ for name in callas-browser.py callas-defaults.py callas-uninstall.py callas-apps
     cmp -s "$source_file" "/usr/local/libexec/$target" || install -o root -g root -m 0755 "$source_file" "/usr/local/libexec/$target"
   fi
 done
+
+# Distribute the optional clock without installing a user applet on Update.
+install -o root -g root -m 0755 "$stage/callas-widget.py" /usr/local/libexec/callas-widget
+install -o root -g root -m 0644 "$stage/relogio-moderno.plasmoid" /usr/local/share/callas-os/relogio-moderno.plasmoid
 
 cat > /etc/pacman.d/hooks/95-callas-browser-defaults.hook <<'BROWSER_HOOK'
 [Trigger]
@@ -366,6 +375,11 @@ SPOTIFY_HOOK
     python "$stage/callas-apps.py" --apply apps "$usuario"
     python "$stage/callas-apps.py" --apply flatpaks "$usuario"
   fi
+# CALLAS_CLOCK_CLEAN_BEGIN
+  if [[ ${2:-} == --installation ]]; then
+    python "$stage/callas-widget.py" --prepare-clean "$usuario"
+  fi
+# CALLAS_CLOCK_CLEAN_END
   # Shared by clean-install --installation and option 5 --config-update.
   # pyside6 is installed only through callas-native's protected transaction.
   python "$stage/callas-baterias-install.py" --install-system "$usuario" \

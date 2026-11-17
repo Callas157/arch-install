@@ -177,6 +177,13 @@
       "title": "Mission Center",
       "icon": "io.missioncenter.MissionCenter",
       "description": "Monitor de recursos do computador"
+    },
+    {
+      "source": "plasmoid",
+      "name": "com.github.prayag2.modernclock",
+      "title": "Relógio Moderno",
+      "icon": "clock",
+      "description": "Hora, data e dia da semana na área de trabalho, com posição livre ou por canto."
     }
   ]
 }

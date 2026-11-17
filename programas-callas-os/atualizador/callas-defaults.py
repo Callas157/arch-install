@@ -25,7 +25,17 @@ def apps_module():
     module = importlib.util.module_from_spec(spec); loader.exec_module(module); return module
 
 
-def identity(entry): return ('flatpak' if entry['source'] == 'flatpak' else 'native') + ':' + entry['name']
+def widget_module():
+    path = Path(__file__).with_name('callas-widget.py')
+    if not path.exists(): path = path.with_suffix('')
+    loader = SourceFileLoader('defaults_widget', str(path))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec); loader.exec_module(module); return module
+
+
+def identity(entry):
+    kind = entry['source'] if entry['source'] in ('flatpak', 'plasmoid') else 'native'
+    return kind + ':' + entry['name']
 
 
 def defaults():
@@ -37,7 +47,8 @@ def defaults():
         if (not isinstance(entry, dict) or set(entry) != {'name', 'source', 'title', 'icon', 'description'}
                 or any(not isinstance(value, str) or not value or len(value) > 500 for value in entry.values())
                 or not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9@_.+\-]*', entry['name'])
-                or entry['source'] not in ('repo', 'aur', 'flatpak')
+                or entry['source'] not in ('repo', 'aur', 'flatpak', 'plasmoid')
+                or (entry['source'] == 'plasmoid' and entry['name'] != 'com.github.prayag2.modernclock')
                 or not re.fullmatch(r'[a-zA-Z0-9_.\-]+', entry['icon'])
                 or (entry['source'] != 'flatpak' and apps.native().frozen(entry['name']))
                 or identity(entry) in seen):
@@ -67,6 +78,12 @@ def fields(text):
 
 def metadata(entry, installed):
     kind, name = identity(entry).split(':', 1)
+    if kind == 'plasmoid':
+        widget = widget_module()
+        size = f'{widget.PAYLOAD.stat().st_size / 1024:.1f} KiB' if widget.PAYLOAD.is_file() else 'Não informado'
+        return dict(entry, id=identity(entry), installed=widget.package_installed(), version='1.0.0',
+                    size=size, download='Incluído no Callas OS', available='1.0.0',
+                    notice='Arraste livremente no modo de edição ou escolha um canto em Configurar.')
     row = dict(entry, id=identity(entry), installed=name in installed[kind],
                version=installed[kind].get(name) or 'Não informada', size='Não informado',
                download='Não informado', available='Não informada', notice='')
@@ -119,9 +136,21 @@ def restore(user, ids):
     choices = {identity(entry): entry for entry in defaults()}
     if not ids or len(ids) != len(set(ids)) or any(key not in choices for key in ids):
         raise ValueError('Seleção inválida. Nenhum aplicativo foi instalado.')
-    apps = apps_module()
+    apps = None
     for key in ids:
         entry = choices[key]; kind, name = key.split(':', 1)
+        if kind == 'plasmoid':
+            if os.geteuid() == 0:
+                account = pwd.getpwnam(user)
+                subprocess.run(['/usr/bin/runuser', '-u', user, '--', '/usr/bin/env',
+                    'HOME='+account.pw_dir, 'XDG_RUNTIME_DIR=/run/user/'+str(account.pw_uid),
+                    'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/'+str(account.pw_uid)+'/bus',
+                    '/usr/local/libexec/callas-widget', '--install'], check=True)
+            else:
+                with widget_module().user_lock(): widget_module().install()
+            print(entry['title'] + ': instalado na área de trabalho.', flush=True)
+            continue
+        if apps is None: apps = apps_module()
         if name not in apps.inventory()[kind]:
             print('==> Instalando ' + entry['title'], flush=True)
             apps.install(entry, user)
@@ -137,8 +166,11 @@ def main():
         if os.geteuid() == 0: raise ValueError('Consulte os aplicativos como usuário normal.')
         print(json.dumps(list_defaults(), ensure_ascii=False)); return
     if len(sys.argv) > 3 and sys.argv[1] == '--restore':
-        if os.geteuid() != 0: raise ValueError('A instalação requer autorização administrativa.')
         user = sys.argv[2]
+        if os.geteuid() != 0:
+            if user != pwd.getpwuid(os.getuid()).pw_name or any(not key.startswith('plasmoid:') for key in sys.argv[3:]):
+                raise ValueError('A instalação de pacotes requer autorização administrativa.')
+            restore(user, sys.argv[3:]); return
         # Do not let a caller select an unrelated account as the AUR build user.
         if pwd.getpwnam(user).pw_uid == 0 or os.environ.get('SUDO_USER') != user:
             raise ValueError('Usuário de instalação inválido.')

@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
 BACKEND = '/usr/local/libexec/put-update'
 UNINSTALL_HELPER = '/usr/local/libexec/callas-uninstall'
 DEFAULTS_HELPER = '/usr/local/libexec/callas-defaults'
+WIDGET_HELPER = '/usr/local/libexec/callas-widget'
 DEFAULT_ICONS = Path('/usr/local/share/callas-os/default-app-icons.json')
 ID = 'io.github.Callas157.AtualizadorDoSistema'
 CRITICAL = ('linux', 'linux-lts', 'linux-zen', 'linux-hardened', 'systemd', 'glibc',
@@ -142,9 +143,9 @@ class MonitorDialog(QDialog):
         layout.addWidget(QLabel('Definir monitor principal', objectName='stage'))
         self.message = QLabel('Detectando monitores…')
         self.message.setWordWrap(True)
-        layout.addWidget(self.message)
         self.choices = QVBoxLayout()
         layout.addLayout(self.choices)
+        layout.addWidget(self.message)
         self.refresh = QPushButton('Atualizar lista')
         self.refresh.clicked.connect(self.detect)
         layout.addWidget(self.refresh)
@@ -154,6 +155,7 @@ class MonitorDialog(QDialog):
         self.back = QPushButton('Voltar')
         self.back.clicked.connect(self.reject)
         layout.addWidget(self.back)
+        layout.addStretch()
         self.detect()
 
     def execute(self, args, callback):
@@ -271,6 +273,85 @@ def application_icon(app):
     return option_icon('applications-all')
 
 
+class ClockConfigPage(QWidget):
+    CORNERS = {'top-left': ('↖', 'Superior esquerdo'), 'top-right': ('↗', 'Superior direito'),
+               'bottom-left': ('↙', 'Inferior esquerdo'), 'bottom-right': ('↘', 'Inferior direito')}
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner; self.corner_buttons = {}
+        layout = QVBoxLayout(self); layout.setContentsMargins(26, 24, 26, 24)
+        layout.addWidget(QLabel('Configurar Relógio Moderno', objectName='title'))
+        intro = QLabel('Clique em um dos quatro cantos do monitor desejado para mover o relógio.\n'
+                       'Você também pode arrastar e redimensionar livremente pelo modo de edição da área de trabalho.')
+        intro.setWordWrap(True); layout.addWidget(intro)
+        scroll = QScrollArea(); scroll.setWidgetResizable(True)
+        self.monitors = QWidget(); self.grid = QGridLayout(self.monitors); self.grid.setAlignment(Qt.AlignTop)
+        self.grid.setSpacing(16); scroll.setWidget(self.monitors); layout.addWidget(scroll, 1)
+        self.status = QLabel('Detectando monitores…'); self.status.setWordWrap(True)
+        self.status.setTextFormat(Qt.PlainText); layout.addWidget(self.status)
+        controls = QHBoxLayout()
+        refresh = QPushButton('Atualizar monitores'); refresh.clicked.connect(self.refresh); controls.addWidget(refresh)
+        self.edit = QPushButton('Mover livremente'); self.edit.clicked.connect(self.edit_desktop); controls.addWidget(self.edit)
+        controls.addStretch()
+        self.back = QPushButton('Voltar'); self.back.clicked.connect(owner.close_clock_config); controls.addWidget(self.back)
+        layout.addLayout(controls)
+
+    def clear_monitors(self):
+        self.corner_buttons = {}
+        while self.grid.count(): self.grid.takeAt(0).widget().deleteLater()
+
+    def refresh(self):
+        self.clear_monitors(); self.status.setText('Detectando monitores…')
+        def loaded(code, output, error):
+            try:
+                if code: raise RuntimeError(error or 'Não foi possível detectar as telas.')
+                screens = json.loads(output)
+                if not isinstance(screens, list) or not screens: raise ValueError('Nenhum monitor ativo encontrado.')
+                names = set()
+                for screen in screens:
+                    if (not isinstance(screen, dict) or not isinstance(screen.get('name'), str)
+                            or not screen['name'] or screen['name'] in names): raise ValueError('Lista de monitores inválida.')
+                    names.add(screen['name'])
+                for index, screen in enumerate(screens): self.add_monitor(index, screen)
+                self.status.setText('Escolha um canto. A posição só muda quando você clicar.')
+            except (ValueError, TypeError, RuntimeError) as exc:
+                self.clear_monitors(); self.status.setText(str(exc))
+        self.owner.run_helper(['--screens'], False, loaded, helper=WIDGET_HELPER)
+
+    def add_monitor(self, index, screen):
+        card = QFrame(objectName='card'); box = QVBoxLayout(card)
+        name = screen['name']; title = QLabel(f'Monitor {index+1} · {name}')
+        title.setTextFormat(Qt.PlainText); box.addWidget(title)
+        preview = QFrame(); preview.setObjectName('monitorPreview'); preview.setMinimumHeight(205)
+        preview.setStyleSheet('QFrame#monitorPreview { border: 2px solid #71859b; border-radius: 8px; background: #19232f; }')
+        corners = QGridLayout(preview); corners.setContentsMargins(12,12,12,12)
+        for corner, (symbol, text) in self.CORNERS.items():
+            button = QPushButton(symbol); button.setFixedSize(48,48)
+            button.setStyleSheet('font-size: 25px;')
+            button.setToolTip(text); button.setAccessibleName(f'Monitor {index+1} {name}: {text}')
+            button.clicked.connect(lambda checked=False, connector=name, position=corner: self.move(connector,position))
+            corners.addWidget(button, 0 if corner.startswith('top') else 2, 0 if corner.endswith('left') else 2)
+            self.corner_buttons[(name,corner)] = button
+        label = QLabel(f"{screen.get('width','?')} × {screen.get('height','?')}\nClique em um canto")
+        label.setAlignment(Qt.AlignCenter); label.setWordWrap(True); corners.addWidget(label,1,0,1,3)
+        corners.setRowStretch(1,1); corners.setColumnStretch(1,1)
+        box.addWidget(preview); self.grid.addWidget(card,index//2,index%2)
+
+    def move(self, connector, corner):
+        self.status.setText('Movendo o relógio…')
+        def moved(code, output, error):
+            self.status.setText((f'Relógio movido para {connector}: {self.CORNERS[corner][1].lower()}.' if code == 0
+                                 else error or output or 'Não foi possível mover o relógio.'))
+        self.owner.run_helper(['--move',connector,corner], False, moved, helper=WIDGET_HELPER)
+
+    def edit_desktop(self):
+        def opened(code, output, error):
+            self.status.setText('Modo de edição aberto. Arraste o relógio na área de trabalho.' if code == 0
+                                else error or output or 'Não foi possível abrir o modo de edição.')
+        self.owner.run_helper(['--edit'], False, opened, helper=WIDGET_HELPER)
+
+
 class NativeAppsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -278,7 +359,10 @@ class NativeAppsDialog(QDialog):
         self.resize(760, 360); self.setMinimumWidth(690)
         self.process = None; self.busy = False; self.apps = []; self.checks = {}; self.card_widgets = []
         self.catalog_loaded = False; self.refreshing_after_install = False
-        layout = QVBoxLayout(self); layout.setContentsMargins(26, 24, 26, 24); layout.setSpacing(14)
+        root = QVBoxLayout(self); root.setContentsMargins(0,0,0,0)
+        self.stack = QStackedWidget(); root.addWidget(self.stack)
+        self.content = QWidget(); self.stack.addWidget(self.content); self.clock_page = None
+        layout = QVBoxLayout(self.content); layout.setContentsMargins(26, 24, 26, 24); layout.setSpacing(14)
         layout.addWidget(QLabel('Aplicativos nativos', objectName='title'))
         self.menu = QWidget(); menu = QHBoxLayout(self.menu); menu.setContentsMargins(0, 0, 0, 0)
         self.defaults_button = QPushButton(option_icon('applications-all'), 'Aplicativos padrão Callas OS')
@@ -333,6 +417,8 @@ class NativeAppsDialog(QDialog):
 
     def go_back(self):
         if self.busy: return
+        if self.clock_page is not None and self.stack.currentWidget() is self.clock_page:
+            self.close_clock_config(); return
         if self.catalog_panel.isVisible():
             self.catalog_panel.hide(); self.reload.hide(); self.details.hide(); self.resize(760, 360)
             self.status.setText('Escolha os aplicativos padrão ou atualize os aplicativos já instalados.')
@@ -373,7 +459,7 @@ class NativeAppsDialog(QDialog):
             check = QCheckBox(); check.setAccessibleName('Selecionar ' + app['title'])
             check.setEnabled(not app['installed']); check.setChecked(app['id'] in selected and not app['installed'])
             self.checks[app['id']] = check; check.toggled.connect(self.selection_changed); header.addWidget(check); box.addLayout(header)
-            source = {'repo': 'Nativo', 'aur': 'AUR', 'flatpak': 'Flatpak de sistema'}[app['source']]
+            source = {'repo': 'Nativo', 'aur': 'AUR', 'flatpak': 'Flatpak de sistema', 'plasmoid': 'Widget do Plasma'}[app['source']]
             description = QLabel(app['description']); description.setTextFormat(Qt.PlainText); description.setWordWrap(True); box.addWidget(description)
             size_label = 'Instalado' if app['installed'] else 'Após instalar'
             info = QLabel(f"{source} · {'Instalado' if app['installed'] else 'Disponível para instalar'}\n"
@@ -384,19 +470,36 @@ class NativeAppsDialog(QDialog):
                 note.setStyleSheet('color: #b7c4d2; font-size: 12px;'); box.addWidget(note)
             box.addStretch()
             install = QPushButton('Instalado' if app['installed'] else 'Instalar'); install.setObjectName('install')
+            install.setMinimumHeight(42)
             install.setEnabled(not app['installed']); install.clicked.connect(lambda checked=False, key=app['id']: self.install_ids([key]))
-            box.addWidget(install); self.grid.addWidget(card, i // 2, i % 2); self.card_widgets.append((app, card))
+            actions = QHBoxLayout(); actions.addWidget(install, 1)
+            if app['source'] == 'plasmoid':
+                configure = QPushButton('Configurar'); configure.setEnabled(app['installed'])
+                configure.setMinimumHeight(42)
+                configure.clicked.connect(self.show_clock_config); actions.addWidget(configure, 1)
+            box.addLayout(actions); self.grid.addWidget(card, i // 2, i % 2); self.card_widgets.append((app, card))
         self.filter_cards(); self.selection_changed()
 
     def set_busy(self, busy):
         self.busy = busy
         for widget in (self.menu, self.cards, self.search, self.select_all, self.clear, self.reload, self.back): widget.setEnabled(not busy)
         self.progress.setVisible(busy); self.selection_changed()
+        if self.clock_page is not None: self.clock_page.setEnabled(not busy)
 
-    def run_helper(self, args, privileged, callback):
+    def show_clock_config(self):
+        if self.busy or not any(app['source'] == 'plasmoid' and app['installed'] for app in self.apps): return
+        if self.clock_page is None:
+            self.clock_page = ClockConfigPage(self); self.stack.addWidget(self.clock_page)
+        self.stack.setCurrentWidget(self.clock_page); self.clock_page.refresh()
+
+    def close_clock_config(self):
+        if not self.busy: self.stack.setCurrentWidget(self.content)
+
+    def run_helper(self, args, privileged, callback, *, helper=None):
         if self.process is not None: return
-        if not Path(DEFAULTS_HELPER).is_file():
-            self.status.setText('Execute Callas OS Update para instalar o catálogo de restauração.'); return
+        helper = helper or DEFAULTS_HELPER
+        if not Path(helper).is_file():
+            callback(1, '', 'Execute Callas OS Update para disponibilizar esta função.'); return
         self.set_busy(True)
         process = QProcess(self); self.process = process
         output = bytearray(); error = bytearray(); finished_once = False
@@ -419,7 +522,7 @@ class NativeAppsDialog(QDialog):
             callback(code, output.decode('utf-8', 'replace'), error.decode('utf-8', 'replace'))
         process.finished.connect(finished)
         process.errorOccurred.connect(lambda value: finished(1) if value == QProcess.FailedToStart else None)
-        argv = [DEFAULTS_HELPER, *args]
+        argv = [helper, *args]
         if privileged: argv = ['/usr/bin/sudo', '-A', '--', *argv]
         process.start(argv[0], argv[1:]); process.closeWriteChannel()
 
@@ -469,7 +572,17 @@ class NativeAppsDialog(QDialog):
             message = ('Aplicativos selecionados instalados. Os demais foram preservados.' if code == 0 else
                        'Instalação não concluída para todos os itens. Consulte os detalhes; instalações confirmadas foram preservadas.')
             self.refresh(message=message)
-        self.run_helper(['--restore', pwd.getpwuid(os.getuid()).pw_name, *ids], True, installed)
+        personal = [app['id'] for app in selected if app['source'] == 'plasmoid']
+        packages = [app['id'] for app in selected if app['source'] != 'plasmoid']
+        user = pwd.getpwuid(os.getuid()).pw_name
+        if personal and packages:
+            def packages_finished(code, output, error):
+                def personal_finished(clock_code, clock_output, clock_error):
+                    installed(code or clock_code, output+'\n'+clock_output, error+'\n'+clock_error)
+                self.run_helper(['--restore', user, *personal], False, personal_finished)
+            self.run_helper(['--restore', user, *packages], True, packages_finished)
+        else:
+            self.run_helper(['--restore', user, *ids], bool(packages), installed)
 
     def reject(self):
         if not self.busy: super().reject()

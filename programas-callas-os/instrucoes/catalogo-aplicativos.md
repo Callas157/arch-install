@@ -42,6 +42,49 @@ O submenu mantém **Atualizar aplicativos** no fluxo anterior de atualização d
 
 ## Navegação da Central e ícones
 
+### Relógio Moderno
+
+`defaults` também oferece o componente local `plasmoid:com.github.prayag2.modernclock`,
+com `source: plasmoid`. Essa fonte aceita exclusivamente o relógio distribuído pelo
+projeto: não executa instaladores externos nem transações de pacotes. O pacote e
+`callas-widget.py` vêm do mesmo estágio verificado. O Update instala apenas o
+auxiliar e o arquivo de distribuição em `/usr/local/share/callas-os`; não instala
+o plasmoid no perfil nem o adiciona à área de trabalho de máquinas existentes.
+
+Somente `--installation` chama `callas-widget --prepare-clean USUARIO`, preparando
+o pacote pessoal e uma pendência de primeiro login. O autostart pessoal adiciona
+uma instância na atividade atual e se desativa após sucesso. Sem sessão Plasma,
+a pendência é preservada para nova tentativa no próximo login. Uma instância já
+existente mantém posição, tamanho e aparência. O padrão inicial é o canto superior
+esquerdo da segunda tela (ou da principal quando houver somente uma).
+
+O cartão tem Instalar e Configurar lado a lado. Instalar somente o relógio não
+exige sudo; em seleção mista, pacotes e plasmoid usam processos separados, mantendo
+o relógio na sessão gráfica original. Configurar abre uma página interna da mesma
+Central, com quatro cantos por monitor detectado e opção de edição livre do Plasma.
+As telas são identificadas pelo conector e conferidas novamente ao mover, sem
+confundir o índice da lista com o índice interno do Plasma.
+
+Como o setter de geometria da API Plasma 6.5 não aplica mudanças, o auxiliar
+salva configurações, tamanho, posição, atalho global e bloqueio antes de recriar o
+relógio. Mantém um registro privado de recuperação em XDG_STATE_HOME/callas-os.
+Remove a instância anterior e aguarda sua ausência em chamadas D-Bus separadas:
+a destruição do Plasma é adiada e o espaço só é liberado entre chamadas. Depois
+cria no destino, restaura as preferências e confere a geometria resultante,
+aceitando até 32 pixels lógicos de ajuste à grade/margens do Plasma.
+
+Falha de criação, cópia ou posição solicita restauração na origem; se a sessão
+impedir também a recuperação, mantém o registro para tentar novamente na próxima
+operação. Um canto ocupado por outro widget gera erro e recuperação, sem apagar ou
+mover esse outro widget. Múltiplos relógios na atividade exigem o editor para não
+substituir uma instância arbitrária. Escolher um canto encerra o modo de edição
+antes de ler a geometria, evitando as coordenadas da animação de escala do editor.
+
+Não escreve diretamente em plasma-org.kde.plasma.desktop-appletsrc, não altera
+outras atividades e não reaplica o canto após movimento manual. Testes JS/Qt
+simulam a sessão, inclusive exclusão adiada, colisões e recuperação; não certificam
+posicionamento real em todas as versões do Plasma/hardware.
+
 Os submenus de manutenção, monitores, padrões e desinstalação são páginas internas da janela principal. “Voltar” retorna à Central; confirmação e cancelamento também usam uma página interna. A navegação e o fechamento são bloqueados durante auxiliares ativos. O diálogo de senha continua separado do fluxo de logs; atalhos para aplicativos externos continuam abrindo os próprios programas.
 
 O inventário do desinstalador inclui uma referência de ícone sem usá-la como comando ou identidade de pacote. A interface resolve o ícone do atalho, assets verificados dos padrões, tema e exportações Flatpak do sistema/usuário, usando um ícone genérico quando não há imagem reconhecível. A coluna Aplicativo conserva o ID original nos dados da linha; filtros, origem, versão e proteções continuam independentes do ícone. Os mesmos arquivos já distribuídos pelo estágio compartilhado atendem instalação limpa e Update.

@@ -19,6 +19,20 @@ from PySide6.QtWidgets import QApplication
 APP = QApplication.instance() or QApplication([])
 
 class UpdaterGuiTests(unittest.TestCase):
+    def test_monitor_controls_are_between_title_and_explanation_and_grouped_at_top(self):
+        with patch.object(gui.MonitorDialog, 'detect'):
+            dialog = gui.MonitorDialog()
+        dialog.detected(0, '[{"name":"DP-1","priority":1},{"name":"HDMI-1","priority":2}]', '')
+        dialog.resize(894, 786); dialog.show(); APP.processEvents()
+        title = dialog.findChild(gui.QLabel, 'stage')
+        first = dialog.choices.itemAt(0).widget()
+        last = dialog.choices.itemAt(1).widget()
+        self.assertLess(title.geometry().bottom(), first.geometry().top())
+        self.assertLess(last.geometry().bottom(), dialog.message.geometry().top())
+        self.assertLess(first.geometry().top() - title.geometry().bottom(), 30)
+        self.assertLess(dialog.message.geometry().top() - last.geometry().bottom(), 30)
+        dialog.close(); dialog.deleteLater()
+
     def test_real_progress_and_unknown_totals(self):
         self.assertEqual(gui.progress_state('downloading package 45%'), ('Baixando atualizações', 45))
         self.assertEqual(gui.progress_state('installing package'), ('Instalando atualizações', None))
