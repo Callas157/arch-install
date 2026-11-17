@@ -80,6 +80,19 @@ mover esse outro widget. Múltiplos relógios na atividade exigem o editor para 
 substituir uma instância arbitrária. Escolher um canto encerra o modo de edição
 antes de ler a geometria, evitando as coordenadas da animação de escala do editor.
 
+O fundo padrão é transparente (`NoBackground`). Ao mover, preserve um fundo
+somente quando a chave `UserBackgroundHints` realmente estiver salva; o getter
+pode retornar `StandardBackground` sem preferência explícita. Isso vale também
+para os registros de recuperação históricos.
+
+O Update chama `--migrate-appearance` como usuário para reparar uma única vez o
+fundo dos relógios já instalados, sem instalar o pacote pessoal, criar instância
+ou alterar posição/fontes. Registra a aparência anterior privadamente em
+XDG_STATE_HOME/callas-os/clock-appearance-before.json e marca a conclusão em
+clock-background-v1.complete. Uma sessão indisponível deixa um autostart pessoal
+de tentativa no próximo login; sucesso remove essa tentativa. O comando
+`--repair-appearance` reaplica explicitamente a correção quando necessário.
+
 Não escreve diretamente em plasma-org.kde.plasma.desktop-appletsrc, não altera
 outras atividades e não reaplica o canto após movimento manual. Testes JS/Qt
 simulam a sessão, inclusive exclusão adiada, colisões e recuperação; não certificam

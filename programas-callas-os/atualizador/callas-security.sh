@@ -375,6 +375,16 @@ SPOTIFY_HOOK
     python "$stage/callas-apps.py" --apply apps "$usuario"
     python "$stage/callas-apps.py" --apply flatpaks "$usuario"
   fi
+# CALLAS_CLOCK_APPEARANCE_BEGIN
+  if [[ ${2:-} == --config-update ]]; then
+    uid_relogio=$(id -u "$usuario")
+    home_relogio=$(getent passwd "$usuario" | cut -d: -f6)
+    runuser -u "$usuario" -- env -i PATH=/usr/bin:/bin HOME="$home_relogio" \
+      USER="$usuario" LOGNAME="$usuario" LANG=C.UTF-8 XDG_RUNTIME_DIR="/run/user/$uid_relogio" \
+      DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid_relogio/bus" \
+      /usr/local/libexec/callas-widget --migrate-appearance
+  fi
+# CALLAS_CLOCK_APPEARANCE_END
 # CALLAS_CLOCK_CLEAN_BEGIN
   if [[ ${2:-} == --installation ]]; then
     python "$stage/callas-widget.py" --prepare-clean "$usuario"

@@ -191,8 +191,11 @@ def position_script(connector, corner, area, *, initial=False):
     var x=p.area.x+24,y=p.area.y+24;
     if(p.corner.indexOf('right')>=0)x=p.area.x+p.area.width-width-24;
     if(p.corner.indexOf('bottom')===0)y=p.area.y+p.area.height-height-24;
+    var config=old?snapshot(old,[]):null;
+    // userBackgroundHints defaults to StandardBackground even when no user
+    // preference exists. Only a saved key is an explicit background choice.
     var previous=old?{id:old.id,desktop:matches[0].desktop.id,geometry:g,
-        config:snapshot(old,[]),shortcut:old.globalShortcut,locked:old.locked,hints:old.userBackgroundHints}:null;
+        config:config,shortcut:old.globalShortcut,locked:old.locked,hints:config.values.UserBackgroundHints||null}:null;
     reply({schema:1,activity:currentActivity(),connector:p.connector,target:target.id,
         geometry:{x:x,y:y,width:width,height:height},previous:previous});
 ''', dict(connector=connector,corner=corner,area=area,initial=initial))
@@ -223,10 +226,14 @@ def transaction_script(plan, operation, *, widget_id=None, rollback=False):
         try {
             if(previous) {
                 restore(fresh,previous.config);
-                if(typeof previous.hints==='string' && previous.hints) fresh.userBackgroundHints=previous.hints;
+                var explicitHints=previous.config.values.UserBackgroundHints;
+                fresh.userBackgroundHints=typeof explicitHints==='string' && explicitHints?explicitHints:'NoBackground';
                 if(typeof previous.shortcut==='string') fresh.globalShortcut=previous.shortcut;
                 if(typeof previous.locked==='boolean') fresh.locked=previous.locked;
-            } else { fresh.currentConfigGroup=['Appearance'];fresh.writeConfig('day_font_size',50); }
+            } else {
+                fresh.currentConfigGroup=['Appearance'];fresh.writeConfig('day_font_size',50);
+                fresh.userBackgroundHints='NoBackground';
+            }
         } catch(error) {fresh.remove();throw error;}
         reply({id:fresh.id});return;
     }
@@ -321,6 +328,47 @@ def install():
     move(target['name'], 'top-left', initial=True)
 
 
+def appearance_script(*, apply=False):
+    return script(r'''
+    var ds=desktops(), found=[];
+    for(var i=0;i<ds.length;++i) {
+        var ws=ds[i].widgets(p.plugin);
+        for(var j=0;j<ws.length;++j) {
+            var w=ws[j];w.currentConfigGroup=[];
+            if(p.apply) w.userBackgroundHints='NoBackground';
+            found.push({id:w.id,desktop:ds[i].id,hints:w.userBackgroundHints,
+                configured:w.readConfig('UserBackgroundHints',''),geometry:w.geometry});
+        }
+    }
+    reply(found);
+''',dict(apply=apply))
+
+
+def repair_appearance(*, migrate=False):
+    marker=state_directory()/'clock-background-v1.complete'
+    if migrate and marker.exists(): return
+    # Update offers the clock but never installs it just to repair its style.
+    if not package_installed(): return
+    autostart=user_path('XDG_CONFIG_HOME','.config')/'autostart/callas-clock-appearance.desktop'
+    atomic(autostart, ('[Desktop Entry]\nType=Application\nName=Ajustar aparência do Relógio Moderno\n'
+        'Exec=/usr/local/libexec/callas-widget --migrate-appearance\nIcon=clock\n'
+        'OnlyShowIn=KDE;\nX-KDE-autostart-phase=2\n').encode())
+    try:
+        before=result(appearance_script())
+        if any(item['hints']!='NoBackground' for item in before):
+            record=state_directory()/'clock-appearance-before.json'
+            if not record.exists(): atomic(record,json.dumps(before).encode())
+            result(appearance_script(apply=True))
+        after=result(appearance_script())
+        if any(item['hints']!='NoBackground' for item in after):
+            raise RuntimeError('O Plasma não confirmou a remoção do fundo do relógio.')
+        atomic(marker,b'1\n');autostart.unlink(missing_ok=True)
+        print('Relógio Moderno: fundo removido; instâncias e posições preservadas.')
+    except Exception as error:
+        if not migrate: raise
+        print('Relógio Moderno: ajuste de fundo pendente para o próximo login. '+str(error))
+
+
 def prepare_first_login():
     install_package()
     pending = state_directory() / 'clock-first-login.pending'
@@ -345,7 +393,7 @@ def first_login():
 def main():
     parser = argparse.ArgumentParser(description='Relógio Moderno Callas OS')
     action = parser.add_mutually_exclusive_group(required=True)
-    for flag in ('install','screens','edit','first-login','prepare-first-login'):
+    for flag in ('install','screens','edit','first-login','prepare-first-login','repair-appearance','migrate-appearance'):
         action.add_argument('--'+flag, action='store_true')
     action.add_argument('--move', nargs=2, metavar=('MONITOR','CANTO'))
     action.add_argument('--prepare-clean', metavar='USUARIO')
@@ -367,6 +415,8 @@ def main():
         elif args.move: move(*args.move)
         elif args.prepare_first_login: prepare_first_login()
         elif args.first_login: first_login()
+        elif args.repair_appearance: repair_appearance()
+        elif args.migrate_appearance: repair_appearance(migrate=True)
         elif args.edit:
             import dbus
             dbus.Interface(plasma_object(), 'org.freedesktop.DBus.Properties').Set('org.kde.PlasmaShell','editMode',dbus.Boolean(True))

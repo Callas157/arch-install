@@ -146,6 +146,7 @@ class MonitorDialog(QDialog):
         self.choices = QVBoxLayout()
         layout.addLayout(self.choices)
         layout.addWidget(self.message)
+        layout.addStretch()
         self.refresh = QPushButton('Atualizar lista')
         self.refresh.clicked.connect(self.detect)
         layout.addWidget(self.refresh)
@@ -155,7 +156,6 @@ class MonitorDialog(QDialog):
         self.back = QPushButton('Voltar')
         self.back.clicked.connect(self.reject)
         layout.addWidget(self.back)
-        layout.addStretch()
         self.detect()
 
     def execute(self, args, callback):

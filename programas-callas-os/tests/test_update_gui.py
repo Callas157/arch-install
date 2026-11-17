@@ -19,7 +19,7 @@ from PySide6.QtWidgets import QApplication
 APP = QApplication.instance() or QApplication([])
 
 class UpdaterGuiTests(unittest.TestCase):
-    def test_monitor_controls_are_between_title_and_explanation_and_grouped_at_top(self):
+    def test_monitor_list_stays_between_texts_and_secondary_actions_stay_at_bottom(self):
         with patch.object(gui.MonitorDialog, 'detect'):
             dialog = gui.MonitorDialog()
         dialog.detected(0, '[{"name":"DP-1","priority":1},{"name":"HDMI-1","priority":2}]', '')
@@ -31,6 +31,8 @@ class UpdaterGuiTests(unittest.TestCase):
         self.assertLess(last.geometry().bottom(), dialog.message.geometry().top())
         self.assertLess(first.geometry().top() - title.geometry().bottom(), 30)
         self.assertLess(dialog.message.geometry().top() - last.geometry().bottom(), 30)
+        self.assertGreater(dialog.refresh.geometry().top(), dialog.height() - 190)
+        self.assertGreater(dialog.back.geometry().bottom(), dialog.height() - 25)
         dialog.close(); dialog.deleteLater()
 
     def test_real_progress_and_unknown_totals(self):

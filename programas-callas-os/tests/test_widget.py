@@ -48,10 +48,11 @@ var ds=[0,1,2].map(function(i){ return {id:10+i,screen:i,activity:'current',
   if(failCreate || alwaysFailCreate){failCreate=false;throw new Error('creation failed');}
   // Real layout reserves the old rectangle until deleteLater runs between calls.
   if(this.widgets().some(function(a){var g=a.geometry;return x<g.x+g.width && x+w>g.x && y<g.y+g.height && y+h>g.y;})) x+=w+32;
-  var a=widget(100+created.length);a.data={};a.globalShortcut='';a.locked=false;a.geometry={x:x,y:y,width:w,height:h};
+  var a=widget(100+created.length);a.data={};a.globalShortcut='';a.locked=false;a.userBackgroundHints='StandardBackground';a.geometry={x:x,y:y,width:w,height:h};
   var item={screen:i,widget:a};created.push(item);live.push(item);return a;
  }};});
 function desktopsForActivity(a){return ds;}
+function desktops(){return ds;}
 function desktopForScreen(s){return ds[s];}
 function desktopById(id){return ds.find(function(d){return d.id===id;});}
 '''
@@ -90,6 +91,17 @@ class WidgetTests(unittest.TestCase):
             result=subprocess.run(['bash','-c',code,'fixture','fixture',mode],text=True,capture_output=True)
             self.assertEqual(result.returncode,0,result.stderr)
             self.assertEqual('--prepare-clean fixture' in result.stdout,mode=='--installation')
+
+    def test_update_repairs_only_existing_clock_as_user_without_installing_it(self):
+        import subprocess
+        source=(ROOT/'atualizador/callas-security.sh').read_text()
+        block=source.split('# CALLAS_CLOCK_APPEARANCE_BEGIN\n')[1].split('# CALLAS_CLOCK_APPEARANCE_END')[0]
+        for mode in ('--installation','--config-update','--helpers-only'):
+            code='set -eu\nusuario=fixture\nid(){ echo 1000; }\ngetent(){ echo fixture:x:1000:1000::/home/fixture:/bin/bash; }\nrunuser(){ printf "%s\\n" "$@"; }\n'+block
+            result=subprocess.run(['bash','-c',code,'fixture','fixture',mode],text=True,capture_output=True)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual('--migrate-appearance' in result.stdout,mode=='--config-update')
+            self.assertNotIn('--install\n',result.stdout)
 
     def test_package_installs_under_internal_id_and_preserves_existing_files(self):
         helper = load()
@@ -165,6 +177,56 @@ class WidgetTests(unittest.TestCase):
         self.assertEqual(engine.evaluate('created[0].widget.data.Appearance.day_font_size').toInt(), 50)
         # No anchoring configuration/binding is written: native dragging stays free.
         self.assertEqual(engine.evaluate('created[0].widget.geometry.x').toInt(), 24)
+        self.assertEqual(engine.evaluate('created[0].widget.userBackgroundHints').toString(), 'NoBackground')
+
+    def test_implicit_plasma_background_is_not_persisted_as_user_choice_when_moving(self):
+        engine,error=self.run_script(setup="old.userBackgroundHints='StandardBackground';")
+        self.assertIsNone(error,str(error))
+        self.assertEqual(engine.evaluate('created[0].widget.userBackgroundHints').toString(),'NoBackground')
+
+    def test_explicit_user_background_choice_is_preserved_when_moving(self):
+        engine,error=self.run_script(setup="old.userBackgroundHints='StandardBackground';old.data[''].UserBackgroundHints='StandardBackground';")
+        self.assertIsNone(error,str(error))
+        self.assertEqual(engine.evaluate('created[0].widget.userBackgroundHints').toString(),'StandardBackground')
+
+    def test_legacy_recovery_record_does_not_turn_an_implicit_background_into_a_preference(self):
+        engine=QJSEngine();engine.evaluate(HARNESS+'live=[];')
+        geometry=dict(x=24,y=24,width=656,height=176)
+        plan=dict(activity='current',target=12,connector='DP-3',geometry=geometry,
+            previous=dict(id=27,desktop=11,geometry=geometry,hints='StandardBackground',shortcut='',locked=False,
+                          config=dict(path=[],values={},children=[])))
+        out=engine.evaluate(load().transaction_script(plan,'create'))
+        self.assertFalse(out.isError(),out.toString())
+        self.assertEqual(engine.evaluate('created[0].widget.userBackgroundHints').toString(),'NoBackground')
+
+    def test_background_repair_keeps_existing_instance_position_and_other_widgets(self):
+        engine=QJSEngine()
+        engine.evaluate(HARNESS+"old.userBackgroundHints='StandardBackground';var other=widget(50);other.type='org.kde.plasma.notes';other.userBackgroundHints='StandardBackground';live.push({screen:1,widget:other});")
+        helper=load()
+        out=engine.evaluate(helper.appearance_script(apply=True))
+        self.assertFalse(out.isError(),out.toString())
+        self.assertEqual(engine.evaluate('old.userBackgroundHints').toString(),'NoBackground')
+        self.assertEqual(engine.evaluate('old.id').toInt(),27)
+        self.assertEqual(engine.evaluate('JSON.stringify(old.geometry)').toString(),'{"x":48,"y":16,"width":656,"height":176}')
+        self.assertEqual(engine.evaluate('old.data.Appearance.day_font_size').toString(),'50')
+        self.assertEqual(engine.evaluate('other.userBackgroundHints').toString(),'StandardBackground')
+        self.assertEqual(engine.evaluate('created.length+removed.length').toInt(),0)
+
+    def test_background_migration_is_optional_once_and_retries_after_missing_session(self):
+        helper=load()
+        with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ,{'XDG_STATE_HOME':temp+'/state','XDG_CONFIG_HOME':temp+'/config'}), \
+                patch.object(helper,'package_installed',return_value=False), patch.object(helper,'result') as result:
+            helper.repair_appearance(migrate=True);result.assert_not_called()
+            self.assertFalse((Path(temp)/'state').exists())
+            with patch.object(helper,'package_installed',return_value=True):
+                result.side_effect=RuntimeError('no session')
+                helper.repair_appearance(migrate=True)
+                autostart=Path(temp)/'config/autostart/callas-clock-appearance.desktop'
+                self.assertTrue(autostart.exists())
+                result.side_effect=None;result.return_value=[dict(id=27,hints='NoBackground')]
+                helper.repair_appearance(migrate=True)
+                self.assertFalse(autostart.exists())
+                result.reset_mock();helper.repair_appearance(migrate=True);result.assert_not_called()
 
     def test_multiple_existing_clocks_are_preserved_instead_of_destroying_arbitrary_instance(self):
         engine, result = self.run_script(setup='ds[1].widgets=function(){ return [old,widget(28)]; };')

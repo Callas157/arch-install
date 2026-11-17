@@ -1,5 +1,13 @@
 # Histórico do Callas OS
 
+## 3.16.1 — 2026-11-17
+
+- Corrige a distribuição da página Monitores: título, lista de telas e mensagem permanecem juntos no alto; Atualizar lista, Configurações de telas do KDE e Voltar ficam no rodapé. O espaço expansível separa esses dois grupos, sem empurrar a lista para baixo.
+- Remove o fundo retangular indevido do Relógio Moderno. O getter do Plasma pode informar StandardBackground mesmo sem preferência explícita; a movimentação passa a consultar a chave realmente salva antes de preservar um fundo. Novas instâncias usam NoBackground, inclusive quando a recuperação vem de um registro da versão anterior sem preferência explícita. Escolhas explícitas futuras continuam preservadas ao mover.
+- O Update corrige uma única vez a aparência de relógios já instalados, na sessão do usuário e sem recriar/mover o widget ou instalar o relógio em quem não o tem. Guarda o estado anterior em registro privado e, sem sessão Plasma, deixa tentativa para o próximo login. Mantém fontes, tamanho, posição, atalhos e outros widgets. Instalação limpa recebe a mesma correção pelo auxiliar compartilhado, sem editar instalar-arch.sh.
+
+Validação: 373 testes offline executados, 372 aprovados e um opcional ignorado; sintaxe Python/Bash conferida. Regressões de layout, fundo implícito/explícito, instalação inicial, recuperação histórica e migração opcional/repetição/falta de sessão. Correção aplicada ao relógio existente desta máquina via API Plasma: mesma instância 31 no desktop 2/tela 1, fonte 50 e sem recriação; ausência do retângulo conferida em captura real. Prévia Qt dos botões no rodapé conferida. Sem executar Update completo, instalar pacotes, mudar kernel/NVIDIA ou realizar instalação Arch limpa.
+
 ## 3.16.0 — 2026-11-17
 
 - Corrige a página Monitores: lista de telas logo abaixo de “Definir monitor principal”, texto de orientação abaixo da lista e controles agrupados no topo, preservando a seleção do monitor principal e as configurações de telas do KDE.
