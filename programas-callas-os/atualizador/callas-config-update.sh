@@ -316,6 +316,10 @@ fi
 # CALLAS_PHASE_BEGIN boot
 if phase_needed boot; then
 # GRUB: transição em tela cheia; não abre janela de terminal sobre o tema.
+# Validate legacy entries before changing any boot assets. The helper supports
+# microcode, old indentation/paths and EFI command variants without rewriting them.
+python "$CALLAS_RELEASE_DIR/callas-boot-theme.py" --entries /etc/grub.d/09_callas --check >/dev/null ||
+  erro "Não consegui validar as entradas de boot existentes; arquivos de boot preservados."
 install -d /boot/grub/themes/callas
 
 grub_changed=0
@@ -323,14 +327,16 @@ initramfs_changed=0
 [[ ! -e /boot/grub/.callas-theme-pending ]] || grub_changed=1
 [[ ! -e /boot/.callas-initramfs-pending ]] || initramfs_changed=1
 asset grub/theme.txt /boot/grub/themes/callas/theme.txt
-(( asset_changed == 0 )) || grub_changed=1
+(( asset_changed == 0 )) || { grub_changed=1; touch /boot/grub/.callas-theme-pending; }
 asset grub/background.png /boot/grub/themes/callas/background.png
-(( asset_changed == 0 )) || grub_changed=1
+(( asset_changed == 0 )) || { grub_changed=1; touch /boot/grub/.callas-theme-pending; }
 asset grub/loading.cfg /boot/grub/themes/callas/loading.cfg
-(( asset_changed == 0 )) || grub_changed=1
+(( asset_changed == 0 )) || { grub_changed=1; touch /boot/grub/.callas-theme-pending; }
+touch /boot/grub/.callas-theme-pending
 boot_entries_result=$(python "$CALLAS_RELEASE_DIR/callas-boot-theme.py" --entries /etc/grub.d/09_callas) ||
   erro "Entradas GRUB incompatíveis; configuração de boot não foi regenerada."
 [[ $boot_entries_result != changed ]] || grub_changed=1
+(( grub_changed )) || rm -f /boot/grub/.callas-theme-pending
 [[ -s /boot/grub/grub.cfg ]] || grub_changed=1
 
 rm -f /boot/grub/themes/callas/terminal_box_c.png
@@ -344,8 +350,8 @@ grub_tmp=$(mktemp /boot/grub/.grub.cfg.callas.XXXXXX)
 if grub-mkconfig -o "$grub_tmp" && [[ -s "$grub_tmp" ]] &&
    grub-script-check "$grub_tmp" &&
    grep -q 'menuentry ' "$grub_tmp" &&
-   grep -Eq '(^|[[:space:]/])vmlinuz-linux([[:space:]]|$)' "$grub_tmp" &&
-   grep -Eq '(^|[[:space:]/])vmlinuz-linux-lts([[:space:]]|$)' "$grub_tmp"; then
+   grep -Eq "(^|[[:space:]/'\"])vmlinuz-linux([[:space:]'\"]|$)" "$grub_tmp" &&
+   grep -Eq "(^|[[:space:]/'\"])vmlinuz-linux-lts([[:space:]'\"]|$)" "$grub_tmp"; then
   chmod 0600 "$grub_tmp"
   mv -f "$grub_tmp" /boot/grub/grub.cfg
   rm -f /boot/grub/.callas-theme-pending

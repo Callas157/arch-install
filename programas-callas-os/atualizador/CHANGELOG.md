@@ -1,5 +1,14 @@
 # Histórico do Callas OS
 
+## 3.15.1 — 2026-11-17
+
+- Corrige o migrador visual do GRUB que recusava entradas válidas por exigir quatro espaços e um único arquivo na linha initrd. Reconhece microcódigo + initramfs, espaçamento/aspas/comentários, caminhos com /boot, comandos EFI, continuações e imagens fallback, preservando comandos originais, UUIDs, argumentos e ordem das imagens. Continua recusando entradas ausentes, ambíguas ou pares kernel/initramfs incompatíveis.
+- Valida a compatibilidade antes de alterar os assets de boot. Mantém marcador de retomada desde a primeira alteração e preserva grub.cfg até o novo arquivo passar na validação. Ajusta as verificações posteriores para caminhos citados e inclui 09_callas no backup de configurações. O auxiliar compartilhado atende instalação limpa e Update sem alteração do instalador principal.
+- Adiciona regressões de preparação direta pelos lançadores históricos 3.2.2, 3.7.0, 3.9.0 e 3.10.0, sem exigir releases intermediárias. Registra a obrigação de compatibilidade dos formatos e interfaces existentes para futuras mudanças. Essas simulações não certificam todas as possíveis instalações antigas ou customizações locais.
+- Confirma por teste que o Brave Origin continua opcional na Central e fora do catálogo automático do Update. Somente a instalação limpa o define como navegador padrão; o Update não troca o navegador das máquinas existentes.
+
+Validação: 338 testes offline executados, 337 aprovados e um opcional ignorado; sintaxe de 86 arquivos Python e nove Bash conferida. Migração e fase real do script GRUB exercitadas em arquivos temporários com ferramentas de geração simuladas, incluindo falha de validação seguida de retomada e preservação do arquivo anterior; revisão independente sem impedimentos após ajustes. Sem executar Update no sistema real, trocar pacotes/kernel/NVIDIA ou validar boot na máquina que enviou o log. O log não inclui 09_callas; o formato exato daquela máquina ainda não foi confirmado.
+
 ## 3.15.0 — 2026-11-17
 
 - Troca o navegador das novas instalações para Brave Origin (`brave-origin-bin`), com associação HTTP/HTTPS/HTML, preferência do KDE e atalho do painel. Mantém o Brave tradicional disponível na Central e adiciona o Origin à mesma lista com ícone persistente. Não declara nenhum navegador como instalação automática do Update, não remove o tradicional nem altera o navegador padrão de máquinas existentes.

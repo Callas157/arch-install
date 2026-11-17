@@ -60,6 +60,17 @@ done''',
         return subprocess.run(['bash','-c',source], env=dict(os.environ, FAKE_ROOT=str(root), **extra),
                               capture_output=True,text=True,timeout=10)
 
+    def test_verify_only_accepts_quoted_kernel_paths_without_changing_them(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);source=self.fixture(root,nvidia=False)
+            config=root/'boot/grub/grub.cfg'
+            config.write_text('menuentry Callas\nlinux "/vmlinuz-linux" root=UUID=test\nlinux "/vmlinuz-linux-lts" root=UUID=test\n')
+            before=config.read_bytes()
+            result=self.run_check(root,'set -- --verify-only\n'+source)
+            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+            self.assertEqual(config.read_bytes(),before)
+            self.assertFalse((root/'dkms-calls').exists())
+
     def test_iso_kernel_is_never_used_for_dkms(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp); source=self.fixture(root)

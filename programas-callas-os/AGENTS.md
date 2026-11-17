@@ -42,6 +42,14 @@ O usuário aceita kernel novo na instalação limpa se a NVIDIA **610.57.04** pu
 - User-visible logs and backups belong under the user's XDG Documents folder: `Callas OS/Callas OS Logs` and `Callas OS/Callas OS Backups`. Backup archives stay root-only and bounded by the configured combined quota. Migrate existing files without overwriting collisions or following symlinks.
 - Validate relevant changes with the offline test suite and shell/Python syntax checks. Clearly distinguish mocked checks from real Arch, boot, VM and hardware validation.
 
+## Compatibilidade de atualização entre versões
+
+Por pedido explícito do usuário em 2026-11-17, a distância entre releases não deve exigir atualizações intermediárias. O cliente instalado deve preparar a entrega atual completa, com auxiliares e assets do mesmo commit verificado, e retomar etapas pendentes sem apagar escolhas do usuário. Cada mudança de formato/auxiliar deve manter compatibilidade com os formatos existentes e adicionar casos históricos à suíte. Não valide migrações somente contra o instalador mais recente; consulte [a política de compatibilidade](instrucoes/compatibilidade-atualizacoes.md).
+
+A compatibilidade não autoriza contornar corrupção real, dependências protegidas ou validações de boot, nem transformar a opção 5 em atualização geral. Preserve configurações de boot funcionais até validar as candidatas; erros devem identificar a incompatibilidade e manter a retomada. Testes simulados não autorizam prometer boot ou atualização universal em máquinas não verificadas.
+
+Brave Origin é o padrão somente da instalação limpa. Em máquinas existentes, ele permanece opcional na lista de aplicativos da Central: o Callas OS Update não deve instalá-lo automaticamente, remover o Brave tradicional nem trocar o navegador padrão do usuário.
+
 ## Primeiro boot após instalação limpa
 
 Steam e Discord não devem iniciar automaticamente durante todo o primeiro boot após a instalação limpa. O usuário pode abri-los manualmente pelo menu KDE a qualquer momento. Sair/entrar na sessão ou repetir uma chamada de autostart não libera o bloqueio; somente uma reinicialização real, identificada pela mudança do boot ID. A partir dela, ambos iniciam normalmente com o sistema em todos os boots seguintes. A opção 5 distribui essa configuração sem rearmar o bloqueio em máquinas já instaladas. Preserve as demais inicializações automáticas.

@@ -96,4 +96,17 @@ class BrowserTests(unittest.TestCase):
             self.assertTrue(set(expected)<=set(sources))
             self.assertIn(home/'.config/brave-origin-flags.conf',sources)
 
+    def test_update_never_changes_default_browser_or_installs_origin(self):
+        source=(UP/'callas-config-update.sh').read_text()
+        block=source.split('# CALLAS_PHASE_BEGIN browser\n',1)[1].split('# CALLAS_PHASE_END browser',1)[0]
+        self.assertNotIn('--default-origin',block)
+        self.assertNotIn('--install',block)
+        self.assertNotIn('instalar_aur',block)
+        self.assertNotIn('xdg-settings',block)
+        self.assertIn('/usr/local/libexec/callas-browser --user',block)
+        self.assertNotIn('default_origin(',source)
+        data=json.loads((UP/'callas-apps.json').read_text())
+        self.assertFalse(any(e['name'] in ('brave-bin','brave-origin-bin') for e in data['applications']))
+        self.assertIn('brave-origin-bin',{e['name'] for e in data['defaults']})
+
 if __name__=='__main__':unittest.main()

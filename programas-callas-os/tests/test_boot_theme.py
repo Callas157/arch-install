@@ -33,6 +33,55 @@ class BootThemeTests(unittest.TestCase):
         self.assertNotIn('echo ', result)
         self.assertNotIn('sleep ', result)
 
+    def test_valid_legacy_variants_preserve_all_boot_commands(self):
+        helper = self.helper()
+        base = self.entries()
+        variants = {
+            'intel-microcode': base.replace('initrd /initramfs-', 'initrd /intel-ucode.img /initramfs-'),
+            'amd-microcode': base.replace('initrd /initramfs-', 'initrd /amd-ucode.img /initramfs-'),
+            'initrd-continuation': base.replace('initrd /initramfs-', 'initrd /intel-ucode.img ' + chr(92) + '\n      /initramfs-'),
+            'tabs': base.replace('    ', '\t'),
+            'two-spaces': base.replace('    ', '  '),
+            'boot-path': base.replace('/vmlinuz-', '/boot/vmlinuz-').replace('/initramfs-', '/boot/initramfs-'),
+            'efi-commands': base.replace('    linux ', '    linuxefi ').replace('    initrd ', '    initrdefi '),
+            'quoted-paths': base.replace('linux /vmlinuz-linux ', 'linux "/vmlinuz-linux" ').replace('initrd /initramfs-linux.img', 'initrd "/initramfs-linux.img"'),
+            'fallback-images': base.replace('/initramfs-linux.img', '/initramfs-linux-fallback.img').replace('/initramfs-linux-lts.img', '/initramfs-linux-lts-fallback.img'),
+            'indented-entry': '\n'.join('  '+line if line else line for line in base.split('\n')),
+            'trailing-comments': base.replace('initrd /initramfs-linux.img', 'initrd /initramfs-linux.img # initial image'),
+        }
+        for name, original in variants.items():
+            with self.subTest(name=name):
+                result = helper.migrate(original)
+                self.assertEqual(result.count('source $prefix/themes/callas/loading.cfg'), 3)
+                self.assertEqual(helper.migrate(result), result)
+                for line in original.splitlines():
+                    if line.lstrip().startswith(('linux', 'initrd', 'search ')):
+                        self.assertIn(line, result)
+
+    def test_mismatched_kernel_and_initramfs_still_rejected(self):
+        helper = self.helper()
+        with self.assertRaises(ValueError):
+            helper.migrate(self.entries().replace('initrd /initramfs-linux-lts.img', 'initrd /initramfs-linux.img'))
+
+    def test_check_mode_does_not_change_legacy_entries_or_permissions(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp)/'09_callas'; original = self.entries().replace('initrd /initramfs-', 'initrd /intel-ucode.img /initramfs-')
+            path.write_text(original); path.chmod(0o755)
+            result = subprocess.run([sys.executable,str(HELPER),'--entries',str(path),'--check'],capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual(result.stdout.strip(),'changed')
+            self.assertEqual(path.read_text(),original); self.assertEqual(path.stat().st_mode & 0o777,0o755)
+
+    def test_cli_preserves_crlf_boot_commands(self):
+        original=self.entries().replace('\n','\r\n').encode()
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/'09_callas';path.write_bytes(original)
+            result=subprocess.run([sys.executable,str(HELPER),'--entries',str(path)],capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stderr)
+            after=path.read_bytes()
+            for line in original.splitlines(keepends=True):
+                if line.strip().startswith((b'linux ',b'initrd ',b'search ')):self.assertIn(line,after)
+
     def test_unknown_or_incomplete_layout_is_rejected(self):
         helper = self.helper()
         with self.assertRaises(ValueError):

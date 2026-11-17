@@ -185,7 +185,7 @@ curl() {
             helper.chmod(0o600)
             with self.assertRaisesRegex(ValueError,'inseguro'):release.stage_complete(root,os.getuid()+1)
 
-    def run_legacy_bootstrap(self, future=False, unsafe=False, missing_gui=False):
+    def run_legacy_bootstrap(self, future=False, unsafe=False, missing_gui=False, legacy_files=None):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);source=root/'source';stage=root/'stage';source.mkdir();stage.mkdir()
             counter=root/'requests';ref='a'*40
@@ -211,7 +211,8 @@ def request(url):
                 tree['tree'].append({'path':name,'type':'blob','mode':'100644','sha':hashlib.sha1(b'blob '+str(len(body)).encode()+b'\0'+body).hexdigest()})
                 excluded=('/callas-game-logs.py','/future-helper.py')
                 if missing_gui: excluded+=('/callas-update-gui.py','/callas-update-gui-install.py')
-                if not name.endswith(excluded):
+                if ((legacy_files is not None and name in legacy_files)
+                        or (legacy_files is None and not name.endswith(excluded))):
                     dest=stage/Path(name).name;dest.write_bytes(body);dest.chmod(0o600)
             (root/'tree.json').write_text(json.dumps(tree))
             (stage/'update-assets.json').write_text('{}');(stage/'update-assets.json').chmod(0o600)
@@ -239,6 +240,12 @@ def request(url):
             result=subprocess.run(['bash','-c',code],env=env,capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             self.assertEqual(counter.read_bytes(),before,'complete stage downloaded again')
+
+    def test_direct_upgrade_from_historical_launchers_without_intermediate_releases(self):
+        fixtures=json.loads((Path(__file__).parent/'fixtures/historical-release-files.json').read_text())
+        for fixture in fixtures:
+            with self.subTest(version=fixture['version']):
+                self.run_legacy_bootstrap(legacy_files=fixture['files'])
 
     def test_old_launcher_missing_graphical_updater_downloads_both_helpers(self):
         self.run_legacy_bootstrap(missing_gui=True)

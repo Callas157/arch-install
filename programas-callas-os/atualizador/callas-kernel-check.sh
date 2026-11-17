@@ -103,8 +103,8 @@ falha() {
     temp_grub=$(mktemp /boot/grub/.callas-check.XXXXXXXX)
     if grub-mkconfig -o "$temp_grub" && grub-script-check "$temp_grub" &&
         grep -q 'menuentry ' "$temp_grub" &&
-        grep -Eq '(^|[[:space:]/])vmlinuz-linux([[:space:]]|$)' "$temp_grub" &&
-        grep -Eq '(^|[[:space:]/])vmlinuz-linux-lts([[:space:]]|$)' "$temp_grub"; then
+        grep -Eq "(^|[[:space:]/'\"])vmlinuz-linux([[:space:]'\"]|$)" "$temp_grub" &&
+        grep -Eq "(^|[[:space:]/'\"])vmlinuz-linux-lts([[:space:]'\"]|$)" "$temp_grub"; then
       chmod 0600 "$temp_grub"
       mv -f -- "$temp_grub" /boot/grub/grub.cfg
     else
@@ -115,8 +115,8 @@ falha() {
   fi
   if [[ -f /boot/grub/grub.cfg ]]; then
     grub-script-check /boot/grub/grub.cfg || falha 'Sintaxe inválida em /boot/grub/grub.cfg.'
-    grep -Eq '(^|[[:space:]/])vmlinuz-linux-lts([[:space:]]|$)' /boot/grub/grub.cfg || falha 'Entrada do kernel LTS ausente no GRUB.'
-    grep -Eq '(^|[[:space:]/])vmlinuz-linux([[:space:]]|$)' /boot/grub/grub.cfg || falha 'Entrada do kernel padrão ausente no GRUB.'
+    grep -Eq "(^|[[:space:]/'\"])vmlinuz-linux-lts([[:space:]'\"]|$)" /boot/grub/grub.cfg || falha 'Entrada do kernel LTS ausente no GRUB.'
+    grep -Eq "(^|[[:space:]/'\"])vmlinuz-linux([[:space:]'\"]|$)" /boot/grub/grub.cfg || falha 'Entrada do kernel padrão ausente no GRUB.'
   else
     falha '/boot/grub/grub.cfg não existe.'
   fi
