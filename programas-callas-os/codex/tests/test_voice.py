@@ -117,3 +117,46 @@ class VoiceTests(unittest.TestCase):
         self.assertEqual(levels[0], 0)
         self.assertGreater(levels[1], .4)
         self.assertLessEqual(levels[1], 1)
+
+    def test_long_dictation_and_model_reuse(self):
+        import sys
+        from types import SimpleNamespace
+        from unittest.mock import Mock, patch
+        from callas_chat.voice import Recognizer
+        model = Mock()
+        model.transcribe.side_effect = lambda *a, **k: (iter([SimpleNamespace(text='fala longa')]), None)
+        factory = Mock(return_value=model)
+        failures, texts = [], []
+        with patch.dict(sys.modules, {'faster_whisper': SimpleNamespace(WhisperModel=factory)}):
+            for _ in range(2):
+                worker = Recognizer('/modelo-longo', 16000)
+                worker.failure.connect(failures.append)
+                worker.text.connect(texts.append)
+                worker.audio.put(struct.pack('<h', 2000) * 16000 * 130)
+                worker.stop()
+                worker.run()
+        self.assertEqual(failures, [])
+        self.assertEqual(texts, ['fala longa', 'fala longa'])
+        self.assertEqual(factory.call_count, 1)
+
+    def test_capture_starts_without_waiting_for_model(self):
+        from unittest.mock import Mock, patch
+        from callas_chat.voice import Voice
+        voice = Voice()
+        voice.capture = Mock()
+        audio = Mock()
+        audio.isNull.return_value = False
+        with patch('callas_chat.voice.QMediaDevices.defaultAudioInput', return_value=audio), \
+             patch('callas_chat.voice.whisper_ready', return_value=True), \
+             patch('callas_chat.voice.Recognizer') as worker:
+            voice.start()
+            voice.capture.assert_called_once()
+            worker.return_value.loaded.connect.assert_not_called()
+
+    def test_fast_decoder_settings(self):
+        from unittest.mock import Mock
+        from callas_chat.voice import transcribe_pcm
+        model = Mock()
+        model.transcribe.return_value = (iter([]), None)
+        transcribe_pcm(model, b'\0\0' * 160, 16000)
+        self.assertEqual(model.transcribe.call_args.kwargs['beam_size'], 1)

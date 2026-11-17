@@ -3,7 +3,8 @@ import array
 import math
 import queue
 from pathlib import Path
-from PySide6.QtCore import QObject, QThread, Signal, QTimer
+from functools import lru_cache
+from PySide6.QtCore import QObject, QThread, Signal
 from PySide6.QtMultimedia import QAudioFormat, QAudioSource, QMediaDevices
 from .model_files import whisper_ready
 
@@ -50,12 +51,20 @@ def pcm_samples(pcm, rate):
     return np.ascontiguousarray(samples, dtype=np.float32)
 
 
+@lru_cache(maxsize=1)
+def load_model(model_path):
+    """Keep the local model resident across consecutive dictations."""
+    from faster_whisper import WhisperModel
+    return WhisperModel(str(model_path), device='cpu', compute_type='int8',
+                        cpu_threads=8, local_files_only=True)
+
+
 def transcribe_pcm(model, pcm, rate):
     """Pass the full utterance as samples, bypassing file decoding entirely."""
     if not pcm: return ''
     audio = pcm_samples(pcm, rate)
     segments, _ = model.transcribe(
-        audio, language='pt', task='transcribe', beam_size=5,
+        audio, language='pt', task='transcribe', beam_size=1,
         temperature=0, vad_filter=True,
         vad_parameters={'min_silence_duration_ms': 700, 'speech_pad_ms': 400},
         condition_on_previous_text=False,
@@ -72,15 +81,12 @@ class Recognizer(QThread):
     def __init__(self, model_path, rate, parent=None):
         super().__init__(parent)
         self.model_path, self.rate = model_path, rate
-        self.audio = queue.Queue(maxsize=100)
+        self.audio = queue.Queue()
         self.stopping = False
 
     def run(self):
         try:
-            from faster_whisper import WhisperModel
-            model = WhisperModel(str(self.model_path), device='cpu', compute_type='int8',
-                                 cpu_threads=8, local_files_only=True)
-            if self.stopping: return
+            model = load_model(str(self.model_path))
             self.loaded.emit()
             recording = bytearray()
             while True:
@@ -91,8 +97,6 @@ class Recognizer(QThread):
                     continue
                 if data is None: break
                 recording.extend(data)
-                if len(recording) > self.rate * 2 * 125:
-                    raise ValueError('O limite de gravação é de dois minutos. Tente um ditado mais curto.')
             self.progress.emit('Transcrevendo em português… aguarde alguns segundos.')
             value = transcribe_pcm(model, bytes(recording), self.rate)
             if value: self.text.emit(value)
@@ -122,9 +126,6 @@ class Voice(QObject):
         self.tail = b''
         self.recording = False
         self.gain = 2.0
-        self.limit_timer = QTimer(self)
-        self.limit_timer.setSingleShot(True)
-        self.limit_timer.timeout.connect(self.stop)
 
     def start(self):
         if self.worker:
@@ -149,14 +150,14 @@ class Voice(QObject):
         self.recording = True
         self.active.emit(True)
         self.phase.emit('preparing')
-        self.status.emit('Carregando Whisper Medium… espere aparecer Gravando para falar.')
+        self.status.emit('Preparando microfone…')
         self.worker = Recognizer(model, fmt.sampleRate(), self)
         self.worker.text.connect(self.text)
         self.worker.progress.connect(self.status)
         self.worker.failure.connect(self.error)
         self.worker.finished.connect(self.finished)
-        self.worker.loaded.connect(lambda: self.capture(audio, fmt))
         self.worker.start()
+        self.capture(audio, fmt)
 
     def capture(self, audio, fmt):
         if not self.recording: return
@@ -171,8 +172,7 @@ class Voice(QObject):
             return
         self.device.readyRead.connect(self.read)
         self.phase.emit('recording')
-        self.limit_timer.start(120000)
-        self.status.emit('Gravando… fale em português e clique em Parar ditado para transcrever (até 2 min).')
+        self.status.emit('Gravando… fale em português e clique em Parar ditado para transcrever.')
 
     def audio_state(self, state):
         from PySide6.QtMultimedia import QtAudio
@@ -202,7 +202,6 @@ class Voice(QObject):
             self.stop()
 
     def stop(self):
-        self.limit_timer.stop()
         self.recording = False
         if self.worker and not self.worker.stopping:
             self.phase.emit('transcribing')

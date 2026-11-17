@@ -26,7 +26,7 @@ Uma entrega pode conter vários commits. Verifique primeiro se ela já recebeu u
 
 Exemplos: `3.2.2 → 3.2.3` para correção; `3.2.3 → 3.3.0` para recurso compatível; `3.3.0 → 4.0.0` para mudança incompatível.
 
-Considere o conjunto da entrega, não o número de arquivos, commits ou pacotes. Atualizar pacotes comuns do Arch, kernel ou aplicativos não aumenta a versão do Callas OS. Classifique uma alteração do projeto pelo comportamento entregue; não use a troca de um aplicativo como regra automática para todas as entregas futuras.
+Considere o conjunto da entrega, não o número de arquivos, commits ou pacotes. Atualizar pacotes comuns do Arch, kernel ou aplicativos não aumenta a versão do Callas OS. Melhorias exclusivas do cliente Codex opcional, seu pacote e a referência/SHA-256 do download na Central seguem a versão própria do cliente e não incrementam a versão do sistema, conforme a regra específica em AGENTS.md. Classifique uma alteração do projeto pelo comportamento entregue; não use a troca de um aplicativo como regra automática para todas as entregas futuras.
 
 Se a versão remota já for `3.4.1`, uma nova correção será `3.4.2`, mesmo que você lembre de `3.2.2`. Não reduza a versão nem compense incrementos anteriores. Uma instrução explícita para manter uma versão é uma exceção apenas para aquela entrega.
 

@@ -1,4 +1,4 @@
-# Codex opcional — Callas OS 3.8.0 / cliente 1.3.0
+# Codex opcional — cliente 1.3.1
 
 O botão **Codex** da Central oferece instalação no perfil do usuário. Quando o
 aplicativo já existe, o mesmo botão apenas o abre. O aplicativo é publicado em
@@ -32,7 +32,7 @@ abre uma janela de senha separada e devolve a resposta somente ao sudo, sem
 salvar a senha ou inseri-la no chat. Cancelamento devolve erro e saída vazia.
 Nenhuma regra de sudo sem senha foi adicionada.
 
-## Verificação desta entrega
+## Validação histórica da integração inicial (cliente 1.3.0)
 
 - 269 testes do Callas OS executados: 268 aprovados e um teste opcional de
   transação libalpm não habilitado. Inclui estágio compartilhado da instalação
@@ -55,3 +55,25 @@ Não foi validada instalação Arch limpa completa, download inicial de todas as
 dependências/modelo em outra máquina, autenticação de outra conta, senha real,
 boot ou hardware. A instalação opcional não implementa atualização automática
 do chat; esse recurso fica para uma entrega posterior.
+
+## Cliente 1.3.1 — 2026-11-17
+
+- Remove os dois cortes de duração do ditado. A captação inicia sem esperar
+  carregar Whisper Medium; o modelo é reutilizado entre ditados. Usa busca de
+  decodificação com `beam_size=1`, mantendo português e processamento local.
+- Os 55 testes do cliente passam, incluindo áudio simulado de 130 segundos,
+  captação independente do carregamento e reutilização do modelo. O usuário
+  confirmou início mais rápido e boa transcrição na máquina dele.
+- O gerador sem argumentos agora cria somente `codex.tar.gz` nesta pasta.
+  Um instalador avulso só é gerado com destino explícito, quando solicitado.
+  Não gera novas cópias em Documentos no fluxo de publicação.
+- Fontes e pacote são publicados no GitHub; a Central fixa o commit do pacote
+  e seu SHA-256. O cliente segue versão própria; o sistema permanece 3.15.0.
+  Instalação continua opcional e não atualiza automaticamente clientes existentes.
+
+Publicação: executar `python build_installer.py` nesta pasta, validar os testes
+com o Python que contém as dependências de voz, conferir cada arquivo do pacote
+contra as fontes e publicar na main. Em seguida fixar o commit e SHA-256 na
+Central, validar seus testes e conferir o download pelo commit público. O pacote
+contém somente os arquivos de distribuição definidos pelo gerador, sem dados,
+contas, conversas, anexos ou modelos locais.

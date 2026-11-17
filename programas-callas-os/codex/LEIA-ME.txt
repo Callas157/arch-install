@@ -1,4 +1,4 @@
-CODEX 1.3.0
+CODEX 1.3.1
 
 Abra “Codex” no menu KDE. Use sua conta ChatGPT já conectada ao Codex;
 em um computador novo, entre em Conta e configurações > Entrar com minha conta ChatGPT.
@@ -13,8 +13,8 @@ Acesso completo está ativado por solicitação do usuário: comandos podem
 alterar arquivos e usar a rede sem confirmação. Isso não concede root nem
 guarda senha de sudo. O botão de pasta define a área de trabalho do Codex.
 
-Instalador: ~/Documentos/instalar-callas-chat.sh
-Pode copiar esse arquivo para outro disco e executar após reinstalar o Linux.
+Instalação: Central Callas OS > Codex, com download verificado do GitHub.
+As melhorias do aplicativo são publicadas no repositório do Callas OS.
 Internet é necessária para preparar dependências, modelo de voz e login.
 Não inclui conta, senha, token nem conversas do computador original.
 Instalação suportada: Arch Linux/Callas OS e KDE, como usuário normal.
@@ -36,7 +36,7 @@ instalado e o protocolo app-server, que pode mudar em versões futuras.
 Atualização de microfone e anexos:
 - Ganho do ditado em 200% por padrão, com proteção contra saturação.
 - Ajuste de 100% a 600% em Conta e configurações > Sensibilidade do microfone.
-- Espere aparecer “Gravando” antes de falar; clique em Parar ditado para transcrever, revisar e enviar (até 2 minutos).
+- Espere aparecer “Gravando” antes de falar; clique em Parar ditado para transcrever, revisar e enviar.
 - O botão Anexar aceita fotos, textos e logs, inclusive arquivos sem extensão.
 - Textos: até 1 MB por arquivo e 2 MB por mensagem; UTF-8, UTF-16 com BOM e Windows-1252.
 - O conteúdo anexado é copiado ao selecionar e enviado somente ao clicar em Enviar.
@@ -77,3 +77,9 @@ Acesso completo não concede root. Comandos administrativos usam sudo com
 janela de senha; a senha não é salva nem enviada à conversa.
 Ícone: glifo Codex fornecido pelo plugin cloud-environment da OpenAI,
 com fundo escuro para visualização no KDE. Este cliente é mantido pelo Callas OS.
+
+Correção 1.3.1: ditado sem corte automático por duração. O microfone começa
+sem esperar o carregamento do Whisper. O modelo permanece em memória entre
+ditados e a decodificação usa busca mais rápida. A transcrição continua local,
+com Whisper Medium em português. Áudios maiores usam mais memória e levam
+mais tempo para transcrever; revise palavras e pontuação antes de enviar.

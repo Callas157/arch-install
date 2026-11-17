@@ -61,6 +61,21 @@ A versão pública segue **MAJOR.MINOR.PATCH**:
 - Mudanças apenas em documentação ou organização de pastas não exigem aumento da versão pública.
 - Uma exceção explícita do usuário para manter uma versão vale apenas naquela entrega; não a transforme em regra permanente. Estas regras substituem a classificação específica anteriormente registrada para a troca do Boxes.
 
+### Codex opcional: distribuição e versão independentes
+
+Por instrução permanente do usuário em 2026-11-17, melhorias exclusivas do
+aplicativo Codex são publicadas diretamente na `main`, em `codex/`, sem gerar
+instalador em Documentos. O cliente mantém seu versionamento próprio: alterações
+exclusivas do Codex, de seu pacote e da referência/SHA-256 desse download na
+Central não incrementam `atualizador/VERSION` nem a versão do sistema principal.
+Esta regra é específica do aplicativo opcional; mudanças no restante do sistema
+continuam seguindo o versionamento público acima. Preserve a instalação por
+escolha na Central, o commit imutável e a conferência de integridade do pacote.
+Para publicar: execute `python build_installer.py` em `codex/` (gera apenas
+`codex.tar.gz` nesse diretório), valide fontes/pacote/testes, publique o pacote e
+fixe o commit publicado e seu SHA-256 na Central. Confira o download público.
+Não crie instaladores em Documentos, salvo novo pedido explícito do usuário.
+
 ### Antes de alterar
 
 1. Consulte a branch `main` atualizada do repositório `Callas157/arch-install`.

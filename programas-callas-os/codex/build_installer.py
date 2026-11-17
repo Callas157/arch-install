@@ -8,14 +8,18 @@ import tarfile
 ROOT = Path(__file__).resolve().parent
 
 
-def build(destination):
+def package_bytes():
     payload = io.BytesIO()
     files = [ROOT/name for name in ('installer.py', 'setup_voice.py', 'LEIA-ME.txt')]
     files += [p for folder in ('callas_chat', 'assets') for p in (ROOT/folder).rglob('*')
               if p.is_file() and '__pycache__' not in p.parts and p.suffix != '.pyc']
     with tarfile.open(fileobj=payload, mode='w:gz') as archive:
         for path in files: archive.add(path, arcname=str(path.relative_to(ROOT)))
-    content = payload.getvalue()
+    return payload.getvalue()
+
+
+def build(destination):
+    content = package_bytes()
     digest = hashlib.sha256(content).hexdigest()
     header = r'''#!/usr/bin/env bash
 set -euo pipefail
@@ -68,6 +72,13 @@ __CALLAS_CHAT_ARCHIVE__
 
 if __name__ == '__main__':
     import sys
-    destination = sys.argv[1] if len(sys.argv) > 1 else str(Path.home()/'Documentos/instalar-callas-chat.sh')
-    print('Instalador criado:', destination)
-    print('SHA-256 do conteúdo:', build(destination))
+    if len(sys.argv) > 1:
+        destination = sys.argv[1]
+        print('Instalador criado:', destination)
+        print('SHA-256 do conteúdo:', build(destination))
+    else:
+        destination = ROOT/'codex.tar.gz'
+        content = package_bytes()
+        destination.write_bytes(content)
+        print('Pacote para publicar no GitHub:', destination)
+        print('SHA-256:', hashlib.sha256(content).hexdigest())
