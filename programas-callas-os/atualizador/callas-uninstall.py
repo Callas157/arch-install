@@ -81,7 +81,7 @@ def native_apps():
         if not entry: continue
         blocked = blocked_native(name, entry)
         app = dict(kind='native', id=name, name=entry.get('Name[pt_BR]', entry.get('Name', name)),
-                   version=version, source='Nativo / AUR', blocked=blocked,
+                   version=version, icon=entry.get('Icon', ''), source='Nativo / AUR', blocked=blocked,
                    reason='Componente do sistema ou ferramenta administrativa: remoção bloqueada.' if blocked else
                           'Remove somente este pacote; dependências necessárias a outros programas bloqueiam a operação.')
         if name not in apps or (apps[name]['blocked'] and not blocked): apps[name] = app
@@ -111,7 +111,7 @@ def flatpak_apps(scope):
         if not ref.startswith('app/'): ref = 'app/' + ref
         if not re.fullmatch(r'app/[\w.\-]+/[\w\-]+/[\w.\-]+', ref):
             raise RuntimeError('Referência Flatpak inválida.')
-        apps.append(dict(kind='flatpak-' + scope, id=ref, name=name, version=version,
+        apps.append(dict(kind='flatpak-' + scope, id=ref, name=name, version=version, icon=ref.split('/')[1],
                          source='Flatpak — ' + ('usuário' if scope == 'user' else 'sistema'),
                          blocked=False, reason='Remove só o aplicativo. Dados pessoais e runtimes são preservados.'))
     return apps
@@ -179,23 +179,23 @@ def user_apps():
     home = Path.home(); data = data_home(); apps = []
     launcher = home / '.local/bin/callas-chat'
     if launcher.is_file():
-        apps.append(dict(kind='codex', id='callas-chat', name='Codex', version='', source='Perfil do usuário',
+        apps.append(dict(kind='codex', id='callas-chat', name='Codex', version='', icon='codex', source='Perfil do usuário',
                          blocked=not safe_path(data / 'callas-chat', home),
                          reason='Remove o cliente da Central. Preserva login, conversas e preferências.'))
     images = {}
     for folder in (home / 'Applications', home / 'Downloads'):
         if safe_path(folder, home) and folder.is_dir():
             for path in folder.iterdir():
-                if safe_image(path, home): images[str(path)] = path.stem
+                if safe_image(path, home): images[str(path)] = (path.stem, '')
     for path in (data / 'applications').glob('*.desktop'):
         entry = desktop_entry(path)
         if not entry: continue
         try: executable = Path(shlex.split(entry.get('Exec', ''))[0])
         except (ValueError, IndexError): continue
-        if safe_image(executable, home): images[str(executable)] = entry.get('Name', executable.stem)
-    apps.extend(dict(kind='appimage', id=path, name=name, version='', source='AppImage — usuário',
+        if safe_image(executable, home): images[str(executable)] = (entry.get('Name', executable.stem), entry.get('Icon', ''))
+    apps.extend(dict(kind='appimage', id=path, name=name, icon=icon, version='', source='AppImage — usuário',
                      blocked=False, reason='Remove o arquivo AppImage e seus atalhos pessoais; preserva configurações.')
-                for path, name in images.items())
+                for path, (name, icon) in images.items())
     return apps
 
 

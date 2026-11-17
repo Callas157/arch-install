@@ -53,9 +53,9 @@ class OptionalCodexTests(unittest.TestCase):
         window = gui.Window()
         with patch.object(gui, 'codex_launcher', return_value=Path('/nonexistent/codex')), \
              patch.object(window, 'start') as start:
-            with patch.object(gui.QMessageBox, 'question', return_value=gui.QMessageBox.No): window.codex()
+            window.codex(); window.confirm_cancel.click()
             start.assert_not_called()
-            with patch.object(gui.QMessageBox, 'question', return_value=gui.QMessageBox.Yes): window.codex()
+            window.codex(); window.confirm_yes.click()
             start.assert_called_once_with('codex')
         window.close(); window.deleteLater()
 

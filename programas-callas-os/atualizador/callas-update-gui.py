@@ -24,7 +24,7 @@ from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QGridLayout, QPushButton, QLabel, QProgressBar, QPlainTextEdit, QFrame,
     QLineEdit, QMessageBox, QInputDialog, QStyle, QDialog, QCheckBox,
-    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QScrollArea)
+    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QScrollArea, QStackedWidget)
 
 BACKEND = '/usr/local/libexec/put-update'
 UNINSTALL_HELPER = '/usr/local/libexec/callas-uninstall'
@@ -204,10 +204,13 @@ class MonitorDialog(QDialog):
         except (ValueError, KeyError, TypeError, RuntimeError) as exc:
             self.message.setText(str(exc))
 
-    def select(self, name):
+    def select(self, name, confirmed=False):
         if self.worker is not None: return
-        if QMessageBox.question(self, 'Definir monitor principal',
-            f'Definir {name} como principal para o painel, notificações e login?') != QMessageBox.Yes: return
+        if not confirmed:
+            text = f'Definir {name} como principal para o painel, notificações e login?'
+            if getattr(self, 'controller', None):
+                self.controller.confirm_action('Definir monitor principal', text, lambda: self.select(name, True), 'Aplicar'); return
+            if QMessageBox.question(self, 'Definir monitor principal', text) != QMessageBox.Yes: return
         self.message.setText('Aplicando configuração. Autorize o ajuste do login quando solicitado…')
         self.execute(['--set-primary', name, '--expected', json.dumps([o['name'] for o in self.snapshot]),
                       '--gui-auth'], self.applied)
@@ -216,10 +219,12 @@ class MonitorDialog(QDialog):
         if code:
             self.message.setText('Não foi possível concluir. As etapas já confirmadas podem ter sido aplicadas. '
                                  'O backup foi preservado quando criado. Atualize a lista para conferir.')
-            QMessageBox.warning(self, 'Monitores', (error + '\n' + output).strip())
+            if getattr(self, 'controller', None): self.message.setText(self.message.text() + '\n' + (error + '\n' + output).strip())
+            else: QMessageBox.warning(self, 'Monitores', (error + '\n' + output).strip())
         else:
             self.detect()
-            QMessageBox.information(self, 'Monitores', 'Monitor principal configurado. Confira o login na próxima entrada.')
+            if getattr(self, 'controller', None): self.message.setText('Monitor principal configurado. Confira o login na próxima entrada.\n' + self.message.text())
+            else: QMessageBox.information(self, 'Monitores', 'Monitor principal configurado. Confira o login na próxima entrada.')
 
     def reject(self):
         if self.worker is None: super().reject()
@@ -228,14 +233,42 @@ class MonitorDialog(QDialog):
         if self.worker is not None: event.ignore()
         else: event.accept()
 
-def default_app_icon(name):
+def default_app_icon(name, fallback=True):
     try:
         data = json.loads(DEFAULT_ICONS.read_text())
         raw = base64.b64decode(data['icons'][name], validate=True)
         pixmap = QPixmap()
         if pixmap.loadFromData(raw, 'PNG'): return QIcon(pixmap)
     except (OSError, ValueError, KeyError): pass
-    return QIcon.fromTheme(name, option_icon('applications-all'))
+    return QIcon.fromTheme(name, option_icon('applications-all') if fallback else QIcon())
+
+
+def application_icon(app):
+    if app.get('kind') == 'codex': return option_icon('codex')
+    name = app.get('icon', '')
+    if name and Path(name).is_absolute():
+        icon = QIcon(name)
+        if not icon.isNull(): return icon
+    candidates = [name]
+    if app.get('kind', '').startswith('flatpak'):
+        fields = app.get('id', '').split('/')
+        if len(fields) > 1: candidates.append(fields[1])
+    else: candidates.append(app.get('id', '').removesuffix('-bin'))
+    data = Path(os.environ.get('XDG_DATA_HOME', str(Path.home() / '.local/share')))
+    roots = [data / 'icons/hicolor', data / 'flatpak/exports/share/icons/hicolor',
+             Path('/var/lib/flatpak/exports/share/icons/hicolor'), Path('/usr/share/icons/hicolor')]
+    for candidate in candidates:
+        if not re.fullmatch(r'[a-zA-Z0-9_.+\-]+', candidate): continue
+        icon = default_app_icon(candidate, fallback=False)
+        if not icon.isNull(): return icon
+        for root in roots:
+            for size in ('64x64', '128x128', '256x256', 'scalable', '48x48', '32x32'):
+                for suffix in ('.png', '.svg', '.xpm'):
+                    path = root / size / 'apps' / (candidate + suffix)
+                    if path.is_file():
+                        icon = QIcon(str(path))
+                        if not icon.isNull(): return icon
+    return option_icon('applications-all')
 
 
 class NativeAppsDialog(QDialog):
@@ -294,8 +327,9 @@ class NativeAppsDialog(QDialog):
 
     def update_apps(self):
         if self.busy: return
+        host = getattr(self, 'controller', None) or self.parentWidget()
         self.accept()
-        if self.parentWidget(): self.parentWidget().start('nativos')
+        if host: host.start('nativos')
 
     def go_back(self):
         if self.busy: return
@@ -407,18 +441,22 @@ class NativeAppsDialog(QDialog):
 
     def install_checked(self): self.install_ids(self.selected_ids())
 
-    def install_ids(self, ids):
+    def install_ids(self, ids, confirmed=False):
         if self.busy or not ids: return
         selected = [app for app in self.apps if app['id'] in ids and not app['installed']]
         if len(selected) != len(ids): return
-        question = QMessageBox(self); question.setWindowTitle('Instalar aplicativos padrão')
-        question.setTextFormat(Qt.PlainText)
-        question.setText('Instalar os aplicativos selecionados?\n\n' + '\n'.join(app['title'] for app in selected) +
-                         '\n\nSomente estes aplicativos serão restaurados. A preferência de desinstalação será desfeita '
-                         'após cada instalação confirmada. Pode ser necessária autorização administrativa.')
-        question.setStandardButtons(QMessageBox.Yes | QMessageBox.No); question.setDefaultButton(QMessageBox.No)
-        question.button(QMessageBox.Yes).setText('Instalar'); question.button(QMessageBox.No).setText('Cancelar')
-        if question.exec() != QMessageBox.Yes: return
+        if not confirmed:
+            question = QMessageBox(self); question.setWindowTitle('Instalar aplicativos padrão')
+            question.setTextFormat(Qt.PlainText)
+            question.setText('Instalar os aplicativos selecionados?\n\n' + '\n'.join(app['title'] for app in selected) +
+                             '\n\nSomente estes aplicativos serão restaurados. A preferência de desinstalação será desfeita '
+                             'após cada instalação confirmada. Pode ser necessária autorização administrativa.')
+            question.setStandardButtons(QMessageBox.Yes | QMessageBox.No); question.setDefaultButton(QMessageBox.No)
+            question.button(QMessageBox.Yes).setText('Instalar'); question.button(QMessageBox.No).setText('Cancelar')
+            if getattr(self, 'controller', None):
+                self.controller.confirm_action(question.windowTitle(), question.text(), lambda: self.install_ids(ids, True), 'Instalar')
+                question.deleteLater(); return
+            if question.exec() != QMessageBox.Yes: return
         self.details.clear(); self.details.show(); self.status.setText('Instalando os aplicativos selecionados…')
         def installed(code, output, error):
             logger = Path('/usr/local/libexec/callas-logs')
@@ -463,6 +501,7 @@ class UninstallDialog(QDialog):
         self.protected = QCheckBox('Mostrar componentes protegidos (somente consulta)')
         self.protected.toggled.connect(self.filter_apps); layout.addWidget(self.protected)
         self.table = QTableWidget(0, 4)
+        self.table.setIconSize(QSize(32, 32)); self.table.verticalHeader().setDefaultSectionSize(44)
         self.table.setHorizontalHeaderLabels(['Aplicativo', 'Origem', 'Versão', 'Situação'])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -510,7 +549,8 @@ class UninstallDialog(QDialog):
             for col, value in enumerate((app['name'], app['source'], app.get('version', ''),
                                          'Protegido' if app['blocked'] else 'Aplicativo')):
                 item = QTableWidgetItem(value); item.setToolTip(app['reason'])
-                if col == 0: item.setData(Qt.UserRole, app)
+                if col == 0:
+                    item.setData(Qt.UserRole, app); item.setIcon(application_icon(app))
                 self.table.setItem(row, col, item)
             if selected and (app['kind'], app['id']) == (selected['kind'], selected['id']):
                 self.table.selectRow(row)
@@ -569,23 +609,27 @@ class UninstallDialog(QDialog):
                 self.apps = []; self.filter_apps(); self.status.setText(str(exc))
         self.run_helper(['--list'], False, loaded)
 
-    def uninstall(self):
+    def uninstall(self, confirmed=False):
         app = self.selected()
         if self.busy or not app: return
         if app['blocked']:
-            QMessageBox.warning(self, 'Componente protegido', app['reason']); return
+            self.status.setText(app['reason']); return
         admin = app['kind'] in ('native', 'flatpak-system')
-        confirmation = QMessageBox(self)
-        confirmation.setWindowTitle('Confirmar desinstalação'); confirmation.setTextFormat(Qt.PlainText)
-        confirmation.setText(f"Desinstalar {app['name']}?\n\nOrigem: {app['source']}\n{app['id']}\n\n"
-                             'Feche o aplicativo antes de continuar. Seus dados pessoais serão preservados.\n'
-                             'O Callas OS Update respeitará esta escolha.' +
-                             ('\nA autorização administrativa será solicitada se necessário.' if admin else ''))
-        confirmation.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-        confirmation.setDefaultButton(QMessageBox.No)
-        confirmation.button(QMessageBox.Yes).setText('Desinstalar')
-        confirmation.button(QMessageBox.No).setText('Cancelar')
-        if confirmation.exec() != QMessageBox.Yes: return
+        if not confirmed:
+            confirmation = QMessageBox(self)
+            confirmation.setWindowTitle('Confirmar desinstalação'); confirmation.setTextFormat(Qt.PlainText)
+            confirmation.setText(f"Desinstalar {app['name']}?\n\nOrigem: {app['source']}\n{app['id']}\n\n"
+                                 'Feche o aplicativo antes de continuar. Seus dados pessoais serão preservados.\n'
+                                 'O Callas OS Update respeitará esta escolha.' +
+                                 ('\nA autorização administrativa será solicitada se necessário.' if admin else ''))
+            confirmation.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+            confirmation.setDefaultButton(QMessageBox.No)
+            confirmation.button(QMessageBox.Yes).setText('Desinstalar')
+            confirmation.button(QMessageBox.No).setText('Cancelar')
+            if getattr(self, 'controller', None):
+                self.controller.confirm_action(confirmation.windowTitle(), confirmation.text(), lambda: self.uninstall(True), 'Desinstalar')
+                confirmation.deleteLater(); return
+            if confirmation.exec() != QMessageBox.Yes: return
         self.details.clear(); self.details.show()
         self.status.setText('Desinstalando ' + app['name'] + '…')
         def removed(code, output, error):
@@ -600,7 +644,8 @@ class UninstallDialog(QDialog):
                     self.details.appendPlainText('Não foi possível salvar o log em Documentos.')
             if code:
                 self.status.setText('Desinstalação não concluída. A autorização pode ter sido cancelada. Veja os detalhes.')
-                QMessageBox.warning(self, 'Desinstalação não concluída', error or output or 'Não foi possível iniciar a operação.')
+                if not getattr(self, 'controller', None):
+                    QMessageBox.warning(self, 'Desinstalação não concluída', error or output or 'Não foi possível iniciar a operação.')
             else:
                 self.refresh(message=app['name'] + ' desinstalado. Dados pessoais preservados.')
         self.run_helper(['--remove', app['kind'], app['id']], admin, removed)
@@ -614,9 +659,37 @@ class UninstallDialog(QDialog):
         else: event.accept()
 
 
+class MaintenanceDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self); layout.setContentsMargins(28, 25, 28, 24); layout.setSpacing(16)
+        layout.addWidget(QLabel('Limpeza e manutenção', objectName='title'))
+        layout.addWidget(QLabel('Escolha a função de manutenção'))
+        grid = QGridLayout(); layout.addLayout(grid)
+        options = [('Limpeza segura', 'edit-clear', 'clean'),
+            ('Espaço, backups e VMs', 'folder-open', 'report'),
+            ('Verificar pacotes órfãos', 'applications-all', 'orphans'),
+            ('Reaplicar modo manual', 'appointment-soon', 'repair'),
+            ('Diagnóstico de jogo', 'view-list-details', 'games'),
+            ('Atualizar Flatpaks', 'system-software-update', 'flatpaks')]
+        for i, (title, icon, action) in enumerate(options):
+            button = QPushButton(option_icon(icon), title); button.setMinimumHeight(68)
+            button.clicked.connect(lambda checked=False, a=action: self.choose(a))
+            grid.addWidget(button, i // 2, i % 2)
+        layout.addStretch()
+        back = QPushButton('Voltar à Central'); back.clicked.connect(self.reject)
+        layout.addWidget(back, alignment=Qt.AlignRight)
+
+    def choose(self, action):
+        host = getattr(self, 'controller', None) or self.parentWidget()
+        self.accept(); host.start(action)
+
+
 class Window(QWidget):
     def __init__(self):
         super().__init__()
+        self.active_page = None
+        self.pending_confirmation = None
         self.process = None
         self.monitor_dialog = None
         self.master = None
@@ -648,7 +721,22 @@ class Window(QWidget):
                 border-radius: 7px; padding: 7px; }
             QFrame#card { background: #252d37; border-radius: 12px; }
         ''')
-        layout = QVBoxLayout(self)
+        root = QVBoxLayout(self); root.setContentsMargins(0, 0, 0, 0)
+        self.pages = QStackedWidget(); root.addWidget(self.pages)
+        self.home_page = QWidget(); self.pages.addWidget(self.home_page)
+        self.confirm_page = QWidget(); self.pages.addWidget(self.confirm_page)
+        confirmation = QVBoxLayout(self.confirm_page)
+        confirmation.setContentsMargins(32, 28, 32, 28); confirmation.setSpacing(20)
+        self.confirm_title = QLabel('', objectName='title'); self.confirm_title.setWordWrap(True)
+        self.confirm_text = QLabel(''); self.confirm_text.setTextFormat(Qt.PlainText); self.confirm_text.setWordWrap(True)
+        confirmation.addWidget(self.confirm_title); confirmation.addWidget(self.confirm_text); confirmation.addStretch()
+        row = QHBoxLayout(); row.addStretch()
+        self.confirm_cancel = QPushButton('Cancelar'); self.confirm_cancel.clicked.connect(lambda: self.finish_confirmation(False))
+        self.confirm_yes = QPushButton('Continuar'); self.confirm_yes.setObjectName('primary')
+        self.confirm_yes.clicked.connect(lambda: self.finish_confirmation(True))
+        row.addWidget(self.confirm_cancel); row.addWidget(self.confirm_yes); confirmation.addLayout(row)
+        self.pages.setCurrentWidget(self.home_page)
+        layout = QVBoxLayout(self.home_page)
         layout.setContentsMargins(32, 25, 32, 24)
         layout.setSpacing(16)
         emblem = QLabel()
@@ -739,72 +827,85 @@ class Window(QWidget):
         self.input_row.setVisible(visible and self.process is not None)
         self.details_button.setText('Ocultar detalhes' if visible else 'Mostrar detalhes')
 
-    def maintenance(self):
-        dialog = QDialog(self)
-        dialog.setWindowTitle('Limpeza e manutenção')
-        layout = QVBoxLayout(dialog)
-        layout.addWidget(QLabel('Escolha a função de manutenção'))
-        grid = QGridLayout(); layout.addLayout(grid)
-        selected = []
-        def choose(action):
-            selected.append(action); dialog.accept()
-        options = [('Limpeza segura', 'edit-clear', 'clean'),
-            ('Espaço, backups e VMs', 'folder-open', 'report'),
-            ('Verificar pacotes órfãos', 'applications-all', 'orphans'),
-            ('Reaplicar modo manual', 'appointment-soon', 'repair'),
-            ('Diagnóstico de jogo', 'view-list-details', 'games'),
-            ('Atualizar Flatpaks', 'system-software-update', 'flatpaks')]
-        for i, (title, icon, action) in enumerate(options):
-            grid.addWidget(self.button(title, icon, lambda checked=False, a=action: choose(a)), i // 2, i % 2)
-        layout.addWidget(self.button('Voltar', 'application-exit', dialog.reject), alignment=Qt.AlignHCenter)
-        dialog.exec()
-        if selected: self.start(selected[0])
+    def operation_busy(self):
+        page = self.active_page
+        return (self.process is not None or (page is not None and
+                (getattr(page, 'busy', False) or getattr(page, 'worker', None) is not None)))
+
+    def open_page(self, page_type):
+        if self.operation_busy() or self.pending_confirmation: return None
+        if self.active_page is not None:
+            if isinstance(self.active_page, page_type): return self.active_page
+            self.return_home(self.active_page)
+        page = page_type(self)
+        page.controller = self
+        page.setWindowFlags(Qt.Widget)
+        page.accepted.connect(lambda: self.return_home(page))
+        page.rejected.connect(lambda: self.return_home(page))
+        self.pages.addWidget(page); self.active_page = page
+        self.pages.setCurrentWidget(page)
+        return page
+
+    def return_home(self, page=None):
+        if self.operation_busy() or self.pending_confirmation: return
+        if page is not None and page is not self.active_page: return
+        page = self.active_page
+        self.pages.setCurrentWidget(self.home_page); self.active_page = None
+        self.monitor_dialog = None
+        if page is not None:
+            self.pages.removeWidget(page); page.deleteLater()
+
+    def confirm_action(self, title, text, callback, affirmative='Continuar'):
+        if self.pending_confirmation or self.operation_busy(): return
+        self.confirm_title.setText(title); self.confirm_text.setText(text)
+        self.confirm_yes.setText(affirmative)
+        self.pending_confirmation = (self.pages.currentWidget(), callback)
+        self.pages.setCurrentWidget(self.confirm_page); self.confirm_cancel.setFocus()
+
+    def finish_confirmation(self, accepted):
+        pending = self.pending_confirmation
+        if not pending: return
+        previous, callback = pending; self.pending_confirmation = None
+        self.pages.setCurrentWidget(previous)
+        if accepted: callback()
+
+    def maintenance(self): self.open_page(MaintenanceDialog)
 
     def monitors(self):
-        if self.process is not None: return
-        if self.monitor_dialog is not None:
-            self.monitor_dialog.raise_(); self.monitor_dialog.activateWindow(); return
-        self.monitor_dialog = MonitorDialog(self)
-        try: self.monitor_dialog.exec()
-        finally:
-            self.monitor_dialog.deleteLater()
-            self.monitor_dialog = None
+        page = self.open_page(MonitorDialog)
+        if page is not None: self.monitor_dialog = page
 
-    def native_apps(self):
-        if self.process is not None: return
-        dialog = NativeAppsDialog(self)
-        dialog.exec()
-        dialog.deleteLater()
+    def native_apps(self): self.open_page(NativeAppsDialog)
 
-    def uninstall_apps(self):
-        if self.process is not None: return
-        dialog = UninstallDialog(self)
-        dialog.exec()
-        dialog.deleteLater()
+    def uninstall_apps(self): self.open_page(UninstallDialog)
 
-    def codex(self):
+    def codex(self, confirmed=False):
         if self.process is not None: return
         launcher = codex_launcher()
         if launcher.is_file() and os.access(launcher, os.X_OK):
             try: subprocess.Popen([str(launcher)], start_new_session=True)
-            except OSError as exc: QMessageBox.warning(self, 'Codex', str(exc))
+            except OSError as exc: self.status.setText('Codex: ' + str(exc))
             return
-        if QMessageBox.question(self, 'Instalar Codex',
-            'Baixar e instalar Codex no seu perfil e adicioná-lo ao menu KDE?\n\n'
-            'O ditado baixa um modelo de voz de aproximadamente 1,5 GB. '
-            'Depois, entre com sua própria conta ChatGPT. '
-            'O sistema pedirá senha somente se faltar alguma dependência.') == QMessageBox.Yes:
-            self.start('codex')
+        if not confirmed:
+            self.confirm_action('Instalar Codex',
+                'Baixar e instalar Codex no seu perfil e adicioná-lo ao menu KDE?\n\n'
+                'O ditado baixa um modelo de voz de aproximadamente 1,5 GB. '
+                'Depois, entre com sua própria conta ChatGPT. '
+                'O sistema pedirá senha somente se faltar alguma dependência.',
+                lambda: self.codex(True), 'Instalar')
+            return
+        self.start('codex')
 
-    def start(self, action):
-        if self.process is not None: return
+    def start(self, action, confirmed=False):
+        if self.operation_busy() or self.pending_confirmation: return
+        self.return_home()
         command = action_command(action)
         if not Path(command[0]).is_file():
-            QMessageBox.warning(self, 'Função indisponível', 'O auxiliar desta função não está instalado: ' + command[0]); return
-        if action == 'sistema' and QMessageBox.question(self, 'Atualizar geral',
-            'Atualizar o sistema e os aplicativos? Esta função inclui kernel, com as proteções existentes do Callas OS.') != QMessageBox.Yes: return
-        if action == 'repair' and QMessageBox.question(self, 'Atualizações manuais',
-            'Desativar os agendamentos de atualização e manter somente os botões manuais da Central?') != QMessageBox.Yes: return
+            self.stage.setText('Função indisponível'); self.status.setText('O auxiliar desta função não está instalado: ' + command[0]); return
+        if not confirmed and action in ('sistema', 'repair'):
+            title, text = (('Atualizar geral', 'Atualizar o sistema e os aplicativos? Esta função inclui kernel, com as proteções existentes do Callas OS.')
+                if action == 'sistema' else ('Atualizações manuais', 'Desativar os agendamentos de atualização e manter somente os botões manuais da Central?'))
+            self.confirm_action(title, text, lambda: self.start(action, True)); return
         self.action = action
         try: self.before = package_state()
         except (OSError, subprocess.SubprocessError, RuntimeError): self.before = None
@@ -908,11 +1009,12 @@ class Window(QWidget):
         self.restart_panel.hide()
         self.status.setText('Reinício adiado. Você pode reiniciar depois pelo menu do KDE.')
 
-    def restart(self):
+    def restart(self, confirmed=False):
         if not self.reboot_pending or self.process is not None: return
-        if QMessageBox.question(self, 'Reiniciar agora', 'Salvou seus arquivos? Reiniciar o computador agora?') != QMessageBox.Yes: return
+        if not confirmed:
+            self.confirm_action('Reiniciar agora', 'Salvou seus arquivos? Reiniciar o computador agora?', lambda: self.restart(True), 'Reiniciar'); return
         result = subprocess.run(['/usr/bin/systemctl', 'reboot'], capture_output=True, text=True)
-        if result.returncode: QMessageBox.warning(self, 'Não foi possível reiniciar', result.stderr)
+        if result.returncode: self.status.setText('Não foi possível reiniciar: ' + result.stderr)
 
     def open_logs(self):
         try:
@@ -921,11 +1023,11 @@ class Window(QWidget):
             logs = documents / 'Callas OS' / 'Callas OS Logs'
             logs.mkdir(parents=True, exist_ok=True)
             subprocess.Popen(['/usr/bin/xdg-open', str(logs)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except (OSError, subprocess.SubprocessError) as exc: QMessageBox.warning(self, 'Logs', str(exc))
+        except (OSError, subprocess.SubprocessError) as exc: self.status.setText('Logs: ' + str(exc))
 
     def closeEvent(self, event):
-        if self.process is not None:
-            QMessageBox.information(self, 'Operação em andamento', 'Aguarde a operação terminar antes de fechar o atualizador.')
+        if self.operation_busy():
+            self.status.setText('Aguarde a operação terminar antes de fechar a Central.')
             event.ignore()
         else: event.accept()
 

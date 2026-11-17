@@ -1,5 +1,14 @@
 # Histórico do Callas OS
 
+## 3.14.0 — 2026-11-17
+
+- Integra manutenção, monitores, aplicativos padrão e desinstalação como páginas internas da janela principal da Central, com retorno à tela inicial. Mantém os controles de progresso e detalhes existentes para atualizações/manutenção. Não abre janelas de navegação adicionais.
+- Adiciona os ícones na coluna Aplicativo do desinstalador, com linhas maiores para reconhecimento visual. Usa as referências dos atalhos nativos/AppImages, IDs dos Flatpaks, ícone do Codex, assets persistentes do catálogo e exportações de ícones do sistema/usuário. Aplicativos sem ícone identificável recebem ícone genérico; pacote, origem e proteção permanecem independentes da imagem.
+- Mostra as confirmações de instalação, remoção, monitor principal, atualização geral, modo manual, Codex e reinício dentro da mesma Central. Cancelar preserva o estado e não inicia a operação. Bloqueia navegação e fechamento enquanto um auxiliar está ativo. Mantém a senha no diálogo de autorização separado, fora dos logs, e a abertura de aplicativos externos como Codex/KDE nos seus próprios programas.
+- Instalação limpa e Callas OS Update recebem a mesma interface e auxiliar de inventário pelos arquivos já incluídos no estágio verificado/checkpoints. Não altera o instalador principal, pacotes, kernel, NVIDIA nem as escolhas locais de desinstalação/restauração.
+
+Validação: 321 testes offline executados, 320 aprovados e um opcional ignorado; navegação e confirmações Qt, cancelamento, bloqueios de operação, roteamento para progresso e referência de ícones AppImage cobertos. Inventário real somente de leitura e prévias Qt com uma única janela visível conferidos; revisão independente sem impedimentos. Sem instalar/remover aplicativos reais, trocar monitores, executar Update completo, instalação Arch limpa ou boot real.
+
 ## 3.13.0 — 2026-11-16
 
 - Transforma Aplicativos nativos em submenu com “Aplicativos padrão Callas OS” e “Atualizar aplicativos”. A lista dos padrões expande a mesma janela, com cartões, ícones, descrição, versão, tamanho informado pela fonte, busca e estado instalado. Permite instalar individualmente ou marcar/desmarcar os desejados e instalar só os selecionados, com botões verdes.

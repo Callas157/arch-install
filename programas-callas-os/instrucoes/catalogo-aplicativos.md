@@ -39,3 +39,9 @@ O submenu mantém **Atualizar aplicativos** no fluxo anterior de atualização d
 `callas-defaults --restore USUARIO ID...` exige autorização administrativa, usuário originador do sudo, IDs válidos no catálogo instalado e locks compartilhados com a Central/reconciliação. Valida a seleção inteira antes de começar e instala somente os escolhidos, com as proteções nativas/AUR existentes e Flatpaks de sistema. Não executa atualização geral. Confirma cada aplicativo no banco local e só então desfaz sua preferência de desinstalação. Uma falha preserva os sucessos anteriores e os opt-outs ainda não restaurados. Desmarcar não remove aplicativos. Os logs continuam na categoria Aplicativos.
 
 Ícones em `assets/central-callas-os/default-app-icons.json` são distribuídos pelo mesmo estágio verificado e continuam visíveis mesmo sem o aplicativo instalado. Auxiliar, catálogo, interface, asset e checkpoints atendem instalação limpa e Update, sem alteração do instalador principal.
+
+## Navegação da Central e ícones
+
+Os submenus de manutenção, monitores, padrões e desinstalação são páginas internas da janela principal. “Voltar” retorna à Central; confirmação e cancelamento também usam uma página interna. A navegação e o fechamento são bloqueados durante auxiliares ativos. O diálogo de senha continua separado do fluxo de logs; atalhos para aplicativos externos continuam abrindo os próprios programas.
+
+O inventário do desinstalador inclui uma referência de ícone sem usá-la como comando ou identidade de pacote. A interface resolve o ícone do atalho, assets verificados dos padrões, tema e exportações Flatpak do sistema/usuário, usando um ícone genérico quando não há imagem reconhecível. A coluna Aplicativo conserva o ID original nos dados da linha; filtros, origem, versão e proteções continuam independentes do ícone. Os mesmos arquivos já distribuídos pelo estágio compartilhado atendem instalação limpa e Update.

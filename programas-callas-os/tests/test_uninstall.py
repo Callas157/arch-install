@@ -115,6 +115,17 @@ class UninstallTests(unittest.TestCase):
                 (service / 'cmdline').write_bytes(b'python\0-m\0callas_chat\0')
                 self.assertTrue(helper.user_active([], modules=('callas_chat',)))
 
+    def test_appimage_icon_comes_from_desktop_without_executing_it(self):
+        helper = load('callas-uninstall')
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp); data = home / '.local/share'; entries = data / 'applications'; entries.mkdir(parents=True)
+            image = home / 'Example.AppImage'; image.write_text('fixture')
+            (entries / 'example.desktop').write_text('[Desktop Entry]\nType=Application\nName=Example\n'
+                + 'Exec=' + str(image) + '\nIcon=example-icon\n')
+            with patch.object(helper.Path, 'home', return_value=home), patch.object(helper, 'data_home', return_value=data):
+                apps = helper.user_apps()
+            self.assertEqual([(app['name'], app['icon']) for app in apps], [('Example', 'example-icon')])
+
     def test_real_cli_appimage_removes_file_not_profile_or_other_files(self):
         with tempfile.TemporaryDirectory() as temp:
             home = Path(temp); folder = home / 'Applications'; folder.mkdir()
