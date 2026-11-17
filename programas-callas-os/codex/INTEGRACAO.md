@@ -1,4 +1,4 @@
-# Codex opcional — cliente 1.3.2
+# Codex opcional — cliente 1.3.3
 
 O botão **Codex** da Central oferece instalação no perfil do usuário. Quando o
 aplicativo já existe, o mesmo botão apenas o abre. O aplicativo é publicado em
@@ -88,3 +88,12 @@ contas, conversas, anexos ou modelos locais.
   conteúdo e leitura de múltiplos anexos no histórico. Visual e envio de um
   arquivo de log confirmados pelo usuário no aplicativo local.
 - Mantém a versão do Callas OS e os fluxos opcionais de instalação existentes.
+
+## Cliente 1.3.3 — 2026-11-17
+
+- Aceita anexos binários, incluindo pacotes KDE .plasmoid, como cópias locais
+  privadas com tamanho e SHA-256 enviados no envelope de documentos existente.
+- Limite binário de 100 MB; preserva textos, cartões, histórico e restauração
+  após falha. Não extrai nem executa o pacote ao anexar.
+- Validação: 61 testes do cliente; pacote real do widget copiado e aberto como
+  ZIP com 16 entradas, sem executar seu conteúdo.

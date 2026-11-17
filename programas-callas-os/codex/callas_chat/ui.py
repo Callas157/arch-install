@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, 
     QLabel, QPushButton, QLineEdit, QListWidget, QListWidgetItem, QScrollArea, QFrame,
     QTextBrowser, QPlainTextEdit, QFileDialog, QDialog, QFormLayout, QDialogButtonBox,
     QSpinBox, QMessageBox, QInputDialog, QSizePolicy, QStackedWidget)
+from .attachments import prepare_document
 from .backend import Backend
 from .protocol import thread_params, turn_params, check_full_access, messages_from_thread, safe_markdown
 from .voice import Voice
@@ -835,7 +836,7 @@ class Window(QMainWindow):
             self.update_folder()
 
     def choose_images(self):
-        paths, _ = QFileDialog.getOpenFileNames(self, 'Anexar fotos, textos e logs', str(Path.home()), 'Fotos, textos e logs (*.png *.jpg *.jpeg *.webp *.bmp *.txt *.log *.md *.csv *.json *.jsonl *.yaml *.yml *.xml *.ini *.conf *.out);;Todos os arquivos (*)')
+        paths, _ = QFileDialog.getOpenFileNames(self, 'Anexar arquivos', str(Path.home()), 'Arquivos (*.plasmoid *.zip *.tar *.gz *.7z *.png *.jpg *.jpeg *.webp *.bmp *.txt *.log *.md *.csv *.json *.jsonl *.yaml *.yml *.xml *.ini *.conf *.out);;Todos os arquivos (*)')
         self.attach_files(paths)
 
     def attach_files(self, paths):
@@ -848,17 +849,7 @@ class Window(QMainWindow):
                 else: self.attach_image(image)
                 continue
             try:
-                if not path.is_file(): raise ValueError('Selecione um arquivo de texto.')
-                with path.open('rb') as stream: raw = stream.read(1024 * 1024 + 1)
-                if len(raw) > 1024 * 1024: raise ValueError('O limite por arquivo é 1 MB.')
-                if raw.startswith((b'\xff\xfe', b'\xfe\xff')):
-                    content = raw.decode('utf-16')
-                else:
-                    if b'\x00' in raw: raise ValueError('Arquivo binário não é aceito como texto.')
-                    try: content = raw.decode('utf-8-sig')
-                    except UnicodeDecodeError: content = raw.decode('cp1252')
-                if any(ord(c) < 32 and c not in '\n\r\t\x1b' for c in content):
-                    raise ValueError('Arquivo binário não é aceito como texto.')
+                content = prepare_document(path)
                 if sum(len(t.encode('utf-8')) for n, t in self.text_files.items() if n != str(path)) + len(content.encode('utf-8')) > 2 * 1024 * 1024:
                     raise ValueError('O limite de textos por mensagem é 2 MB.')
                 self.add_text_attachment(str(path), content)

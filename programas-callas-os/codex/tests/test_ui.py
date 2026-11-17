@@ -49,6 +49,24 @@ class UiTests(unittest.TestCase):
         else: os.environ['XDG_DATA_HOME'] = self.old
         self.temp.cleanup()
 
+    def test_binary_attachment_is_sent_as_persistent_local_reference(self):
+        path = Path(self.temp.name)/'widget.plasmoid'
+        path.write_bytes(b'PK\x03\x04\x00widget')
+        self.window.attach_files([str(path)])
+        self.assertIn(str(path), self.window.text_files)
+        content = self.window.text_files[str(path)]
+        self.assertIn('caminho_local', content)
+        self.window.thread_id = 'test-thread'
+        self.window.send()
+        request = next(r for r in self.backend.requests if r[0] == 'turn/start')
+        self.assertIn(content, request[1]['input'][0]['text'])
+        from callas_chat.protocol import messages_from_thread
+        messages = messages_from_thread({'turns': [{'items': [{'type': 'userMessage',
+            'content': request[1]['input']}]}]})
+        self.assertEqual(messages[0]['documents'], [str(path)])
+        request[3]('falha simulada')
+        self.assertEqual(self.window.text_files[str(path)], content)
+
     def test_images_are_visible_before_send_and_in_conversation(self):
         from callas_chat.ui import ImagePreview
         image = QImage(1200, 600, QImage.Format_RGB32)
@@ -283,7 +301,7 @@ class UiTests(unittest.TestCase):
         binary.write_bytes(b'abc\x00def')
         large = Path(self.temp.name)/'grande.log'
         large.write_bytes(b'x' * (1024 * 1024 + 1))
-        for path in (directory, binary, large):
+        for path in (directory, large):
             with self.subTest(path=path):
                 self.drop_files(self.window.scroll.viewport(), [QUrl.fromLocalFile(str(path))])
                 self.assertEqual(self.window.text_files, {})
@@ -363,11 +381,12 @@ class UiTests(unittest.TestCase):
         self.assertEqual(self.window.text_files[str(path)], 'erro importante')
         self.assertEqual(self.window.editor.toPlainText(), 'investigue')
 
-    def test_binary_attachment_is_rejected(self):
+    def test_binary_attachment_is_accepted_without_starting_turn(self):
         path = Path(self.temp.name)/'binario.txt'
         path.write_bytes(b'abc\x00def')
         self.window.attach_files([str(path)])
-        self.assertTrue(self.window.error_box.text())
+        self.assertIn('caminho_local', self.window.text_files[str(path)])
+        self.assertFalse(self.window.error_box.text())
         self.assertEqual(self.backend.requests, [])
 
     def test_events_from_another_conversation_are_ignored(self):

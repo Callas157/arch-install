@@ -1,4 +1,4 @@
-CODEX 1.3.2
+CODEX 1.3.3
 
 Abra “Codex” no menu KDE. Use sua conta ChatGPT já conectada ao Codex;
 em um computador novo, entre em Conta e configurações > Entrar com minha conta ChatGPT.
@@ -86,3 +86,8 @@ mais tempo para transcrever; revise palavras e pontuação antes de enviar.
 
 Correção 1.3.2: arquivos de texto aparecem em cartões com nome e extensão,
 antes e depois do envio e ao reabrir o histórico. Permite remover antes de enviar.
+
+Correção 1.3.3: aceita pacotes .plasmoid, ZIP e outros binários (até 100 MB).
+Guarda uma cópia privada local e envia sua referência ao Codex para análise.
+Textos mantêm limite de 1 MB; anexos binários não são extraídos ou executados
+automaticamente e permanecem disponíveis para o histórico no computador.
