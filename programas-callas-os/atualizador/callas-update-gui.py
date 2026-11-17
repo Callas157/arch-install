@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 """KDE updater frontend. All privileged operations stay in existing helpers."""
+import base64
 import codecs
 import errno
 import fcntl
@@ -23,10 +24,12 @@ from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QGridLayout, QPushButton, QLabel, QProgressBar, QPlainTextEdit, QFrame,
     QLineEdit, QMessageBox, QInputDialog, QStyle, QDialog, QCheckBox,
-    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView)
+    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QScrollArea)
 
 BACKEND = '/usr/local/libexec/put-update'
 UNINSTALL_HELPER = '/usr/local/libexec/callas-uninstall'
+DEFAULTS_HELPER = '/usr/local/libexec/callas-defaults'
+DEFAULT_ICONS = Path('/usr/local/share/callas-os/default-app-icons.json')
 ID = 'io.github.Callas157.AtualizadorDoSistema'
 CRITICAL = ('linux', 'linux-lts', 'linux-zen', 'linux-hardened', 'systemd', 'glibc',
             'nvidia-utils', 'nvidia-open-dkms', 'mesa', 'linux-firmware')
@@ -224,6 +227,219 @@ class MonitorDialog(QDialog):
     def closeEvent(self, event):
         if self.worker is not None: event.ignore()
         else: event.accept()
+
+def default_app_icon(name):
+    try:
+        data = json.loads(DEFAULT_ICONS.read_text())
+        raw = base64.b64decode(data['icons'][name], validate=True)
+        pixmap = QPixmap()
+        if pixmap.loadFromData(raw, 'PNG'): return QIcon(pixmap)
+    except (OSError, ValueError, KeyError): pass
+    return QIcon.fromTheme(name, option_icon('applications-all'))
+
+
+class NativeAppsDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Aplicativos nativos — Central Callas OS')
+        self.resize(760, 360); self.setMinimumWidth(690)
+        self.process = None; self.busy = False; self.apps = []; self.checks = {}; self.card_widgets = []
+        self.catalog_loaded = False; self.refreshing_after_install = False
+        layout = QVBoxLayout(self); layout.setContentsMargins(26, 24, 26, 24); layout.setSpacing(14)
+        layout.addWidget(QLabel('Aplicativos nativos', objectName='title'))
+        self.menu = QWidget(); menu = QHBoxLayout(self.menu); menu.setContentsMargins(0, 0, 0, 0)
+        self.defaults_button = QPushButton(option_icon('applications-all'), 'Aplicativos padrão Callas OS')
+        self.update_button = QPushButton(option_icon('system-software-update'), 'Atualizar aplicativos')
+        for button in (self.defaults_button, self.update_button): button.setMinimumHeight(78); menu.addWidget(button)
+        self.defaults_button.clicked.connect(self.show_defaults); self.update_button.clicked.connect(self.update_apps)
+        layout.addWidget(self.menu)
+        self.catalog_panel = QWidget(); panel = QVBoxLayout(self.catalog_panel); panel.setContentsMargins(0, 0, 0, 0)
+        intro = QLabel('Restaure somente os aplicativos que você escolher. Desmarcar não desinstala.\n'
+                       'Tamanhos não incluem todas as dependências; configurações e dados pessoais são preservados.')
+        intro.setWordWrap(True); panel.addWidget(intro)
+        self.search = QLineEdit(); self.search.setPlaceholderText('Buscar aplicativos padrão…')
+        self.search.textChanged.connect(self.filter_cards); panel.addWidget(self.search)
+        self.scroll = QScrollArea(); self.scroll.setWidgetResizable(True)
+        self.cards = QWidget(); self.grid = QGridLayout(self.cards); self.grid.setAlignment(Qt.AlignTop)
+        self.grid.setSpacing(12); self.scroll.setWidget(self.cards); panel.addWidget(self.scroll, 1)
+        selection = QHBoxLayout()
+        self.select_all = QPushButton('Selecionar disponíveis'); self.select_all.clicked.connect(lambda: self.select_available(True))
+        self.clear = QPushButton('Desmarcar todos'); self.clear.clicked.connect(lambda: self.select_available(False))
+        self.install_selected = QPushButton('Instalar selecionados'); self.install_selected.setObjectName('install')
+        self.install_selected.clicked.connect(self.install_checked)
+        selection.addWidget(self.select_all); selection.addWidget(self.clear); selection.addStretch(); selection.addWidget(self.install_selected)
+        panel.addLayout(selection)
+        self.catalog_panel.hide(); layout.addWidget(self.catalog_panel, 1)
+        self.status = QLabel('Escolha os aplicativos padrão ou atualize os aplicativos já instalados.')
+        self.status.setWordWrap(True); self.status.setTextFormat(Qt.PlainText); layout.addWidget(self.status)
+        self.progress = QProgressBar(); self.progress.setRange(0, 0); self.progress.setTextVisible(False); self.progress.hide()
+        layout.addWidget(self.progress)
+        self.details = QPlainTextEdit(); self.details.setReadOnly(True); self.details.setMaximumBlockCount(4000)
+        self.details.setMaximumHeight(125); self.details.hide(); layout.addWidget(self.details)
+        footer = QHBoxLayout()
+        self.reload = QPushButton('Consultar versões e tamanhos'); self.reload.clicked.connect(self.refresh); self.reload.hide()
+        self.back = QPushButton('Voltar'); self.back.clicked.connect(self.go_back)
+        footer.addWidget(self.reload); footer.addStretch(); footer.addWidget(self.back); layout.addLayout(footer)
+        self.setStyleSheet('QPushButton#install { background: #23824d; border: 1px solid #47b978; color: white; }'
+                           'QPushButton#install:hover { background: #2d995e; }'
+                           'QPushButton#install:disabled { background: #303945; color: #9ca8b5; border-color: #46515f; }'
+                           'QCheckBox::indicator { width: 18px; height: 18px; border: 1px solid #91a4b7; border-radius: 3px; }'
+                           'QCheckBox::indicator:checked { background: #39a967; border-color: #71df9b; }')
+
+    def show_defaults(self):
+        if self.busy: return
+        self.catalog_panel.show(); self.reload.show()
+        self.resize(self.parentWidget().size() if self.parentWidget() else QSize(940, 820))
+        if not self.catalog_loaded: self.refresh()
+
+    def update_apps(self):
+        if self.busy: return
+        self.accept()
+        if self.parentWidget(): self.parentWidget().start('nativos')
+
+    def go_back(self):
+        if self.busy: return
+        if self.catalog_panel.isVisible():
+            self.catalog_panel.hide(); self.reload.hide(); self.details.hide(); self.resize(760, 360)
+            self.status.setText('Escolha os aplicativos padrão ou atualize os aplicativos já instalados.')
+        else: self.reject()
+
+    def selected_ids(self): return [key for key, check in self.checks.items() if check.isChecked()]
+
+    def selection_changed(self):
+        count = len(self.selected_ids())
+        self.install_selected.setText(f'Instalar selecionados ({count})')
+        self.install_selected.setEnabled(count > 0 and not self.busy)
+
+    def select_available(self, checked):
+        if self.busy: return
+        for check in self.checks.values():
+            if check.isEnabled(): check.setChecked(checked)
+
+    def filter_cards(self, *_):
+        query = self.search.text().casefold().strip(); visible = 0
+        for app, card in self.card_widgets:
+            show = query in (app['title'] + ' ' + app['name'] + ' ' + app['description']).casefold()
+            card.setVisible(show)
+            self.grid.removeWidget(card)
+            if show:
+                self.grid.addWidget(card, visible // 2, visible % 2); visible += 1
+
+    def render_cards(self):
+        selected = set(self.selected_ids())
+        for _, card in self.card_widgets: card.deleteLater()
+        self.checks = {}; self.card_widgets = []
+        while self.grid.count(): self.grid.takeAt(0)
+        for i, app in enumerate(self.apps):
+            card = QFrame(objectName='card'); box = QVBoxLayout(card); box.setContentsMargins(15, 14, 15, 14)
+            header = QHBoxLayout()
+            icon = QLabel(); icon.setPixmap(default_app_icon(app['icon']).pixmap(44, 44)); header.addWidget(icon)
+            title = QLabel(app['title']); title.setTextFormat(Qt.PlainText)
+            title.setStyleSheet('font-size: 17px; font-weight: 600;'); header.addWidget(title, 1)
+            check = QCheckBox(); check.setAccessibleName('Selecionar ' + app['title'])
+            check.setEnabled(not app['installed']); check.setChecked(app['id'] in selected and not app['installed'])
+            self.checks[app['id']] = check; check.toggled.connect(self.selection_changed); header.addWidget(check); box.addLayout(header)
+            source = {'repo': 'Nativo', 'aur': 'AUR', 'flatpak': 'Flatpak de sistema'}[app['source']]
+            description = QLabel(app['description']); description.setTextFormat(Qt.PlainText); description.setWordWrap(True); box.addWidget(description)
+            size_label = 'Instalado' if app['installed'] else 'Após instalar'
+            info = QLabel(f"{source} · {'Instalado' if app['installed'] else 'Disponível para instalar'}\n"
+                          f"Versão: {app['version']}\n{size_label}: {app['size']} · Download: {app['download']}")
+            info.setTextFormat(Qt.PlainText); info.setWordWrap(True); box.addWidget(info)
+            if app.get('notice'):
+                note = QLabel(app['notice']); note.setWordWrap(True); note.setTextFormat(Qt.PlainText)
+                note.setStyleSheet('color: #b7c4d2; font-size: 12px;'); box.addWidget(note)
+            box.addStretch()
+            install = QPushButton('Instalado' if app['installed'] else 'Instalar'); install.setObjectName('install')
+            install.setEnabled(not app['installed']); install.clicked.connect(lambda checked=False, key=app['id']: self.install_ids([key]))
+            box.addWidget(install); self.grid.addWidget(card, i // 2, i % 2); self.card_widgets.append((app, card))
+        self.filter_cards(); self.selection_changed()
+
+    def set_busy(self, busy):
+        self.busy = busy
+        for widget in (self.menu, self.cards, self.search, self.select_all, self.clear, self.reload, self.back): widget.setEnabled(not busy)
+        self.progress.setVisible(busy); self.selection_changed()
+
+    def run_helper(self, args, privileged, callback):
+        if self.process is not None: return
+        if not Path(DEFAULTS_HELPER).is_file():
+            self.status.setText('Execute Callas OS Update para instalar o catálogo de restauração.'); return
+        self.set_busy(True)
+        process = QProcess(self); self.process = process
+        output = bytearray(); error = bytearray(); finished_once = False
+        env = QProcessEnvironment.systemEnvironment(); env.remove('CALLAS_KERNEL_UPDATE_CONTEXT')
+        env.insert('PYTHONUNBUFFERED', '1')
+        env.insert('SUDO_ASKPASS', str(Path(__file__).resolve().with_name('callas-update-askpass')))
+        process.setProcessEnvironment(env)
+        def read_stdout():
+            data = bytes(process.readAllStandardOutput()); output.extend(data)
+            if privileged: self.details.insertPlainText(data.decode('utf-8', 'replace'))
+        def read_stderr():
+            data = bytes(process.readAllStandardError()); error.extend(data)
+            if privileged: self.details.insertPlainText(data.decode('utf-8', 'replace'))
+        process.readyReadStandardOutput.connect(read_stdout); process.readyReadStandardError.connect(read_stderr)
+        def finished(code, *_):
+            nonlocal finished_once
+            if finished_once: return
+            finished_once = True; read_stdout(); read_stderr()
+            self.process = None; process.deleteLater(); self.set_busy(False)
+            callback(code, output.decode('utf-8', 'replace'), error.decode('utf-8', 'replace'))
+        process.finished.connect(finished)
+        process.errorOccurred.connect(lambda value: finished(1) if value == QProcess.FailedToStart else None)
+        argv = [DEFAULTS_HELPER, *args]
+        if privileged: argv = ['/usr/bin/sudo', '-A', '--', *argv]
+        process.start(argv[0], argv[1:]); process.closeWriteChannel()
+
+    def refresh(self, *_ , message=''):
+        if self.busy: return
+        self.status.setText('Consultando aplicativos, versões e tamanhos…')
+        def loaded(code, output, error):
+            try:
+                if code: raise RuntimeError(error or 'Não foi possível consultar o catálogo.')
+                apps = json.loads(output)
+                if not isinstance(apps, list): raise ValueError('Catálogo inválido')
+                self.apps = apps; self.catalog_loaded = True; self.render_cards()
+                self.status.setText(message or 'Marque os aplicativos desejados ou use o botão Instalar de cada cartão.')
+            except (ValueError, RuntimeError) as exc:
+                self.status.setText(str(exc))
+                # Stale metadata never authorizes a new installation after failure.
+                self.apps = []; self.render_cards(); self.catalog_loaded = False
+        self.run_helper(['--list'], False, loaded)
+
+    def install_checked(self): self.install_ids(self.selected_ids())
+
+    def install_ids(self, ids):
+        if self.busy or not ids: return
+        selected = [app for app in self.apps if app['id'] in ids and not app['installed']]
+        if len(selected) != len(ids): return
+        question = QMessageBox(self); question.setWindowTitle('Instalar aplicativos padrão')
+        question.setTextFormat(Qt.PlainText)
+        question.setText('Instalar os aplicativos selecionados?\n\n' + '\n'.join(app['title'] for app in selected) +
+                         '\n\nSomente estes aplicativos serão restaurados. A preferência de desinstalação será desfeita '
+                         'após cada instalação confirmada. Pode ser necessária autorização administrativa.')
+        question.setStandardButtons(QMessageBox.Yes | QMessageBox.No); question.setDefaultButton(QMessageBox.No)
+        question.button(QMessageBox.Yes).setText('Instalar'); question.button(QMessageBox.No).setText('Cancelar')
+        if question.exec() != QMessageBox.Yes: return
+        self.details.clear(); self.details.show(); self.status.setText('Instalando os aplicativos selecionados…')
+        def installed(code, output, error):
+            logger = Path('/usr/local/libexec/callas-logs')
+            if logger.is_file():
+                try:
+                    subprocess.run([str(logger), '--write', 'Aplicativos'],
+                        input=('Restaurar: ' + ', '.join(ids) + f'\nCódigo: {code}\n' + output + '\n' + error).encode(),
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+                except (OSError, subprocess.SubprocessError): self.details.appendPlainText('Não foi possível salvar o log em Documentos.')
+            message = ('Aplicativos selecionados instalados. Os demais foram preservados.' if code == 0 else
+                       'Instalação não concluída para todos os itens. Consulte os detalhes; instalações confirmadas foram preservadas.')
+            self.refresh(message=message)
+        self.run_helper(['--restore', pwd.getpwuid(os.getuid()).pw_name, *ids], True, installed)
+
+    def reject(self):
+        if not self.busy: super().reject()
+
+    def closeEvent(self, event):
+        if self.busy: event.ignore()
+        else: event.accept()
+
 
 class UninstallDialog(QDialog):
     """Keep inventory and package-manager work off the GUI thread."""
@@ -452,7 +668,7 @@ class Window(QWidget):
         self.buttons = []
         entries = (
             ('Limpeza e manutenção', 'edit-clear', self.maintenance),
-            ('Aplicativos nativos', 'applications-all', lambda: self.start('nativos')),
+            ('Aplicativos nativos', 'applications-all', self.native_apps),
             ('Monitores', 'video-display', self.monitors),
             ('Atualizar geral', 'system-software-update', lambda: self.start('sistema')),
             ('Callas OS Update', 'system-upgrade', lambda: self.start('callas')),
@@ -553,6 +769,12 @@ class Window(QWidget):
         finally:
             self.monitor_dialog.deleteLater()
             self.monitor_dialog = None
+
+    def native_apps(self):
+        if self.process is not None: return
+        dialog = NativeAppsDialog(self)
+        dialog.exec()
+        dialog.deleteLater()
 
     def uninstall_apps(self):
         if self.process is not None: return

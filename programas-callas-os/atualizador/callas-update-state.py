@@ -14,7 +14,7 @@ import urllib.request
 
 STATE=Path('/var/lib/callas-os')
 DEPENDENCIES={
-    'security':('callas-uninstall.py','callas-apps.py','callas-apps.json','callas-update-gui.py','callas-update-gui-install.py','callas-baterias-install.py','callas-baterias.tar.gz','callas-security.sh','callas-game-logs.py','callas-native.py','callas-kernel-policy.py'),
+    'security':('callas-defaults.py','default-app-icons.json','callas-uninstall.py','callas-apps.py','callas-apps.json','callas-update-gui.py','callas-update-gui-install.py','callas-baterias-install.py','callas-baterias.tar.gz','callas-security.sh','callas-game-logs.py','callas-native.py','callas-kernel-policy.py'),
     'apps':('callas-apps.py','callas-apps.json','callas-spotify-permissions.sh','callas-aur-install.py','callas-native.py','callas-kernel-check.sh'),
     'tools':('callas-monitores.py','callas-janelas.py','callas-inicio-kde.sh','callas-kde-desligamento-login.sh'),
     'boot':('callas.script','callas.plymouth','callas-boot-theme.py'),
@@ -33,11 +33,12 @@ REQUIRED={
 # Check the deployed helpers too, so a missing/changed helper cannot be hidden
 # by an unchanged release SHA or by otherwise intact desktop anchors.
 REQUIRED['security'] += tuple('/usr/local/libexec/' + name for name in (
-    'callas-uninstall', 'callas-apps', 'callas-apps.json', 'callas-update-state', 'callas-native',
+    'callas-defaults', 'callas-uninstall', 'callas-apps', 'callas-apps.json', 'callas-update-state', 'callas-native',
     'callas-aur', 'callas-aur-install', 'callas-autostart', 'callas-kernel-policy',
     'callas-game-logs', 'callas-spotify-permissions', 'callas-version',
     'callas-nekofetch', 'callas-release', 'callas-logs', 'callas-kernel-check',
     'put-update', 'callas-storage', 'callas-maintenance'))
+REQUIRED['security'] += ('/usr/local/share/callas-os/default-app-icons.json',)
 REQUIRED['tools'] += tuple('/usr/local/libexec/' + name for name in (
     'callas-monitores', 'callas-janelas', 'callas-inicio-kde', 'callas-kde-desligamento-login'))
 for application_phase in ('security', 'apps', 'flatpaks'):

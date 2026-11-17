@@ -8,11 +8,14 @@ usuario=${SUDO_USER:-${1:-}}
 [[ -n $usuario && $usuario != root ]] && id "$usuario" >/dev/null || exit 1
 stage=${CALLAS_RELEASE_DIR:?Arquivos de atualização não preparados}
 [[ -d $stage && ! -L $stage && $(stat -c %u "$stage") == 0 ]] || exit 1
-for name in callas-uninstall.py callas-apps.py callas-apps.json callas-kernel-policy.py callas-game-logs.py callas-update-state.py callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
+for name in callas-defaults.py callas-uninstall.py callas-apps.py callas-apps.json callas-kernel-policy.py callas-game-logs.py callas-update-state.py callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
   [[ -f $stage/$name && ! -L $stage/$name && $(stat -c %u "$stage/$name") == 0 ]] || {
     echo "Arquivo verificado ausente/inseguro: $name" >&2; exit 1;
   }
 done
+[[ -f $stage/default-app-icons.json && ! -L $stage/default-app-icons.json && $(stat -c %u "$stage/default-app-icons.json") == 0 ]] || exit 1
+install -d -m 0755 /usr/local/share/callas-os
+install -o root -g root -m 0644 "$stage/default-app-icons.json" /usr/local/share/callas-os/default-app-icons.json
 install -d -m 0755 /etc/callas-os /usr/local/libexec /etc/pacman.d/hooks
 install -d -m 0700 /var/log/callas-os
 if [[ ! -f /etc/callas-os/maintenance.ini ]]; then
@@ -33,10 +36,11 @@ fi
 # No lingering passwordless pacman access, even after an interrupted old update.
 rm -f /etc/sudoers.d/put-update /etc/sudoers.d/99-callas-instalacao
 rm -f /etc/put-update-aur.sudoers /etc/put-update-paru.conf
-for name in callas-uninstall.py callas-apps.py callas-apps.json callas-kernel-policy.py callas-game-logs.py callas-update-state.py callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
+for name in callas-defaults.py callas-uninstall.py callas-apps.py callas-apps.json callas-kernel-policy.py callas-game-logs.py callas-update-state.py callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
   source_file="$stage/$name"
   [[ -f $source_file && ! -L $source_file && $(stat -c %u "$source_file") == 0 ]] || exit 1
   case $name in
+    callas-defaults.py) target=callas-defaults ;;
     callas-uninstall.py) target=callas-uninstall ;;
     callas-apps.py) target=callas-apps ;;
     callas-apps.json) target=callas-apps.json ;;

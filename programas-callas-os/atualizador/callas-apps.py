@@ -138,7 +138,14 @@ def remember_removal(source, name):
     key = source + ':' + name
     if not re.fullmatch(r'(native|flatpak):[a-zA-Z0-9][a-zA-Z0-9@_.+\-]*', key):
         raise ValueError('Escolha de remoção inválida')
-    choices = removed_choices() | {key}
+    save_removed_choices(removed_choices() | {key})
+
+
+def forget_removal(source, name):
+    save_removed_choices(removed_choices() - {source + ':' + name})
+
+
+def save_removed_choices(choices):
     STATE.mkdir(parents=True, exist_ok=True)
     target = STATE / 'apps-user-removed.json'
     fd, temporary = tempfile.mkstemp(prefix='.removed-', dir=STATE)

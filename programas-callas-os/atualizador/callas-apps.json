@@ -1,13 +1,175 @@
 {
   "schema": 1,
   "applications": [
-    {"name": "gpu-screen-recorder-ui", "source": "repo", "state": "present", "phase": "security"},
-    {"name": "gpu-screen-recorder-gtk", "source": "repo", "state": "absent", "phase": "security", "replacement": "gpu-screen-recorder-ui"},
-    {"name": "spotify", "source": "aur", "state": "present", "phase": "apps"},
-    {"name": "haruna", "source": "repo", "state": "present", "phase": "apps"},
-    {"name": "gnome-boxes", "source": "repo", "state": "present", "phase": "apps"},
-    {"name": "com.vysp3r.ProtonPlus", "source": "flatpak", "state": "present", "phase": "flatpaks"},
-    {"name": "io.github.kolunmi.Bazaar", "source": "flatpak", "state": "present", "phase": "flatpaks"},
-    {"name": "io.missioncenter.MissionCenter", "source": "flatpak", "state": "present", "phase": "flatpaks"}
+    {
+      "name": "gpu-screen-recorder-ui",
+      "source": "repo",
+      "state": "present",
+      "phase": "security"
+    },
+    {
+      "name": "gpu-screen-recorder-gtk",
+      "source": "repo",
+      "state": "absent",
+      "phase": "security",
+      "replacement": "gpu-screen-recorder-ui"
+    },
+    {
+      "name": "spotify",
+      "source": "aur",
+      "state": "present",
+      "phase": "apps"
+    },
+    {
+      "name": "haruna",
+      "source": "repo",
+      "state": "present",
+      "phase": "apps"
+    },
+    {
+      "name": "gnome-boxes",
+      "source": "repo",
+      "state": "present",
+      "phase": "apps"
+    },
+    {
+      "name": "com.vysp3r.ProtonPlus",
+      "source": "flatpak",
+      "state": "present",
+      "phase": "flatpaks"
+    },
+    {
+      "name": "io.github.kolunmi.Bazaar",
+      "source": "flatpak",
+      "state": "present",
+      "phase": "flatpaks"
+    },
+    {
+      "name": "io.missioncenter.MissionCenter",
+      "source": "flatpak",
+      "state": "present",
+      "phase": "flatpaks"
+    }
+  ],
+  "defaults": [
+    {
+      "source": "repo",
+      "name": "ark",
+      "title": "Ark",
+      "icon": "ark",
+      "description": "Compactador e extrator de arquivos"
+    },
+    {
+      "source": "aur",
+      "name": "brave-bin",
+      "title": "Brave",
+      "icon": "brave-desktop",
+      "description": "Navegador de internet"
+    },
+    {
+      "source": "repo",
+      "name": "discord",
+      "title": "Discord",
+      "icon": "discord",
+      "description": "Conversas e comunidades"
+    },
+    {
+      "source": "repo",
+      "name": "gnome-boxes",
+      "title": "Boxes",
+      "icon": "org.gnome.Boxes",
+      "description": "Máquinas virtuais"
+    },
+    {
+      "source": "repo",
+      "name": "gpu-screen-recorder-ui",
+      "title": "GPU Screen Recorder",
+      "icon": "gpu-screen-recorder",
+      "description": "Gravação e replay de jogos"
+    },
+    {
+      "source": "repo",
+      "name": "gwenview",
+      "title": "Gwenview",
+      "icon": "gwenview",
+      "description": "Visualizador de imagens"
+    },
+    {
+      "source": "repo",
+      "name": "haruna",
+      "title": "Haruna",
+      "icon": "haruna",
+      "description": "Reprodutor de vídeos"
+    },
+    {
+      "source": "repo",
+      "name": "okular",
+      "title": "Okular",
+      "icon": "okular",
+      "description": "Leitor de PDFs e documentos"
+    },
+    {
+      "source": "repo",
+      "name": "qbittorrent",
+      "title": "qBittorrent",
+      "icon": "qbittorrent",
+      "description": "Cliente de torrents"
+    },
+    {
+      "source": "repo",
+      "name": "shotcut",
+      "title": "Shotcut",
+      "icon": "org.shotcut.Shotcut",
+      "description": "Editor de vídeos"
+    },
+    {
+      "source": "repo",
+      "name": "solaar",
+      "title": "Solaar",
+      "icon": "solaar",
+      "description": "Configuração de dispositivos Logitech"
+    },
+    {
+      "source": "repo",
+      "name": "spectacle",
+      "title": "Spectacle",
+      "icon": "spectacle",
+      "description": "Captura de tela"
+    },
+    {
+      "source": "aur",
+      "name": "spotify",
+      "title": "Spotify",
+      "icon": "spotify",
+      "description": "Música e podcasts"
+    },
+    {
+      "source": "repo",
+      "name": "steam",
+      "title": "Steam",
+      "icon": "steam",
+      "description": "Biblioteca e loja de jogos"
+    },
+    {
+      "source": "flatpak",
+      "name": "com.vysp3r.ProtonPlus",
+      "title": "ProtonPlus",
+      "icon": "com.vysp3r.ProtonPlus",
+      "description": "Gerenciador de ferramentas de compatibilidade"
+    },
+    {
+      "source": "flatpak",
+      "name": "io.github.kolunmi.Bazaar",
+      "title": "Bazaar",
+      "icon": "io.github.kolunmi.Bazaar",
+      "description": "Loja de aplicativos Flatpak"
+    },
+    {
+      "source": "flatpak",
+      "name": "io.missioncenter.MissionCenter",
+      "title": "Mission Center",
+      "icon": "io.missioncenter.MissionCenter",
+      "description": "Monitor de recursos do computador"
+    }
   ]
 }

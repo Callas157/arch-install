@@ -1,5 +1,14 @@
 # Histórico do Callas OS
 
+## 3.13.0 — 2026-11-16
+
+- Transforma Aplicativos nativos em submenu com “Aplicativos padrão Callas OS” e “Atualizar aplicativos”. A lista dos padrões expande a mesma janela, com cartões, ícones, descrição, versão, tamanho informado pela fonte, busca e estado instalado. Permite instalar individualmente ou marcar/desmarcar os desejados e instalar só os selecionados, com botões verdes.
+- Oferece os aplicativos comuns da instalação limpa, incluindo nativos/AUR e Flatpaks de sistema. A oferta `defaults` usa o catálogo verificado, sem ampliar a lista de instalação automática do Update. Mantém separada a atualização dos aplicativos já instalados. Metadados indisponíveis aparecem explicitamente; tamanhos não incluem todas as dependências e o AUR não fornece tamanho antecipado.
+- A restauração valida todos os IDs, mantém os locks e usa as instalações protegidas existentes, sem sincronização/atualização geral, kernel ou NVIDIA. Confirma cada instalação antes de desfazer a preferência de desinstalação daquele aplicativo. Falhas parciais preservam as escolhas dos demais e os sucessos confirmados. Desmarcar não desinstala; logs continuam em Documentos.
+- Distribui auxiliar e ícones persistentes pelo mesmo estágio verificado da instalação limpa e do Update, com checkpoints de integridade. Não altera o instalador principal, as cópias embutidas nem adiciona convite/contato Discord.
+
+Validação: 314 testes offline executados, 313 aprovados e um opcional ignorado; sintaxe de 82 arquivos Python e nove Bash conferida; testes Qt de navegação na mesma janela/seleção/cancelamento/falha parcial, restauração e opt-outs com pacotes simulados; inventário e metadados reais somente de leitura; prévia visual e revisão independente. Nenhum pacote real foi instalado/restaurado, nem executado Update completo, instalação Arch limpa ou boot real.
+
 ## 3.12.0 — 2026-11-16
 
 - Adiciona “Desinstalar aplicativos” à Central, com janela do mesmo tamanho, busca, origem/versão e confirmação. Identifica aplicativos nativos/AUR pelo proprietário dos atalhos do sistema, Flatpaks de sistema/usuário, o Codex opcional da Central e AppImages no perfil do usuário. Componentes essenciais ficam ocultos por padrão e bloqueados mesmo quando exibidos para consulta.

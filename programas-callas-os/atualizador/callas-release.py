@@ -19,6 +19,8 @@ import urllib.request
 API = "https://api.github.com/repos/Callas157/arch-install"
 RAW = "https://raw.githubusercontent.com/Callas157/arch-install"
 FILES = (
+    "assets/central-callas-os/default-app-icons.json",
+    "programas-callas-os/atualizador/callas-defaults.py",
     "programas-callas-os/atualizador/callas-boot-theme.py",
     "programas-callas-os/atualizador/callas-apps.py",
     "programas-callas-os/atualizador/callas-uninstall.py",
