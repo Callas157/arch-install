@@ -128,7 +128,7 @@ Depois de uma atualização geral concluída, você pode **reiniciar ou deixar p
 Feche o Brave antes da opção 5 para permitir a aplicação das preferências visuais. Antes de atualizar o GNOME Boxes, desligue as VMs e feche o aplicativo. Na migração do Flatpak para o pacote nativo, os dados em `~/.var/app/org.gnome.Boxes/` são preservados, mas as VMs podem precisar de importação manual.
 
 <p align="center">
-  <img src="assets/central-callas-os/central-callas-os.png" alt="Central Callas OS com as opções Limpeza e manutenção, Aplicativos nativos, Monitores, Atualizar geral, Callas OS Update e Codex" width="900">
+  <img src="https://raw.githubusercontent.com/Callas157/arch-install/23ed49658c648c69493bcb99dc3e86c27a833d91/assets/central-callas-os/central-callas-os.png" alt="Central Callas OS com as opções Limpeza e manutenção, Aplicativos nativos, Monitores, Atualizar geral, Callas OS Update, Codex e Desinstalar aplicativos" width="900">
 </p>
 
 ---
