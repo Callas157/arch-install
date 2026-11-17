@@ -93,6 +93,41 @@ class ImagePreview(QLabel):
         super().mouseReleaseEvent(event)
 
 
+class FileAttachment(QFrame):
+    """Compact document preview shared by the draft and sent messages."""
+    def __init__(self, path, removable=False):
+        super().__init__()
+        self.setObjectName('fileAttachment')
+        self.setMaximumWidth(340)
+        self.setMinimumWidth(0)
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        self.setStyleSheet('QFrame#fileAttachment { background: #202630; border: 1px solid #424b59; border-radius: 10px; } QFrame#fileAttachment QLabel { background: transparent; border: none; }')
+        self.setToolTip(str(path))
+        self.setAccessibleName('Arquivo anexado: ' + Path(path).name)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(12, 10, 12, 10)
+        icon = QLabel('📄')
+        row.addWidget(icon)
+        details = QVBoxLayout()
+        details.setSpacing(2)
+        self.filename = ConversationTitle(Path(path).name)
+        self.filename.setMinimumWidth(0)
+        self.filename.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        details.addWidget(self.filename)
+        kind = QLabel((Path(path).suffix.lstrip('.').upper() or 'ARQUIVO') + ' · Documento')
+        kind.setTextFormat(Qt.PlainText)
+        details.addWidget(kind)
+        row.addLayout(details, 1)
+        self.remove_button = None
+        if removable:
+            self.remove_button = QPushButton('×')
+            self.remove_button.setObjectName('quietButton')
+            self.remove_button.setFixedWidth(28)
+            self.remove_button.setToolTip('Remover anexo')
+            self.remove_button.setAccessibleName('Remover ' + Path(path).name)
+            row.addWidget(self.remove_button)
+
+
 class ConversationTitle(QLabel):
     def __init__(self, text):
         super().__init__(text)
@@ -526,7 +561,7 @@ class Window(QMainWindow):
             item = self.message_layout.takeAt(0)
             if item.widget(): item.widget().deleteLater()
 
-    def add_card(self, role, text, item_id='', images=()):
+    def add_card(self, role, text, item_id='', images=(), documents=()):
         if self.welcome_card:
             self.welcome_card.deleteLater()
             self.message_layout.removeWidget(self.welcome_card)
@@ -534,7 +569,9 @@ class Window(QMainWindow):
         card = MessageCard(role, text)
         for path in images:
             card.layout.addWidget(ImagePreview(path))
-        if images and not text.strip(): card.body.hide()
+        for path in documents:
+            card.layout.addWidget(FileAttachment(path))
+        if (images or documents) and not text.strip(): card.body.hide()
         card.body.setFont(QFont('Noto Sans', self.font_size + 1))
         if role == 'tool':
             last = self.message_layout.itemAt(self.message_layout.count() - 1)
@@ -637,7 +674,7 @@ class Window(QMainWindow):
             self.thread_id, self.turn_id = thread['id'], ''
             self.clear_messages()
             for message in messages_from_thread(thread):
-                self.add_card(message['role'], message['text'], message['id'], message.get('images', ()))
+                self.add_card(message['role'], message['text'], message['id'], message.get('images', ()), message.get('documents', ()))
             if not self.cards: self.welcome()
             self.clear_images()
             self.heading.setText(title)
@@ -662,7 +699,7 @@ class Window(QMainWindow):
         def start_turn():
             self.editor.clear()
             self.clear_images()
-            self.add_card('user', text + (('\n\n📎 ' + ', '.join(documents)) if documents else ''), images=images)
+            self.add_card('user', text, images=images, documents=documents)
             self.activity.setText('O Codex está trabalhando…')
             params = turn_params(self.thread_id, prompt, self.cwd, images)
             if self.model: params['model'] = self.model
@@ -831,10 +868,15 @@ class Window(QMainWindow):
     def add_text_attachment(self, name, content):
         if name in self.text_files: return
         self.text_files[name] = content
-        button = QPushButton(Path(name).name+' ×')
-        button.setToolTip('Texto anexado. Clique para remover; será enviado junto com a mensagem.')
-        button.clicked.connect(lambda: (self.text_files.pop(name, None), self.attachments.removeWidget(button), button.deleteLater(), self.attachment_area.setVisible(bool(self.attachments.count()))))
-        self.attachments.addWidget(button)
+        tile = FileAttachment(name, removable=True)
+        tile.setFixedWidth(320)
+        def remove():
+            self.text_files.pop(name, None)
+            self.attachments.removeWidget(tile)
+            tile.deleteLater()
+            self.attachment_area.setVisible(bool(self.attachments.count()))
+        tile.remove_button.clicked.connect(remove)
+        self.attachments.addWidget(tile)
         self.attachment_area.show()
 
     def attach_image(self, image):

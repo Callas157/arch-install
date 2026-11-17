@@ -34,6 +34,17 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual([m['role'] for m in messages], ['user', 'assistant', 'tool'])
         self.assertEqual(messages[2]['text'], 'pwd\n\n/home/test')
 
+    def test_history_extracts_multiple_document_cards_without_exposing_contents(self):
+        prompt = 'Confira os arquivos'
+        paths = ['/tmp/Arquivo de texto.txt', '/tmp/registro.log']
+        for path in paths:
+            prompt += '\n\nArquivo anexado: ' + path + '\n<conteudo_do_arquivo>\nconteúdo\n</conteudo_do_arquivo>'
+        thread = {'turns': [{'items': [{'id': 'u', 'type': 'userMessage',
+                   'content': [{'type': 'text', 'text': prompt}]}]}]}
+        message = messages_from_thread(thread)[0]
+        self.assertEqual(message['text'], 'Confira os arquivos')
+        self.assertEqual(message['documents'], paths)
+
     def test_external_images_are_not_loaded_as_html(self):
         from callas_chat.protocol import safe_markdown
         self.assertNotIn('<img', safe_markdown('<img src="https://example.org/x">'))

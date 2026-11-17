@@ -1,4 +1,4 @@
-# Codex opcional — cliente 1.3.1
+# Codex opcional — cliente 1.3.2
 
 O botão **Codex** da Central oferece instalação no perfil do usuário. Quando o
 aplicativo já existe, o mesmo botão apenas o abre. O aplicativo é publicado em
@@ -77,3 +77,14 @@ contra as fontes e publicar na main. Em seguida fixar o commit e SHA-256 na
 Central, validar seus testes e conferir o download pelo commit público. O pacote
 contém somente os arquivos de distribuição definidos pelo gerador, sem dados,
 contas, conversas, anexos ou modelos locais.
+
+## Cliente 1.3.2 — 2026-11-17
+
+- Exibe documentos anexados em cartões com ícone, nome e extensão no rascunho
+  e na mensagem enviada, sem mostrar o caminho completo no corpo da mensagem.
+- Mantém remoção antes do envio, conteúdo enviado e restauração após falha.
+  Reconstrói os cartões ao carregar o histórico dos anexos desse cliente.
+- Validação: 57 testes do cliente aprovados, incluindo remoção, envio do
+  conteúdo e leitura de múltiplos anexos no histórico. Visual e envio de um
+  arquivo de log confirmados pelo usuário no aplicativo local.
+- Mantém a versão do Callas OS e os fluxos opcionais de instalação existentes.

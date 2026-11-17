@@ -307,6 +307,29 @@ class UiTests(unittest.TestCase):
         self.assertEqual(self.window.text_files, {})
         self.assertEqual(self.backend.requests, [])
 
+    def test_document_tiles_remove_and_send_without_visible_paths(self):
+        from callas_chat.ui import FileAttachment
+        path = Path(self.temp.name)/'Arquivo de texto.txt'
+        path.write_text('conteúdo do anexo')
+        self.window.attach_files([str(path)])
+        tile = self.window.attachment_area.findChild(FileAttachment)
+        self.assertEqual(tile.filename.text(), path.name)
+        tile.remove_button.click()
+        self.assertEqual(self.window.text_files, {})
+        APP.processEvents()
+        self.window.attach_files([str(path)])
+        self.window.editor.setPlainText('Veja este arquivo')
+        self.window.thread_id = 'thread'
+        self.window.send()
+        card = self.window.message_layout.itemAt(0).widget()
+        sent = card.findChild(FileAttachment)
+        self.assertEqual(sent.filename.text(), path.name)
+        self.assertIsNone(sent.remove_button)
+        self.assertEqual(card.body.toPlainText(), 'Veja este arquivo')
+        payload = self.backend.requests[-1][1]['input'][0]['text']
+        self.assertIn('conteúdo do anexo', payload)
+        self.assertEqual(self.window.text_files, {})
+
     def test_log_attachment_sends_snapshot_only_on_send(self):
         path = Path(self.temp.name)/'sistema.log'
         path.write_text('falha na inicialização\nserviço indisponível')

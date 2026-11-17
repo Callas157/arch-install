@@ -1,4 +1,4 @@
-CODEX 1.3.1
+CODEX 1.3.2
 
 Abra “Codex” no menu KDE. Use sua conta ChatGPT já conectada ao Codex;
 em um computador novo, entre em Conta e configurações > Entrar com minha conta ChatGPT.
@@ -83,3 +83,6 @@ sem esperar o carregamento do Whisper. O modelo permanece em memória entre
 ditados e a decodificação usa busca mais rápida. A transcrição continua local,
 com Whisper Medium em português. Áudios maiores usam mais memória e levam
 mais tempo para transcrever; revise palavras e pontuação antes de enviar.
+
+Correção 1.3.2: arquivos de texto aparecem em cartões com nome e extensão,
+antes e depois do envio e ao reabrir o histórico. Permite remover antes de enviar.
