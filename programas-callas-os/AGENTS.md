@@ -52,6 +52,29 @@ Brave Origin é o padrão somente da instalação limpa. Em máquinas existentes
 
 ## Primeiro boot após instalação limpa
 
+### Discord: preservar a última janela e evitar interferência indireta
+
+O Discord já apresentou regressões recorrentes de posição em tarefas sem relação
+com ele. Por pedido explícito do usuário em 2026-11-17, revise os efeitos indiretos
+de Update, monitores, sessão, autostart e regras do KWin antes de qualquer entrega
+que alcance esses caminhos. Uma alteração no relógio ou na Central não autoriza
+redefinir a janela do Discord.
+
+- Ao abrir ou iniciar com o PC, o Discord deve recuperar o monitor, a posição, o
+  tamanho e o estado (normal, maximizado ou tela cheia) da última janela principal.
+  O usuário o mantém no monitor secundário; nunca force o principal nem grave
+  coordenadas transitórias de splash/login/encerramento como preferência.
+- Preserve valores aprendidos, regras pessoais, ordem e identificadores. Trate os
+  formatos `General/Order` e `General/rules` conforme o KWin instalado; escrever
+  uma lista legada incompleta pode fazer o KWin descartar regras de outras janelas.
+- Se uma entrega interferir com o Discord, inclua a correção e regressões antes de
+  publicar. Não resete perfis, login, dados, atalhos ou as janelas de outros apps
+  para contornar o problema. Preserve a política do primeiro boot e o atualizador
+  interno do Discord.
+- Testes simulados não comprovam restauração após reiniciar o PC. Registre quais
+  cenários foram efetivamente verificados; não feche Discord, chamadas ou a sessão
+  do usuário apenas para declarar um teste de boot concluído.
+
 Steam e Discord não devem iniciar automaticamente durante todo o primeiro boot após a instalação limpa. O usuário pode abri-los manualmente pelo menu KDE a qualquer momento. Sair/entrar na sessão ou repetir uma chamada de autostart não libera o bloqueio; somente uma reinicialização real, identificada pela mudança do boot ID. A partir dela, ambos iniciam normalmente com o sistema em todos os boots seguintes. A opção 5 distribui essa configuração sem rearmar o bloqueio em máquinas já instaladas. Preserve as demais inicializações automáticas.
 
 ## Versionamento público do Callas OS

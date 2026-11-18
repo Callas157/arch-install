@@ -107,7 +107,8 @@ class MonitorTests(unittest.TestCase):
             self.assertEqual(rule['position'], '1920,0')
             self.assertEqual(rule['size'], '960,1080')
             self.assertEqual(rule['positionrule'], '4')
-            self.assertNotIn('screenrule', rule)
+            self.assertEqual(rule['screenrule'], '4')
+            self.assertNotIn('screen', rule)
             before = path.read_bytes()
             win.remember_rules([{'app': 'discord', 'role': '', 'x': 0, 'y': 0, 'width': 400, 'height': 400, 'maxH': False, 'maxV': False}])
             self.assertEqual(path.read_bytes(), before)
@@ -271,9 +272,11 @@ if(ps[0].screen!==0 || !logs.includes('CALLAS_OK')) throw Error('panel');
         with patch.object(win.os, 'geteuid', return_value=0), \
              patch.object(win, 'atomic', side_effect=lambda path, text, mode: written.update({str(path): text})):
             win.install_system()
-        self.assertEqual(len(written), 2)
+        self.assertEqual(len(written), 3)
         self.assertIn('NoDisplay=true', written['/etc/xdg/autostart/callas-janelas.desktop'])
         self.assertIn('callas-janelas --activate', written['/etc/systemd/user/callas-janelas.service'])
+        self.assertIn('Type=notify',written['/etc/systemd/user/callas-discord-memory.service'])
+        self.assertIn('callas-discord --watch',written['/etc/systemd/user/callas-discord-memory.service'])
         self.assertNotIn('callas-monitores', ''.join(written.values()))
 
     def test_update_activates_memory_and_install_does_not_open_monitor_tool(self):
@@ -286,7 +289,7 @@ if(ps[0].screen!==0 || !logs.includes('CALLAS_OK')) throw Error('panel');
         self.assertNotIn('callas-monitores --first', installer)
 
     def test_automatic_activation_is_serialized_and_never_calls_monitor_setup(self):
-        with patch.object(win.os, 'geteuid', return_value=1000), patch.object(win, 'remember_windows') as remember, patch.object(win, 'start_steam_dialogs'), \
+        with patch.object(win.os, 'geteuid', return_value=1000), patch.object(win, 'remember_windows') as remember, patch.object(win, 'start_steam_dialogs'), patch.object(win,'start_discord_memory'), \
              patch.object(m, 'choose') as choose:
             win.activate()
             win.activate()

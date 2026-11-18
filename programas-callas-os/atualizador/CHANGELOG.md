@@ -1,5 +1,15 @@
 # Histórico do Callas OS
 
+## 3.16.2 — 2026-11-17
+
+- Corrige a memória de janelas no formato do KWin 6.8: preserva General/Order, prioridade, identificadores e regras pessoais. O auxiliar antigo podia introduzir uma lista General/rules incompleta; a migração nativa então descartava grupos não listados. Mantém compatibilidade com o formato legado e inclui todos os grupos existentes antes de uma migração, com proteção contra gravação concorrente do KWin.
+- Completa as políticas de lembrar monitor, maximização e tela cheia da janela principal do Discord, inclusive quando estava fechado durante a configuração. Não força monitor principal nem substitui valores já aprendidos por coordenadas de abertura.
+- Adiciona memória persistente exclusiva do Discord, privada no perfil do usuário e independente do cache em memória do KWin. Restaura posição, tamanho e formato por conector físico; acompanha alterações e fechamento, mantém geometria normal quando maximizado/tela cheia e preserva a preferência quando o monitor ainda não está disponível, retomando ao conectar. Ignora splash, diálogos e popouts e deixa o usuário mover livremente.
+- Integra o observador de usuário à ativação de janelas, com confirmação do próprio script antes de anunciar prontidão e retomada após reinício do KWin. O estágio verificado e os checkpoints distribuem auxiliar e serviço tanto na instalação limpa quanto no Update, sem alterar instalar-arch.sh. Preserva Spotify, demais janelas, perfis/contas, autostart do primeiro boot, atualizador interno do Discord e a política de kernel/NVIDIA.
+- Registra em AGENTS.md a obrigação de cuidado com o Discord e de corrigir efeitos indiretos em entregas de monitores, sessão, Central e Update.
+
+Validação: 391 testes offline executados, 390 aprovados e um opcional ignorado; sintaxe de 94 Python e nove Bash. Motor JavaScript exercita restauração, alterações do usuário, fechamento imediato, monitor tardio, persistência privada e compatibilidade histórica. Probe opt-in em KWin 6.8.2 real, com D-Bus, dois monitores virtuais e HOME/XDG isolados, confirmou posição/tamanho normal, maximização, tela cheia, reabertura e reinício de compositor/observador usando somente janela Qt sintética, incluindo reinício apenas do observador enquanto a janela permanece maximizada, preservando o retângulo normal. Revisão independente e regressão correspondente conferidas. A regra real do Discord desta máquina foi reparada para HDMI-A-1, posição 961,0 e tamanho 959×1080, sem mover ou encerrar a janela. Não encerrou Discord/chamadas, não reiniciou o PC, não instalou pacotes/kernel/NVIDIA nem executou Update completo; o teste virtual não equivale a um boot real do Discord.
+
 ## 3.16.1 — 2026-11-17
 
 - Corrige a distribuição da página Monitores: título, lista de telas e mensagem permanecem juntos no alto; Atualizar lista, Configurações de telas do KDE e Voltar ficam no rodapé. O espaço expansível separa esses dois grupos, sem empurrar a lista para baixo.

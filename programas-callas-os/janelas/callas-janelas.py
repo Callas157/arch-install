@@ -74,12 +74,12 @@ def capture_windows():
     js = '''const result = [];
 const windows = typeof workspace.windowList === "function" ? workspace.windowList() : workspace.stackingOrder;
 windows.forEach(function(w) {
-    if (!w.normalWindow || w.transient || !w.resourceClass) return;
+    if (!w.normalWindow || w.transient || w.splash || !w.resourceClass) return;
     const g = w.frameGeometry;
     result.push({app: String(w.resourceClass).toLowerCase(), rawClass: String(w.resourceClass), role: String(w.windowRole || ""), output: String(w.output ? w.output.name : ""),
         x: Math.round(g.x), y: Math.round(g.y), width: Math.round(g.width), height: Math.round(g.height),
         maxH: (Number(w.maximizeMode) & 2) !== 0,
-        maxV: (Number(w.maximizeMode) & 1) !== 0});
+        maxV: (Number(w.maximizeMode) & 1) !== 0, fullScreen: Boolean(w.fullScreen)});
 });
 callDBus(SERVICE, "/Snapshot", "io.github.Callas157.Snapshot", "accept", JSON.stringify(result));
 '''.replace('SERVICE', json.dumps(service))
@@ -111,6 +111,8 @@ callDBus(SERVICE, "/Snapshot", "io.github.Callas157.Snapshot", "accept", JSON.st
         finally:
             Path(name).unlink(missing_ok=True)
             receiver.remove_from_connection()
+            del receiver
+            del owner
             session.close()
     return received[0]
 
@@ -150,19 +152,42 @@ def repair_discord_rule(rule, sample, output_names):
     return 0
 
 
+def rule_order(cfg):
+    """KWin 6.8 uses Order; migrating an incomplete legacy list purges groups."""
+    general=cfg['General'] if cfg.has_section('General') else {}
+    key='Order' if 'Order' in general else 'rules'
+    groups=[section for section in cfg.sections()
+            if section!='General' and not section.startswith('$') and '][' not in section]
+    ids=[]
+    for section in [*general.get(key,'').split(','), *groups]:
+        if section in groups and section not in ids: ids.append(section)
+    return key,ids
+
+
+def discord_remember_policies(rule, sample):
+    """Native Remember remains active even when Discord was closed at setup."""
+    changed=0
+    for key in ('screenrule','maximizehorizrule','maximizevertrule','fullscreenrule'):
+        if key not in rule:
+            rule[key]='4';changed+=1
+    if sample and 'fullscreen' not in rule:
+        rule['fullscreen']=str(bool(sample.get('fullScreen',False))).lower();changed+=1
+    return changed
+
+
 def discord_state(windows):
     """Only placement metadata, never account settings, titles or conversations."""
     result = {'session': os.environ.get('XDG_SESSION_TYPE', ''), 'windows': [], 'rules': []}
     for w in windows:
         if 'discord' in str(w.get('app', '')).lower():
-            result['windows'].append({k:w[k] for k in ('app','rawClass','role','output','x','y','width','height','maxH','maxV') if k in w})
+            result['windows'].append({k:w[k] for k in ('app','rawClass','role','output','x','y','width','height','maxH','maxV','fullScreen') if k in w})
     cfg = configparser.ConfigParser(interpolation=None, strict=True); cfg.optionxform = str
     try:
         cfg.read(CONFIG / 'kwinrulesrc')
-        order = cfg.get('General', 'rules', fallback='').split(',')
+        _,order = rule_order(cfg)
         allowed = ('Description','wmclass','wmclassmatch','wmclasscomplete','types','windowrole','windowrolematch',
                    'position','positionrule','size','sizerule','screen','screenrule','maximizehoriz','maximizehorizrule',
-                   'maximizevert','maximizevertrule','ignoregeometry','ignoregeometryrule')
+                   'maximizevert','maximizevertrule','fullscreen','fullscreenrule','ignoregeometry','ignoregeometryrule')
         for section in cfg.sections():
             rule = cfg[section]
             if 'discord' in rule.get('wmclass', '').lower():
@@ -208,18 +233,18 @@ def log_discord_state(before, windows):
         print('Aviso: diagnóstico do Discord indisponível:', exc, file=sys.stderr)
 
 
-def remember_rules(windows):
+def remember_rules(windows, *, targets=('discord', 'spotify', 'brave', 'brave-browser', 'brave-origin', 'brave-origin-browser')):
     import dbus
     path = CONFIG / 'kwinrulesrc'
     cfg = configparser.ConfigParser(interpolation=None, strict=True)
     cfg.optionxform = str
-    if path.exists():
-        cfg.read(path)
+    original=path.read_bytes() if path.exists() else None
+    if original is not None:
+        cfg.read_string(original.decode())
     if not cfg.has_section('General'):
         cfg.add_section('General')
-    ids = [s for s in cfg['General'].get('rules', '').split(',') if s]
+    order_key,ids = rule_order(cfg)
     # Only the requested apps. Separate roles keep dialogs out of the main rule.
-    targets = ('discord', 'spotify', 'brave', 'brave-browser', 'brave-origin', 'brave-origin-browser')
     samples = {}
     counts = {}
     for w in windows:
@@ -228,7 +253,8 @@ def remember_rules(windows):
             counts[key] = counts.get(key, 0) + 1
             samples[key] = w
     names = [o['name'] for o in sorted(outputs(), key=lambda o: o.get('priority', 100))] if any(w.get('output') for w in samples.values()) else []
-    added = 0
+    added = int(cfg['General'].get(order_key,'')!=','.join(ids)
+                or (order_key=='Order' and ('rules' in cfg['General'] or 'count' in cfg['General'])))
     for app in targets:
         entries = [(key, w) for key, w in samples.items() if key[0] == app]
         if not entries:
@@ -255,6 +281,8 @@ def remember_rules(windows):
                         if key not in existing:
                             existing[key] = value
                             added += 1
+                if app=='discord':
+                    added += discord_remember_policies(existing, sample if counts.get((app,role),0)==1 else None)
                 continue
             if counts.get((app, role), 0) > 1:
                 print('Aviso:', app, 'tem várias janelas equivalentes; use Regras de janelas para diferenciá-las.')
@@ -277,16 +305,22 @@ def remember_rules(windows):
                 rule['maximizehoriz'] = str(sample['maxH']).lower()
                 rule['maximizevert'] = str(sample['maxV']).lower()
             repair_discord_rule(rule, sample, names)
+            if app=='discord': discord_remember_policies(rule,sample)
             ids.append(ident)
             added += 1
     if not added:
         print('Regras já instaladas; posições aprendidas preservadas.')
         return
-    cfg['General']['rules'] = ','.join(ids)
-    cfg['General']['count'] = str(len(ids))
+    cfg['General'][order_key] = ','.join(ids)
+    if order_key=='Order':
+        cfg['General'].pop('rules',None);cfg['General'].pop('count',None)
+    else:
+        cfg['General']['count'] = str(len(ids))
     import io
     out = io.StringIO()
     cfg.write(out, space_around_delimiters=False)
+    if (path.read_bytes() if path.exists() else None)!=original:
+        raise RuntimeError('O KWin alterou as regras durante a preparação. Tente novamente; nenhuma regra foi substituída.')
     backup_rules(path)
     atomic(path, out.getvalue())
     dbus.Interface(bus().get_object('org.kde.KWin', '/KWin'), 'org.kde.KWin').reconfigure()
@@ -430,6 +464,11 @@ def activate():
         fcntl.flock(lock, fcntl.LOCK_EX)
         start_steam_dialogs()
         remember_windows()
+        start_discord_memory()
+
+
+def start_discord_memory():
+    run('systemctl','--user','restart','callas-discord-memory.service')
 
 
 def install_system():
@@ -439,6 +478,9 @@ def install_system():
     # The updater starts this unit in the active user's manager. Its environment
     # comes from Plasma, avoiding the root/sudo environment for display access.
     atomic(Path('/etc/systemd/user/callas-janelas.service'), '[Unit]\nDescription=Memória de janelas do Callas OS\nAfter=plasma-kwin_wayland.service\n\n[Service]\nType=oneshot\nExecStart=/usr/local/libexec/callas-janelas --activate\nTimeoutStartSec=30\n', 0o644)
+    atomic(Path('/etc/systemd/user/callas-discord-memory.service'),
+           '[Unit]\nDescription=Memória persistente da janela do Discord\nAfter=plasma-kwin_wayland.service\nPartOf=graphical-session.target\n'
+           '\n[Service]\nType=notify\nExecStart=/usr/local/libexec/callas-discord --watch\nRestart=on-failure\nRestartSec=2\nTimeoutStartSec=20\n',0o644)
 
 
 def main():

@@ -19,6 +19,7 @@ import urllib.request
 API = "https://api.github.com/repos/Callas157/arch-install"
 RAW = "https://raw.githubusercontent.com/Callas157/arch-install"
 FILES = (
+    "programas-callas-os/janelas/callas-discord.py",
     "programas-callas-os/atualizador/callas-widget.py",
     "programas-callas-os/relogio/relogio-moderno.plasmoid",
     "programas-callas-os/atualizador/callas-browser.py",

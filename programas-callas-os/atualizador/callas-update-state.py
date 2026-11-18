@@ -43,6 +43,10 @@ DEPENDENCIES['security'] += ('callas-widget.py', 'relogio-moderno.plasmoid')
 REQUIRED['security'] += ('/usr/local/libexec/callas-widget', '/usr/local/share/callas-os/relogio-moderno.plasmoid')
 REQUIRED['tools'] += tuple('/usr/local/libexec/' + name for name in (
     'callas-monitores', 'callas-janelas', 'callas-inicio-kde', 'callas-kde-desligamento-login'))
+DEPENDENCIES['security'] += ('callas-discord.py',)
+DEPENDENCIES['tools'] += ('callas-discord.py',)
+REQUIRED['security'] += ('/usr/local/libexec/callas-discord',)
+REQUIRED['tools'] += ('/etc/systemd/user/callas-discord-memory.service',)
 for application_phase in ('security', 'apps', 'flatpaks'):
     REQUIRED[application_phase] += ('/var/lib/callas-os/apps-managed-' + application_phase + '.json',)
 

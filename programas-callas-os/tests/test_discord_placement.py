@@ -14,6 +14,67 @@ spec = importlib.util.spec_from_file_location('discordplacement', ROOT / 'janela
 win = importlib.util.module_from_spec(spec); spec.loader.exec_module(win)
 
 class DiscordPlacementTests(unittest.TestCase):
+    def fixture_rules(self, root, modern=True):
+        cfg=configparser.ConfigParser(interpolation=None);cfg.optionxform=str
+        cfg['General']={('Order' if modern else 'rules'):'custom,discord,spotify'}
+        cfg['custom']=dict(Description='Minha regra',wmclass='kate',position='41,29',positionrule='4')
+        for app in ('discord','spotify'):
+            cfg[app]=dict(Description='Callas OS: lembrar '+app,wmclass=app,position='961,0',size='959,1080',
+                positionrule='4',sizerule='4',screenrule='4',screen='1',maximizehorizrule='4',maximizehoriz='false',
+                maximizevertrule='4',maximizevert='false',fullscreenrule='4',fullscreen='false')
+        path=root/'kwinrulesrc'
+        with path.open('w') as stream:cfg.write(stream)
+        return cfg,path
+
+    def run_rules(self, root, windows):
+        fake=types.SimpleNamespace(Interface=lambda *args:types.SimpleNamespace(reconfigure=lambda:None))
+        with patch.object(win,'CONFIG',root),patch.object(win,'STATE',root/'state'),patch.object(win,'bus'), \
+                patch.dict(sys.modules,{'dbus':fake}),patch.object(win,'outputs',return_value=[{'name':'DP-3','priority':1},{'name':'HDMI-A-1','priority':2}]):
+            win.remember_rules(windows)
+        cfg=configparser.ConfigParser(interpolation=None);cfg.optionxform=str;cfg.read(root/'kwinrulesrc');return cfg
+
+    def test_modern_order_keeps_original_ids_and_prevents_kwin_purging_other_rules(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);before,path=self.fixture_rules(root)
+            cfg=self.run_rules(root,[self.sample()])
+            # KWin 6.8 migrates a nonempty legacy list by deleting groups absent
+            # from it. An updater must not introduce that incomplete list.
+            legacy=cfg['General'].get('rules','')
+            surviving=set(legacy.split(',')) if legacy else set(cfg.sections())
+            self.assertTrue({'custom','discord','spotify'}<=surviving)
+            self.assertNotIn('rules',cfg['General'])
+            self.assertEqual(cfg['General']['Order'].split(',')[:3],['custom','discord','spotify'])
+            for section in ('custom','discord','spotify'):self.assertEqual(dict(cfg[section]),dict(before[section]))
+            original=path.read_bytes();self.run_rules(root,[dict(self.sample(),x=2000,output='DP-3')])
+            self.assertEqual(path.read_bytes(),original)
+
+    def test_legacy_order_includes_stray_groups_before_native_migration(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);cfg,path=self.fixture_rules(root,modern=False)
+            cfg['unlisted']=dict(Description='Outra regra pessoal',wmclass='konsole',size='800,600')
+            with path.open('w') as stream:cfg.write(stream)
+            after=self.run_rules(root,[])
+            self.assertIn('unlisted',after['General']['rules'].split(','))
+            self.assertEqual(dict(after['unlisted']),dict(cfg['unlisted']))
+
+    def test_closed_discord_remembers_monitor_maximize_and_fullscreen_without_forcing_primary(self):
+        with tempfile.TemporaryDirectory() as temp:
+            cfg=self.run_rules(Path(temp),[])
+            rule=next(cfg[s] for s in cfg.sections() if cfg[s].get('wmclass')=='discord')
+            for key in ('positionrule','sizerule','screenrule','maximizehorizrule','maximizevertrule','fullscreenrule'):
+                self.assertEqual(rule.get(key),'4',key)
+            self.assertNotIn('screen',rule)
+
+    def test_fullscreen_sample_is_saved_and_modern_order_is_used_in_diagnostics(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);(root/'kwinrulesrc').write_text('[General]\nOrder=personal\n[personal]\nwmclass=kate\n')
+            cfg=self.run_rules(root,[dict(self.sample(),fullScreen=True)])
+            ident=next(s for s in cfg.sections() if cfg[s].get('wmclass')=='discord')
+            self.assertEqual(cfg[ident].get('fullscreen'),'true')
+            with patch.object(win,'CONFIG',root),patch.object(win,'outputs',return_value=[]):
+                report=win.discord_state([])
+            self.assertEqual(report['rules'][0]['order'],cfg['General']['Order'].split(',').index(ident))
+
     def sample(self):
         return dict(app='discord', rawClass='Discord', role='', output='HDMI-A-1', x=2880, y=0,
                     width=960, height=1080, maxH=False, maxV=False)
