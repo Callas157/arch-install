@@ -177,10 +177,22 @@ def data_home(): return Path(os.environ.get('XDG_DATA_HOME', str(Path.home() / '
 
 def user_apps():
     home = Path.home(); data = data_home(); apps = []
+    base = data / 'callas-chat'
     launcher = home / '.local/bin/callas-chat'
-    if launcher.is_file():
-        apps.append(dict(kind='codex', id='callas-chat', name='Codex', version='', icon='codex', source='Perfil do usuário',
-                         blocked=not safe_path(data / 'callas-chat', home),
+    desktop = data / 'applications/io.github.callasos.CallasChat.desktop'
+    package = base / 'app/callas_chat/__init__.py'
+    if any(path.is_file() or path.is_symlink() for path in (launcher, desktop, package)):
+        blocked = any(not safe_path(path, home) for path in (launcher, desktop, package))
+        version = ''
+        if not blocked and package.is_file():
+            try:
+                match = re.search(r"""(?m)^__version__\s*=\s*['"]([0-9.]+)['"]""", package.read_text())
+                if match:
+                    version = match[1]
+            except (OSError, UnicodeError):
+                pass
+        apps.append(dict(kind='codex', id='callas-chat', name='Codex', version=version, icon='codex', source='Perfil do usuário',
+                         blocked=blocked,
                          reason='Remove o cliente da Central. Preserva login, conversas e preferências.'))
     images = {}
     for folder in (home / 'Applications', home / 'Downloads'):

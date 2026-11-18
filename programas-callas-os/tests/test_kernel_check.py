@@ -28,7 +28,7 @@ class KernelCheckTests(unittest.TestCase):
   echo "Missing headers for running $(uname -r)" >&2; exit 1;
 }
 '''+('exit 1' if failure=='dkms' else 'exit 0'),
-            'modinfo': 'exit 1' if failure=='module' else 'exit 0',
+            'modinfo': 'exit 1' if failure=='module' else 'if [[ $4 == vermagic ]]; then echo "$2 SMP"; else echo 610.57.04; fi',
             'mkinitcpio': 'exit 1' if failure=='initramfs' else 'exit 0',
             'lsinitcpio': '''case "$*" in
 *linux-lts.img*) echo 'usr/lib/modules/installed-lts/kernel/module.ko' ;;

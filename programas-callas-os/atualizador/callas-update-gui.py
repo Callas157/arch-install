@@ -22,11 +22,12 @@ from PySide6.QtCore import Qt, QTimer, QSocketNotifier, QSize, QProcess, QProces
 from PySide6.QtGui import QIcon, QPalette, QColor, QFont, QPixmap
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
-    QGridLayout, QPushButton, QLabel, QProgressBar, QPlainTextEdit, QFrame,
+    QGridLayout, QPushButton, QComboBox, QLabel, QProgressBar, QPlainTextEdit, QFrame,
     QLineEdit, QMessageBox, QInputDialog, QStyle, QDialog, QCheckBox,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QScrollArea, QStackedWidget)
 
 BACKEND = '/usr/local/libexec/put-update'
+NVIDIA_HELPER = '/usr/local/libexec/callas-kernel-policy'
 UNINSTALL_HELPER = '/usr/local/libexec/callas-uninstall'
 DEFAULTS_HELPER = '/usr/local/libexec/callas-defaults'
 WIDGET_HELPER = '/usr/local/libexec/callas-widget'
@@ -105,6 +106,8 @@ def action_command(action):
     if action == 'repair': return [BACKEND, '--instalar']
     if action == 'games': return ['/usr/local/libexec/callas-game-logs', '--collect', user]
     if action == 'codex': return ['/usr/bin/python3', '-u', str(Path(__file__).resolve()), '--install-codex']
+    if action.startswith('nvidia:'):
+        return [NVIDIA_HELPER, '--nvidia-select', action.split(':', 1)[1]]
     if action == 'callas': return ['/usr/local/libexec/callas-release']
     raise ValueError('Função desconhecida')
 
@@ -772,6 +775,102 @@ class UninstallDialog(QDialog):
         else: event.accept()
 
 
+class NvidiaDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.busy = False
+        self.current = ''
+        self.fixed = ''
+        self.coherent = True
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(28, 25, 28, 24)
+        layout.setSpacing(14)
+        layout.addWidget(QLabel('Driver NVIDIA', objectName='title'))
+        self.status = QLabel()
+        self.status.setTextFormat(Qt.PlainText)
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
+        layout.addWidget(QLabel('Versões com pacotes Open DKMS no arquivo oficial do Arch'))
+        self.versions = QComboBox()
+        self.versions.currentIndexChanged.connect(self.update_button)
+        layout.addWidget(self.versions)
+        layout.addStretch()
+        row = QHBoxLayout()
+        self.reload = QPushButton('Atualizar lista')
+        self.reload.clicked.connect(self.refresh)
+        self.back = QPushButton('Voltar')
+        self.back.clicked.connect(self.reject)
+        self.apply = QPushButton('Aplicar e fixar')
+        self.apply.setObjectName('primary')
+        self.apply.setEnabled(False)
+        self.apply.clicked.connect(self.choose)
+        row.addWidget(self.reload)
+        row.addStretch()
+        row.addWidget(self.back)
+        row.addWidget(self.apply)
+        layout.addLayout(row)
+        QTimer.singleShot(0, self.refresh)
+
+    def update_button(self, *_):
+        version = self.versions.currentData()
+        self.apply.setEnabled(not self.busy and bool(version) and
+                              (version != self.fixed if self.coherent else version == self.fixed))
+
+    def refresh(self):
+        self.busy = True
+        self.reload.setEnabled(False)
+        self.back.setEnabled(False)
+        self.versions.clear()
+        self.update_button()
+        self.status.setText('Consultando o arquivo oficial e os pacotes instalados…')
+        process = QProcess(self)
+
+        def finish(code, *_):
+            self.busy = False
+            self.reload.setEnabled(True)
+            self.back.setEnabled(True)
+            error = bytes(process.readAllStandardError()).decode('utf-8', 'replace').strip()
+            try:
+                if code:
+                    raise ValueError(error or 'Não consegui iniciar o auxiliar NVIDIA.')
+                state = json.loads(bytes(process.readAllStandardOutput()))
+                self.current, self.fixed = state['installed'], state['fixed']
+                self.coherent = state['coherent']
+                self.status.setText(f'Instalado {self.current} · Fixado {self.fixed}')
+                if not self.coherent:
+                    self.status.setText(self.status.text() + '\nPilha divergente. Selecione a versão fixada para reparar.')
+                self.versions.addItem('Selecione uma versão', None)
+                for version in state['versions']:
+                    label = version + (' (padrão para jogos)' if version == '610.57.04' else '')
+                    self.versions.addItem(label, version)
+                if self.fixed in state['versions']:
+                    self.versions.setCurrentIndex(self.versions.findData(self.fixed))
+                if state.get('error'):
+                    self.status.setText(self.status.text() + '\n' + state['error'])
+            except (ValueError, KeyError, TypeError) as exc:
+                self.status.setText(str(exc))
+            self.update_button()
+            process.deleteLater()
+
+        process.finished.connect(finish)
+        process.errorOccurred.connect(lambda error: finish(1) if error == QProcess.FailedToStart else None)
+        process.start(NVIDIA_HELPER, ['--nvidia-list'])
+
+    def choose(self):
+        version = self.versions.currentData()
+        if not self.apply.isEnabled():
+            return
+        self.controller.confirm_action(
+            'Trocar o driver NVIDIA',
+            f'Aplicar e fixar a versão {version}? A Central testa a compilação nos kernels padrão e LTS '
+            'antes da troca. Feche os jogos e salve seu trabalho. Após a validação, reinicie para carregar o driver.',
+            lambda: self.controller.start('nvidia:' + version, True), 'Aplicar e fixar')
+
+    def reject(self):
+        if not self.busy:
+            super().reject()
+
+
 class MaintenanceDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -875,6 +974,7 @@ class Window(QWidget):
             ('Callas OS Update', 'system-upgrade', lambda: self.start('callas')),
             ('Codex', 'codex', self.codex),
             ('Desinstalar aplicativos', 'edit-delete', self.uninstall_apps),
+            ('Driver NVIDIA', 'video-display', self.nvidia),
             ('Sair', 'application-exit', self.close),
         )
         for i, (label, name, callback) in enumerate(entries):
@@ -992,6 +1092,8 @@ class Window(QWidget):
 
     def uninstall_apps(self): self.open_page(UninstallDialog)
 
+    def nvidia(self): self.open_page(NvidiaDialog)
+
     def codex(self, confirmed=False):
         if self.process is not None: return
         launcher = codex_launcher()
@@ -1046,7 +1148,7 @@ class Window(QWidget):
         self.notifier.activated.connect(self.read_output)
         for button in self.buttons: button.setEnabled(False)
         self.input_row.setVisible(self.details.isVisible())
-        if action in ('games', 'orphans'):
+        if action in ('games', 'orphans') or action.startswith('nvidia:'):
             self.details.show(); self.input_row.show(); self.details_button.setText('Ocultar detalhes')
         if action == 'codex':
             self.stage.setText('Instalando Codex')
@@ -1101,6 +1203,10 @@ class Window(QWidget):
             self.status.setText('Codex instalado. Abra pelo menu KDE ou pelo botão Codex.' if self.action == 'codex' else 'A função terminou. Você já pode escolher outra opção.')
             try: after = package_state()
             except (OSError, subprocess.SubprocessError, RuntimeError): after = None
+            if self.action.startswith('nvidia:'):
+                self.reboot_pending = True
+                self.restart_panel.show()
+                self.status.setText('Driver NVIDIA fixado e boot verificado. Reinicie para carregar a versão escolhida.')
             if self.action in ('sistema', 'nativos', 'callas', 'flatpaks'):
                 self.reboot_pending = (self.action in ('sistema', 'callas') or
                                        reboot_needed(self.before, after, Path('/run/reboot-required').exists()))

@@ -1,5 +1,11 @@
 # Histórico do Callas OS
 
+## 3.17.0 — 2026-11-18
+
+- Adiciona à Central a opção Driver NVIDIA, com versões da pilha Open DKMS publicadas no arquivo oficial do Arch. A troca manual valida pacotes assinados, a GPU e a compilação nos kernels padrão e LTS antes da transação. O seletor verifica o boot antes de confirmar a fixação e tenta restaurar a versão anterior se a aplicação falhar depois de alterar pacotes.
+- Mantém a NVIDIA 610.57.04 como padrão da instalação limpa. A Atualização geral preserva a versão fixada e testa o DKMS antes de substituir kernels. A validação pós-transação verifica a versão e o kernel de cada módulo NVIDIA.
+- Mostra a versão do Codex na lista de desinstalação e identifica instalações parciais pelo atalho ou pelos arquivos do aplicativo, preservando os dados do usuário.
+
 ## 3.16.2 — 2026-11-17
 
 - Corrige a memória de janelas no formato do KWin 6.8: preserva General/Order, prioridade, identificadores e regras pessoais. O auxiliar antigo podia introduzir uma lista General/rules incompleta; a migração nativa então descartava grupos não listados. Mantém compatibilidade com o formato legado e inclui todos os grupos existentes antes de uma migração, com proteção contra gravação concorrente do KWin.

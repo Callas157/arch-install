@@ -9,6 +9,13 @@ verify_only=0
 stage=$(mktemp -d /var/tmp/callas-kernel.XXXXXXXX)
 status=0
 declare -A installed_releases
+nvidia_version=''
+if [[ -r /etc/callas-nvidia-version ]]; then
+  nvidia_version=$(< /etc/callas-nvidia-version)
+  if [[ ${CALLAS_KERNEL_UPDATE_CONTEXT:-} == nvidia-selection ]]; then
+    nvidia_version=${CALLAS_NVIDIA_TARGET:?Versão NVIDIA selecionada ausente}
+  fi
+fi
 exec 3>&1 4>&2
 # Keep diagnostics even when an unexpected command aborts the check. The
 # root-only last log also survives a failure of the normal log exporter.
@@ -52,7 +59,7 @@ falha() {
   fi
   pacman -Q linux linux-lts linux-headers linux-lts-headers || falha 'Pacote de kernel ou headers obrigatório ausente.'
   if [[ -r /etc/callas-nvidia-version ]]; then
-    printf 'NVIDIA preservada na versão: %s\n' "$(< /etc/callas-nvidia-version)"
+    printf 'NVIDIA preservada na versão: %s\n' "$nvidia_version"
     pacman -Q nvidia-open-dkms nvidia-utils lib32-nvidia-utils || falha 'A pilha NVIDIA está incompleta.'
   fi
   for kernel in linux linux-lts; do
@@ -70,7 +77,16 @@ falha() {
         dkms autoinstall -k "$release" || falha "DKMS não conseguiu preparar os módulos para $kernel ($release)."
       fi
       if [[ -r /etc/callas-nvidia-version ]]; then
-        modinfo -k "$release" nvidia >/dev/null || falha "Módulo NVIDIA ausente para $kernel ($release)."
+        for module in nvidia nvidia-modeset nvidia-uvm nvidia-drm; do
+          if ! version=$(modinfo -k "$release" -F version "$module"); then
+            falha "Módulo NVIDIA ausente para $kernel ($release): $module."
+          elif [[ $version != "$nvidia_version" ]]; then
+            falha "Versão incorreta de $module para $kernel ($release): $version; esperada $nvidia_version."
+          elif ! vermagic=$(modinfo -k "$release" -F vermagic "$module") ||
+               [[ ${vermagic%% *} != "$release" ]]; then
+            falha "Módulo $module compilado para outro kernel: $kernel ($release)."
+          fi
+        done
       fi
       if pacman -Qq xone-dkms >/dev/null 2>&1; then
         modinfo -k "$release" xone-dongle >/dev/null || falha "Módulo xone ausente para $kernel ($release)."

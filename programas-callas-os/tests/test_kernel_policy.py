@@ -20,6 +20,46 @@ class KernelPolicyTests(unittest.TestCase):
         spec.loader.exec_module(module)
         return module
 
+    def test_nvidia_catalog_only_offers_complete_signed_stacks(self):
+        policy = self.load()
+        def index(package):
+            return {'610.57.04': package + '-610',
+                    **({'620.70.06': package + '-620'} if package != 'lib32-nvidia-utils' else {})}
+        with patch.object(policy, 'archive_index', side_effect=index):
+            self.assertEqual(policy.driver_catalog(policy.DRIVER),
+                             {'610.57.04': [name + '-610' for name in policy.DRIVER]})
+
+    def test_nvidia_preflight_refuses_any_unrelated_target_before_build(self):
+        policy = self.load()
+        with patch.object(policy, 'installed_driver', return_value=dict.fromkeys(policy.DRIVER)), \
+                patch.object(policy, 'command') as command:
+            with self.assertRaisesRegex(RuntimeError, 'só pode alterar'):
+                policy.driver_preflight([*policy.DRIVER, 'linux'], '620.70.06', Path('/unused'))
+            command.assert_not_called()
+
+    def test_nvidia_failed_postcheck_rolls_back_original_packages(self):
+        policy = self.load()
+        old, new = '610.57.04', '620.70.06'
+        originals = {package: old + '-1' for package in policy.DRIVER}
+        changed = {package: new + '-1' for package in policy.DRIVER}
+        catalog = {version: [f'https://example.com/{name}-{version}-2-x86_64.pkg.tar.zst'
+                             for name in policy.DRIVER] for version in (old, new)}
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            marker = root / 'version'; marker.write_text(old)
+            with patch.object(policy, 'VERSION_FILE', marker), \
+                    patch.object(policy, 'DRIVER_LOCK', root / 'lock'), \
+                    patch.object(policy, 'check_hooks'), patch.object(policy, 'command'), \
+                    patch.object(policy, 'installed_driver', side_effect=[originals, changed]), \
+                    patch.object(policy, 'driver_catalog', return_value=catalog), \
+                    patch.object(policy, 'download_driver', side_effect=lambda urls, folder: list(urls)), \
+                    patch.object(policy, 'run_driver_transaction',
+                                 side_effect=[RuntimeError('boot falhou'), None]) as transaction:
+                with self.assertRaisesRegex(RuntimeError, 'boot falhou'):
+                    policy.select_driver(new)
+                self.assertEqual([call.args[1] for call in transaction.call_args_list], [new, old])
+                self.assertTrue(all('-610.57.04-1-x86_64' in url for url in transaction.call_args.args[0]))
+
     def test_non_general_modes_cannot_replace_either_kernel_or_headers(self):
         policy = self.load()
         for target in ('linux', 'linux-lts', 'linux-headers', 'linux-lts-headers', 'linux-zen'):

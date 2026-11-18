@@ -149,12 +149,16 @@ class UninstallTests(unittest.TestCase):
                 (base / name).mkdir(parents=True)
                 (base / name / 'fixture').write_text(name)
             executable = home / '.local/bin/callas-chat'; executable.parent.mkdir(parents=True)
-            executable.write_text('fixture')
+            package = base / 'app/callas_chat/__init__.py'
+            package.parent.mkdir()
+            package.write_text("__version__ = '1.3.3'\n")
             auth = home / '.codex/auth.json'; auth.parent.mkdir(); auth.write_text('private')
             with patch.object(helper.Path, 'home', return_value=home), \
                     patch.object(helper, 'data_home', return_value=data), \
                     patch.object(helper, 'user_active', return_value=False), \
                     patch.object(helper, 'refresh_menu'):
+                [codex] = [app for app in helper.user_apps() if app['kind'] == 'codex']
+                self.assertEqual(codex['version'], '1.3.3')
                 helper.remove_user('codex', 'callas-chat')
             self.assertFalse(executable.exists()); self.assertFalse((base / 'app').exists())
             self.assertEqual(auth.read_text(), 'private')
