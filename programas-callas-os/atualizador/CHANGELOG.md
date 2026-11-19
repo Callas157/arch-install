@@ -1,5 +1,10 @@
 # Histórico do Callas OS
 
+## 3.18.3 — 2026-11-19
+
+- Reorganiza a tela inicial da Central com mais espaço entre os botões e a ação Sair no rodapé.
+- Reúne os controles de detalhes e logs no painel de progresso. Os detalhes têm altura limitada e a tela pode rolar para manter o campo de resposta acessível em janelas menores.
+
 ## 3.18.2 — 2026-11-19
 
 - Corrige a montagem automática de partições GPT Microsoft Basic Data com NTFS ou exFAT e o atributo `0x8000000000000000`, que suprime a letra padrão no Windows. Os demais atributos continuam sujeitos à proteção existente, incluindo partições ocultas, somente leitura, de recuperação e reservadas.

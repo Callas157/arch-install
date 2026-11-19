@@ -925,6 +925,8 @@ class Window(QWidget):
             QPushButton:hover { background: #3e4c5d; border-color: #71b8f5; }
             QPushButton:pressed { background: #233548; }
             QPushButton:disabled { color: #7c8794; background: #282e36; }
+            QPushButton#homeAction { text-align: left; padding-left: 18px; }
+            QScrollArea#homeScroll { border: none; }
             QPushButton#primary { background: #286ba5; border-color: #559bce; }
             QProgressBar { border: none; background: #343e4b; border-radius: 5px;
                 height: 13px; text-align: center; }
@@ -948,43 +950,52 @@ class Window(QWidget):
         self.confirm_yes.clicked.connect(lambda: self.finish_confirmation(True))
         row.addWidget(self.confirm_cancel); row.addWidget(self.confirm_yes); confirmation.addLayout(row)
         self.pages.setCurrentWidget(self.home_page)
-        layout = QVBoxLayout(self.home_page)
-        layout.setContentsMargins(32, 25, 32, 24)
-        layout.setSpacing(16)
+        self.home_scroll = QScrollArea(objectName='homeScroll')
+        self.home_scroll.setWidgetResizable(True)
+        self.home_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        page_layout = QVBoxLayout(self.home_page)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.addWidget(self.home_scroll)
+        content = QWidget()
+        self.home_scroll.setWidget(content)
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(28, 20, 28, 20)
+        layout.setSpacing(14)
+        header = QHBoxLayout()
+        header.setSpacing(12)
         emblem = QLabel()
-        icon = option_icon('system-software-update')
-        emblem.setPixmap(icon.pixmap(56, 56))
-        emblem.setAlignment(Qt.AlignCenter)
-        layout.addWidget(emblem)
-        title = QLabel('Central Callas OS', objectName='title')
-        title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
-        subtitle = QLabel('Cuide do seu Callas OS em um só lugar', objectName='subtitle')
-        subtitle.setAlignment(Qt.AlignCenter)
-        layout.addWidget(subtitle)
+        emblem.setPixmap(option_icon('system-software-update').pixmap(32, 32))
+        header.addWidget(emblem)
+        header.addWidget(QLabel('Central Callas OS', objectName='title'))
+        header.addStretch()
+        layout.addLayout(header)
+
         self.home = QWidget()
         grid = QGridLayout(self.home)
-        grid.setSpacing(12)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(12)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
         self.buttons = []
         entries = (
-            ('Limpeza e manutenção', 'edit-clear', self.maintenance),
             ('Aplicativos nativos', 'applications-all', self.native_apps),
-            ('Monitores', 'video-display', self.monitors),
-            ('Atualizar geral', 'system-software-update', lambda: self.start('sistema')),
-            ('Callas OS Update', 'system-upgrade', lambda: self.start('callas')),
-            ('Codex', 'codex', self.codex),
+            ('Limpeza e manutenção', 'edit-clear', self.maintenance),
             ('Desinstalar aplicativos', 'edit-delete', self.uninstall_apps),
+            ('Monitores', 'video-display', self.monitors),
+            ('Codex', 'codex', self.codex),
             ('Driver NVIDIA', 'video-display', self.nvidia),
-            ('Sair', 'application-exit', self.close),
+            ('Callas OS Update', 'system-upgrade', lambda: self.start('callas')),
+            ('Atualizar geral', 'system-software-update', lambda: self.start('sistema')),
         )
         for i, (label, name, callback) in enumerate(entries):
             button = self.button(label, name, callback)
-            button.setMinimumSize(265, 68)
+            button.setObjectName('homeAction')
+            button.setMinimumHeight(54)
             grid.addWidget(button, i // 2, i % 2)
             self.buttons.append(button)
-        row = QHBoxLayout()
-        row.addStretch(); row.addWidget(self.home); row.addStretch()
-        layout.addLayout(row)
+        layout.addWidget(self.home)
+
         card = QFrame(objectName='card')
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(20, 18, 20, 18)
@@ -995,16 +1006,21 @@ class Window(QWidget):
         self.bar = QProgressBar()
         self.bar.setRange(0, 100); self.bar.setValue(0); self.bar.setTextVisible(False)
         card_layout.addWidget(self.stage); card_layout.addWidget(self.status); card_layout.addWidget(self.bar)
+        card_layout.setSpacing(10)
         layout.addWidget(card)
         self.details_button = self.button('Mostrar detalhes', 'view-list-details', self.toggle_details)
-        layout.addWidget(self.details_button, alignment=Qt.AlignHCenter)
+        actions = QHBoxLayout()
+        actions.addWidget(self.details_button)
+        actions.addWidget(self.button('Abrir logs', 'folder-open', self.open_logs))
+        actions.addStretch()
+        card_layout.addLayout(actions)
         self.details = QPlainTextEdit()
         self.details.setReadOnly(True)
         self.details.setMaximumBlockCount(5000)
         self.details.setFont(QFont('monospace', 10))
-        self.details.setMinimumHeight(160)
+        self.details.setFixedHeight(152)
         self.details.hide()
-        layout.addWidget(self.details, 1)
+        card_layout.addWidget(self.details)
         self.input_row = QWidget()
         il = QHBoxLayout(self.input_row); il.setContentsMargins(0, 0, 0, 0)
         self.response = QLineEdit()
@@ -1012,11 +1028,7 @@ class Window(QWidget):
         self.response.returnPressed.connect(self.send_response)
         il.addWidget(self.response)
         il.addWidget(self.button('Enviar resposta', 'go-next', self.send_response))
-        self.input_row.hide(); layout.addWidget(self.input_row)
-        layout.addStretch()
-        footer = QHBoxLayout()
-        footer.addWidget(self.button('Abrir logs', 'folder-open', self.open_logs))
-        footer.addStretch()
+        self.input_row.hide(); card_layout.addWidget(self.input_row)
         self.restart_panel = QWidget()
         rl = QVBoxLayout(self.restart_panel); rl.setContentsMargins(0, 0, 0, 0)
         rl.addWidget(QLabel('Atualização concluída. Deseja reiniciar agora?'))
@@ -1025,7 +1037,13 @@ class Window(QWidget):
         reboot.setObjectName('primary'); rr.addWidget(reboot)
         rr.addWidget(self.button('Mais tarde', 'appointment-soon', self.defer_reboot))
         rl.addLayout(rr)
-        self.restart_panel.hide(); footer.addWidget(self.restart_panel)
+        self.restart_panel.hide(); card_layout.addWidget(self.restart_panel)
+        layout.addStretch()
+        footer = QHBoxLayout()
+        footer.addStretch()
+        exit_button = self.button('Sair', 'application-exit', self.close)
+        footer.addWidget(exit_button)
+        self.buttons.append(exit_button)
         layout.addLayout(footer)
         self.timer = QTimer(self); self.timer.setInterval(150); self.timer.timeout.connect(self.poll)
 
@@ -1035,10 +1053,19 @@ class Window(QWidget):
         return button
 
     def toggle_details(self):
-        visible = not self.details.isVisible()
+        self.set_details_visible(self.details.isHidden())
+
+    def set_details_visible(self, visible):
         self.details.setVisible(visible)
-        self.input_row.setVisible(visible and self.process is not None)
+        self.input_row.setVisible(visible and self.process is not None and self.action != 'codex')
         self.details_button.setText('Ocultar detalhes' if visible else 'Mostrar detalhes')
+        if visible:
+            target = self.details if self.input_row.isHidden() else self.input_row
+            QTimer.singleShot(0, target, lambda: self.reveal_details(target))
+
+    def reveal_details(self, target):
+        if target.isVisible():
+            self.home_scroll.ensureWidgetVisible(target, 0, 8)
 
     def operation_busy(self):
         page = self.active_page
@@ -1147,13 +1174,12 @@ class Window(QWidget):
         self.notifier = QSocketNotifier(master, QSocketNotifier.Read, self)
         self.notifier.activated.connect(self.read_output)
         for button in self.buttons: button.setEnabled(False)
-        self.input_row.setVisible(self.details.isVisible())
-        if action in ('games', 'orphans') or action.startswith('nvidia:'):
-            self.details.show(); self.input_row.show(); self.details_button.setText('Ocultar detalhes')
+        show_details = (not self.details.isHidden() or action in ('games', 'orphans', 'codex')
+                        or action.startswith('nvidia:'))
+        self.set_details_visible(show_details)
         if action == 'codex':
             self.stage.setText('Instalando Codex')
             self.status.setText('Baixando o aplicativo e preparando o menu KDE. Acompanhe os detalhes.')
-            self.details.show(); self.input_row.hide(); self.details_button.setText('Ocultar detalhes')
         self.timer.start()
 
     def read_output(self, *_):
@@ -1218,11 +1244,11 @@ class Window(QWidget):
         elif code == 2 and self.action in ('nativos', 'flatpaks'):
             self.bar.setValue(0); self.stage.setText('Algumas atualizações ficaram pendentes')
             self.status.setText('Consulte os detalhes. Aplicativos podem aguardar a função Atualizar geral.')
-            self.details.show(); self.details_button.setText('Ocultar detalhes')
+            self.set_details_visible(True)
         else:
             self.bar.setValue(0); self.stage.setText('A operação não foi concluída')
             self.status.setText(f'Código {code}. Confira os detalhes; a autorização também pode ter sido cancelada.')
-            self.details.show(); self.details_button.setText('Ocultar detalhes')
+            self.set_details_visible(True)
 
     def defer_reboot(self):
         self.restart_panel.hide()
