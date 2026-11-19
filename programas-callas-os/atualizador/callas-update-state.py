@@ -39,7 +39,7 @@ REQUIRED['security'] += tuple('/usr/local/libexec/' + name for name in (
     'callas-nekofetch', 'callas-release', 'callas-logs', 'callas-kernel-check',
     'put-update', 'callas-storage', 'callas-maintenance'))
 REQUIRED['security'] += ('/usr/local/share/callas-os/default-app-icons.json', '/etc/pacman.d/hooks/95-callas-browser-defaults.hook')
-DEPENDENCIES['security'] += ('callas-widget.py', 'relogio-moderno.plasmoid')
+DEPENDENCIES['security'] += ('callas-widget.py', 'relogio-moderno.plasmoid', 'callas-automount.py')
 REQUIRED['security'] += ('/usr/local/libexec/callas-widget', '/usr/local/share/callas-os/relogio-moderno.plasmoid')
 REQUIRED['tools'] += tuple('/usr/local/libexec/' + name for name in (
     'callas-monitores', 'callas-janelas', 'callas-inicio-kde', 'callas-kde-desligamento-login'))

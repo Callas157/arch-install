@@ -53,6 +53,14 @@ class IncrementalTests(unittest.TestCase):
     (stage/'callas-janelas.py').write_text((stage/'callas-janelas.py').read_text()+'\n# new window fix\n')
     self.assertEqual({p for p in state.DEPENDENCIES if state.needed(p,stage,user)},{'tools','session'})
     self.assertTrue(state.needed('boot',stage,user,force=True))
+ def test_automount_helper_changes_only_invalidate_security_phase(self):
+  with tempfile.TemporaryDirectory() as temp:
+   root=Path(temp);stage=self.stage(root);user=pwd.getpwuid(os.getuid()).pw_name
+   with patch.object(state,'STATE',root/'receipts'),patch.object(state,'REQUIRED',{k:() for k in state.DEPENDENCIES}):
+    for phase in state.DEPENDENCIES:state.complete(phase,stage,user)
+    helper=stage/'callas-automount.py'
+    helper.write_text(helper.read_text()+'\n# automount fix\n')
+    self.assertEqual([phase for phase in state.DEPENDENCIES if state.needed(phase,stage,user)],['security'])
  def test_changed_artwork_or_missing_required_file_invalidates_only_its_phase(self):
   with tempfile.TemporaryDirectory() as temp:
    root=Path(temp);stage=self.stage(root);user=pwd.getpwuid(os.getuid()).pw_name

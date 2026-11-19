@@ -1,5 +1,13 @@
 # Histórico do Callas OS
 
+## 3.18.0 — 2026-11-18
+
+- Configura a montagem de partições NTFS, exFAT e ext4 elegíveis em discos internos SATA e NVMe, usando o UUID e as permissões da máquina. Preserva os discos do sistema, os volumes removíveis e as entradas de montagem existentes.
+- Mantém o caminho de volumes montados pelo Dolphin na sessão atual, inclusive para bibliotecas Steam que já usam esse caminho. Partições ainda desmontadas recebem um caminho em `/mnt/callas-<uuid>`. A montagem entra em vigor na próxima inicialização. A Steam continua gerenciando o cadastro de novas bibliotecas.
+- Distribui o mesmo auxiliar verificado pela opção 5 do Callas OS Update e pela instalação limpa. A atualização inclui `/etc/fstab` no backup de configurações, valida a tabela candidata antes da substituição e mantém a inicialização possível se o disco secundário faltar.
+
+Validação: 406 testes offline executados, 405 aprovados e um opcional ignorado, com regressões de seleção de discos, preservação de montagens, reaplicação e falha de validação. Sintaxe de 96 arquivos Python e nove Bash conferida. Inventário real apenas de leitura e tabela candidata separada validada pelo findmnt. Boot e instalação em outro PC ainda não verificados.
+
 ## 3.17.0 — 2026-11-18
 
 - Adiciona à Central a opção Driver NVIDIA, com versões da pilha Open DKMS publicadas no arquivo oficial do Arch. A troca manual valida pacotes assinados, a GPU e a compilação nos kernels padrão e LTS antes da transação. O seletor verifica o boot antes de confirmar a fixação e tenta restaurar a versão anterior se a aplicação falhar depois de alterar pacotes.

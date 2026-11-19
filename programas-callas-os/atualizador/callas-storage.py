@@ -303,7 +303,7 @@ def snapshot(backups, kind, user):
     if kind == '--security':
         return backups.create('Seguranca', ['/etc/pacman.conf', '/etc/sudoers.d', '/etc/sysctl.d/60-callas-security.conf'])
     if kind == '--config':
-        sources = ['/etc/callas-os/release.json', '/etc/default/grub', '/etc/grub.d/09_callas', '/boot/grub/grub.cfg', '/etc/xdg/kicker-extra-favoritesrc',
+        sources = ['/etc/fstab', '/etc/callas-os/release.json', '/etc/default/grub', '/etc/grub.d/09_callas', '/boot/grub/grub.cfg', '/etc/xdg/kicker-extra-favoritesrc',
                    '/etc/xdg/autostart/callas-limpar-atalhos-desktop.desktop',
                    home / '.config/powerdevilrc', home / '.config/ksmserverrc',
                    '/etc/brave/policies/managed/callas-bonjourr.json',

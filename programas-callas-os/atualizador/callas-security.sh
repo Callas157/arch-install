@@ -8,7 +8,7 @@ usuario=${SUDO_USER:-${1:-}}
 [[ -n $usuario && $usuario != root ]] && id "$usuario" >/dev/null || exit 1
 stage=${CALLAS_RELEASE_DIR:?Arquivos de atualização não preparados}
 [[ -d $stage && ! -L $stage && $(stat -c %u "$stage") == 0 ]] || exit 1
-for name in callas-widget.py relogio-moderno.plasmoid; do
+for name in callas-widget.py relogio-moderno.plasmoid callas-automount.py; do
   [[ -f $stage/$name && ! -L $stage/$name && $(stat -c %u "$stage/$name") == 0 ]] || {
     echo "Arquivo verificado ausente/inseguro: $name" >&2; exit 1;
   }
@@ -407,6 +407,9 @@ SPOTIFY_HOOK
     --gui "$stage/callas-update-gui.py"
   if [[ ${2:-} != --config-update ]]; then
     /usr/local/libexec/callas-kernel-check --verify-only
+  fi
+  if [[ ${2:-} == --installation || ${2:-} == --config-update ]]; then
+    python "$stage/callas-automount.py" "$usuario"
   fi
   printf '%s\n' '2026.11.11.security3' > /etc/callas-os/security-version
   printf 'Segurança aplicada. NVIDIA e senhas preservadas.\n'
