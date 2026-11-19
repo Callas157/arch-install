@@ -17,6 +17,7 @@ spec.loader.exec_module(automount)
 
 LINUX_DATA = '0fc63daf-8483-4772-8e79-3d69d8477de4'
 WINDOWS_DATA = 'ebd0a0a2-b9e5-4433-87c0-68b6b72699c7'
+WINDOWS_RESERVED = 'e3c9e316-0b5c-4db8-817d-f92df00215ae'
 WINDOWS_RECOVERY = 'de94bba4-06d1-4d40-a16a-bfd50179d6ac'
 EFI = 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b'
 ROOT_UUID = '0b93809a-2b93-4ed9-9f4e-a306b214efe8'
@@ -148,6 +149,58 @@ class PlanMountTests(unittest.TestCase):
         [(target, row)] = self.plan(nvme)
         self.assertEqual(target, active_path)
         self.assertEqual(row.split()[:3], ['UUID=' + data_uuid, r'/run/media/ana/Jogos\040NVMe', 'xfs'])
+
+    def test_sata_system_and_windows_gpt_nvme_no_drive_letter(self):
+        self.root = '/dev/sda2'
+        self.system = disk(
+            'sda',
+            partition('sda1', 'vfat', '9921-6A78', EFI, mountpoints=['/boot']),
+            partition('sda2', 'ext4', ROOT_UUID, LINUX_DATA, mountpoints=['/']),
+            pttype='gpt',
+        )
+        flags = '0x8000000000000000'
+        files = partition('nvme0n1p3', 'ntfs', NTFS_UUID, WINDOWS_DATA, partflags=flags)
+        secondary = disk(
+            'nvme0n1',
+            partition('nvme0n1p1', 'vfat', '4C04-67C7', EFI, partflags=flags),
+            partition('nvme0n1p2', None, None, WINDOWS_RESERVED, partflags=flags),
+            files,
+            tran='nvme', pttype='gpt',
+        )
+        previous_target = '/run/media/ana/' + NTFS_UUID
+        for mounts, expected_target in (([], self.target), ([previous_target], previous_target)):
+            with self.subTest(mounts=mounts):
+                files['mountpoints'] = mounts
+                planned = self.plan(secondary)
+                self.assertEqual([target for target, _ in planned], [expected_target])
+                self.assertEqual(planned[0][1].split()[:3],
+                                 ['UUID=' + NTFS_UUID, expected_target, 'ntfs3'])
+
+    def test_no_drive_letter_flag_is_specific_to_microsoft_data_filesystems(self):
+        flags = '0X8000000000000000'
+        for fstype, expected_type in (('ntfs', 'ntfs3'), ('ntfs3', 'ntfs3'), ('exfat', 'exfat')):
+            with self.subTest(fstype=fstype):
+                data = partition('sda1', fstype, NTFS_UUID, WINDOWS_DATA, partflags=flags)
+                planned = self.plan(disk('sda', data, pttype='gpt'))
+                self.assertEqual([row.split()[2] for _, row in planned], [expected_type])
+        for fstype, guid in (('ntfs', LINUX_DATA), ('ntfs', WINDOWS_RESERVED),
+                             ('ext4', WINDOWS_DATA), ('xfs', WINDOWS_DATA), ('ntfs', '0x7')):
+            with self.subTest(fstype=fstype, guid=guid):
+                data = partition('sda1', fstype, NTFS_UUID, guid, partflags=flags)
+                pttype = 'dos' if guid == '0x7' else 'gpt'
+                self.assertEqual(self.plan(disk('sda', data, pttype=pttype)), [])
+
+    def test_no_drive_letter_flag_does_not_override_other_gpt_attributes(self):
+        restricted = {
+            'required': 0, 'no block IO': 1, 'legacy boot': 2, 'unknown': 7,
+            'read-only': 60, 'shadow copy': 61, 'hidden': 62,
+        }
+        for attribute, bit in restricted.items():
+            for bits in (1 << bit, (1 << 63) | (1 << bit)):
+                with self.subTest(attribute=attribute, flags=hex(bits)):
+                    data = partition('sda1', 'ntfs', NTFS_UUID, WINDOWS_DATA,
+                                     partflags=f'0x{bits:016x}')
+                    self.assertEqual(self.plan(disk('sda', data, pttype='gpt')), [])
 
     def test_raw_nvme_filesystem_and_stale_partition_table(self):
         raw = disk('nvme1n1', tran='nvme', hotplug=True, fstype='ntfs', uuid=NTFS_UUID, pttype=None)

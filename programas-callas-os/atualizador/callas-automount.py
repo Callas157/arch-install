@@ -14,9 +14,11 @@ import tempfile
 
 FSTAB = Path('/etc/fstab')
 INTERNAL_TRANSPORTS = {'ata', 'sata', 'nvme'}
+MICROSOFT_BASIC_DATA = 'ebd0a0a2-b9e5-4433-87c0-68b6b72699c7'
+NO_DEFAULT_DRIVE_LETTER = '0x8000000000000000'
 DATA_PARTITIONS = {
     '0x7', '0x83',
-    'ebd0a0a2-b9e5-4433-87c0-68b6b72699c7',  # Microsoft basic data
+    MICROSOFT_BASIC_DATA,
     '0fc63daf-8483-4772-8e79-3d69d8477de4',  # Linux filesystem
 }
 FILESYSTEMS = {
@@ -64,10 +66,17 @@ def fstab_path(path):
 
 def supported_partition(partition):
     parttype = (partition.get('parttype') or '').lower()
-    flags = str(partition.get('partflags') or '')
-    return (partition.get('type') == 'part' and parttype in DATA_PARTITIONS
-            and re.fullmatch(r'(?:0[xX])?0*', flags)
-            and not partition.get('children'))
+    if (partition.get('type') != 'part' or parttype not in DATA_PARTITIONS
+            or partition.get('children')):
+        return False
+    flags = str(partition.get('partflags') or '').lower()
+    if re.fullmatch(r'(?:0x)?0*', flags):
+        return True
+    # Linux mounts by path and need not apply a Windows drive letter policy.
+    # Other GPT attributes, including combinations with this bit, stay excluded.
+    return (parttype == MICROSOFT_BASIC_DATA
+            and partition.get('fstype') in ('ntfs', 'ntfs3', 'exfat')
+            and flags == NO_DEFAULT_DRIVE_LETTER)
 
 
 def plan_mounts(disks, root_source, configured, user, uid, gid, available_target, *, report=None):
@@ -128,7 +137,9 @@ def plan_mounts(disks, root_source, configured, user, uid, gid, available_target
         volumes = children if children or disk.get('pttype') else [disk]
         for volume in volumes:
             if volume is not disk and not supported_partition(volume):
-                skipped(volume, 'partição reservada ou camada de armazenamento não montada diretamente')
+                parttype = volume.get('parttype') or 'sem tipo'
+                flags = volume.get('partflags') or 'sem atributos'
+                skipped(volume, f'partição excluída pelo tipo, atributos ou camada ({parttype}; {flags})')
                 continue
             uuid = volume.get('uuid') or ''
             fstype = volume.get('fstype')

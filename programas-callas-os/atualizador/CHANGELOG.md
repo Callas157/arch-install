@@ -1,5 +1,12 @@
 # Histórico do Callas OS
 
+## 3.18.2 — 2026-11-19
+
+- Corrige a montagem automática de partições GPT Microsoft Basic Data com NTFS ou exFAT e o atributo `0x8000000000000000`, que suprime a letra padrão no Windows. Os demais atributos continuam sujeitos à proteção existente, incluindo partições ocultas, somente leitura, de recuperação e reservadas.
+- Permite configurar a montagem por UUID no Callas OS Update e na instalação limpa. Quando o Dolphin já montou o volume, preserva o caminho em uso. A Steam nativa pode recuperar a biblioteca existente na montagem persistente. O auxiliar passa a mostrar o tipo e os atributos de partições excluídas no log.
+
+Validação: 433 testes offline executados, 432 aprovados e um opcional ignorado. Sintaxe de 98 Python e nove Bash conferida. Em QEMU/KVM com kernel e udev reais, o cenário SATA de sistema e NVMe com EFI, partição reservada e dados NTFS reproduziu a exclusão na 3.18.1. Com a correção, apenas os dados receberam a montagem persistente por UUID, e o volume montou como ntfs3 no boot seguinte com o atributo GPT intacto. O outro PC físico ainda não foi verificado.
+
 ## 3.18.1 — 2026-11-19
 
 - Corrige a detecção de discos internos secundários com o sistema em SATA ou NVMe. Aceita disco interno marcado como hot-plug, sistema de arquivos diretamente no disco e partições de dados ao lado de partições reservadas. Inclui XFS e Btrfs de dispositivo único. Protege a origem do sistema, os volumes removíveis, os UUIDs ambíguos e as montagens configuradas pelo usuário.
