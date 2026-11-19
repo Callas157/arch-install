@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 
 HELPER = Path(__file__).resolve().parents[1] / 'atualizador/callas-automount.py'
@@ -99,7 +99,7 @@ class PlanMountTests(unittest.TestCase):
 
     def test_removable_and_unclassified_drives_are_not_selected(self):
         for properties in ({'tran': 'usb'}, {'tran': None}, {'rm': True},
-                           {'hotplug': True}, {'ro': True}):
+                           {'tran': 'nvme', 'rm': True, 'hotplug': True}, {'ro': True}):
             with self.subTest(properties=properties):
                 external = disk('sda', partition('sda1', 'ntfs', NTFS_UUID, '0x7'), **properties)
                 self.assertEqual(self.plan(external), [])
@@ -130,6 +130,62 @@ class PlanMountTests(unittest.TestCase):
         self.assertFalse(any(option.startswith(('uid=', 'gid=', 'umask=')) for option in entries['ext4']))
         self.assertTrue({'uid=1507', 'gid=1608'}.issubset(entries['exfat']))
 
+    def test_sata_system_and_hotplug_nvme_with_reserved_siblings(self):
+        self.root = '/dev/sda2'
+        self.system = disk('sda', partition('sda2', 'ext4', ROOT_UUID, LINUX_DATA, mountpoints=['/']))
+        data_uuid = '1557ea53-066c-450e-b104-d8399c7729f3'
+        active_path = '/run/media/ana/Jogos NVMe'
+        nvme = disk(
+            'nvme0n1',
+            partition('nvme0n1p1', 'vfat', '4C04-67C7', EFI),
+            partition('nvme0n1p2', 'ntfs', NTFS_UUID, WINDOWS_RECOVERY),
+            partition('nvme0n1p3', 'swap', 'bb4c0a53-6a7a-41a5-b5c6-f4b94d7ff5df',
+                      '0657fd6d-a4ab-43c4-84e5-0933c84b4f4f', mountpoints=['[SWAP]']),
+            partition('nvme0n1p4', 'xfs', data_uuid, LINUX_DATA,
+                      partflags='0x0000000000000000', mountpoints=[active_path]),
+            tran='nvme', hotplug=True, pttype='gpt',
+        )
+        [(target, row)] = self.plan(nvme)
+        self.assertEqual(target, active_path)
+        self.assertEqual(row.split()[:3], ['UUID=' + data_uuid, r'/run/media/ana/Jogos\040NVMe', 'xfs'])
+
+    def test_raw_nvme_filesystem_and_stale_partition_table(self):
+        raw = disk('nvme1n1', tran='nvme', hotplug=True, fstype='ntfs', uuid=NTFS_UUID, pttype=None)
+        [(target, row)] = self.plan(raw)
+        self.assertEqual(target, self.target)
+        self.assertEqual(row.split()[2], 'ntfs3')
+        self.assertEqual(self.plan(dict(raw, pttype='gpt')), [])
+
+    def test_single_device_btrfs_only_and_root_member_protection(self):
+        uuid = '753bdb13-9ba0-4fa2-8144-65ee70dbc117'
+        self.root = '/dev/sda2'
+        self.system = disk('sda', partition('sda2', 'ext4', ROOT_UUID, LINUX_DATA, mountpoints=['/']))
+        local = disk('sdb', partition('sdb1', 'btrfs', uuid, LINUX_DATA))
+        peer = disk('sdc', partition('sdc1', 'btrfs', uuid, LINUX_DATA))
+        [(target, row)] = self.plan(local)
+        self.assertEqual(target, '/mnt/callas-' + uuid)
+        self.assertEqual(row.split()[2], 'btrfs')
+        self.assertEqual(self.plan(local, peer), [])
+        self.system['children'][0].update(fstype='btrfs', uuid=uuid)
+        local['children'].append(partition('sdb2', 'ntfs', NTFS_UUID, WINDOWS_DATA))
+        self.assertEqual(self.plan(local), [])
+
+    def test_system_root_ancestry_across_encrypted_raid_members(self):
+        root = {'name': '/dev/mapper/system', 'type': 'crypt', 'uuid': ROOT_UUID, 'mountpoints': ['/']}
+        raid = {'name': '/dev/md0', 'type': 'raid1', 'children': [root]}
+        members = [
+            disk(f'sd{suffix}',
+                 partition(f'sd{suffix}1', 'linux_raid_member', ROOT_UUID, '0xfd', children=[raid]),
+                 partition(f'sd{suffix}2', 'ext4', str(index) + ROOT_UUID[1:], LINUX_DATA))
+            for index, suffix in enumerate('ab', 1)
+        ]
+        messages = []
+        secondary = disk('sdc', partition('sdc1', 'ntfs', NTFS_UUID, WINDOWS_DATA))
+        entries = automount.plan_mounts([*members, secondary], root['name'], [],
+                                        'ana', 1507, 1608, lambda *_: True, report=messages.append)
+        self.assertEqual([target for target, _ in entries], [self.target])
+        self.assertEqual(len([message for message in messages if 'montagem do sistema' in message]), 2)
+
 
 class ApplyMountTests(unittest.TestCase):
     def setUp(self):
@@ -155,10 +211,10 @@ class ApplyMountTests(unittest.TestCase):
             times = {name: getattr(metadata, name) for name in ('st_atime_ns', 'st_ctime_ns', 'st_mtime_ns')}
             return os.stat_result(fields, times)
 
-        def plan(*args):
+        def plan(*args, **kwargs):
             # Use real discovery. Redirect only its destination to the fixture.
             return [(str(self.target), line.replace(target, str(self.target)))
-                    for target, line in real_plan(*args)]
+                    for target, line in real_plan(*args, **kwargs)]
 
         self.enterContext(patch.object(automount, 'FSTAB', self.fstab))
         self.enterContext(patch.object(Path, 'lstat', root_owned))
@@ -168,7 +224,7 @@ class ApplyMountTests(unittest.TestCase):
         self.enterContext(patch.object(automount, 'inventory', side_effect=self.inventory))
         self.enterContext(patch.object(automount, 'available_target', return_value=True))
         self.enterContext(patch.object(automount, 'plan_mounts', side_effect=plan))
-        self.verify = self.enterContext(patch.object(automount.subprocess, 'run', side_effect=self.verify_fstab))
+        self.verify = self.enterContext(patch.object(automount, 'verify_candidate', side_effect=self.verify_fstab))
 
     def inventory(self, executable, *options):
         if executable == 'lsblk':
@@ -181,11 +237,8 @@ class ApplyMountTests(unittest.TestCase):
                                     if not line.startswith('#')]}
         self.fail(f'Unexpected inventory command: {executable} {options}')
 
-    def verify_fstab(self, command, *, check):
-        self.assertEqual(command[:3], ['findmnt', '--verify', '--tab-file'])
-        self.assertTrue(check)
+    def verify_fstab(self, staged):
         self.assertTrue(self.target.is_dir())
-        staged = Path(command[3])
         self.assertEqual(staged.parent, self.fstab.parent)
         self.assertNotEqual(staged, self.fstab)
         self.verified.append(staged.read_bytes())
@@ -209,9 +262,9 @@ class ApplyMountTests(unittest.TestCase):
     def test_invalid_candidate_leaves_existing_fstab_and_files_intact(self):
         before = self.fstab.stat().st_ino
 
-        def fail_verification(command, *, check):
-            self.verify_fstab(command, check=check)
-            raise subprocess.CalledProcessError(1, command)
+        def fail_verification(staged):
+            self.verify_fstab(staged)
+            raise subprocess.CalledProcessError(1, 'findmnt')
 
         self.verify.side_effect = fail_verification
         with self.assertRaises(subprocess.CalledProcessError):
@@ -223,8 +276,8 @@ class ApplyMountTests(unittest.TestCase):
     def test_concurrent_edit_after_validation_is_preserved(self):
         edited = self.previous + b'\n# another administrator\n'
 
-        def edit_during_verification(command, *, check):
-            self.verify_fstab(command, check=check)
+        def edit_during_verification(staged):
+            self.verify_fstab(staged)
             self.fstab.write_bytes(edited)
 
         self.verify.side_effect = edit_during_verification
@@ -232,6 +285,70 @@ class ApplyMountTests(unittest.TestCase):
             automount.apply('ana')
         self.assertEqual(self.fstab.read_bytes(), edited)
         self.assertCountEqual(self.directory.iterdir(), [self.fstab])
+
+
+class ExistingConfigurationTests(unittest.TestCase):
+    def test_missing_old_optional_mount_does_not_block_a_new_valid_one(self):
+        diagnostics = '/run/media/ana/Antigo\n   [E] unreachable on boot required target\n'
+        summary = '\n0 parse errors, 1 error, 0 warnings\n'
+        failed = subprocess.CompletedProcess('findmnt', 1, diagnostics, summary)
+        with patch.object(automount.subprocess, 'run', side_effect=[failed, failed]) as check:
+            automount.verify_candidate(Path('/etc/fstab.candidate'))
+        self.assertEqual([args[0][0][-1] for args in check.call_args_list],
+                         ['/etc/fstab.candidate', '/etc/fstab'])
+
+    def test_new_fstab_error_and_old_parse_error_are_rejected(self):
+        for candidate, original in (
+            ('0 parse errors, 1 error, 0 warnings', '0 parse errors, 0 errors, 0 warnings'),
+            ('1 parse error, 0 errors, 0 warnings', '1 parse error, 0 errors, 0 warnings'),
+        ):
+            with self.subTest(candidate=candidate), patch.object(
+                automount.subprocess, 'run', side_effect=[
+                    subprocess.CompletedProcess('findmnt', 1, '', candidate),
+                    subprocess.CompletedProcess('findmnt', 1, '', original),
+                ]
+            ), self.assertRaises(subprocess.CalledProcessError):
+                automount.verify_candidate(Path('/etc/fstab.candidate'))
+
+    def test_existing_callas_mounts_can_be_activated_but_noauto_is_preserved(self):
+        target = '/mnt/callas-' + NTFS_UUID.lower()
+        options = 'nosuid,nodev,nofail,x-systemd.device-timeout=10s,x-systemd.before=display-manager.service'
+        disks = [disk('sda', partition('sda1', 'ntfs', NTFS_UUID, '0x7'))]
+        sources = automount.devices_by_uuid(automount.device_nodes(disks))
+        entry = {'source': '/dev/sda1', 'target': target, 'options': options}
+        self.assertEqual(automount.managed_mounts([entry], sources), {target: '/dev/sda1'})
+        self.assertEqual(automount.managed_mounts([dict(entry, options=options + ',noauto')], sources), {})
+        self.assertEqual(automount.managed_mounts([dict(entry, target='/mnt/pessoal')], sources), {})
+        self.assertEqual(automount.managed_mounts([entry], {NTFS_UUID.lower(): {'/dev/sda1', '/dev/sdb1'}}), {})
+
+    def test_live_mount_skips_occupied_targets_and_devices_mounted_elsewhere(self):
+        active = {'filesystems': [
+            {'source': '/dev/sdb1', 'target': '/mnt/callas-occupied'},
+            {'source': '/dev/nvme1n1p1', 'target': '/run/media/ana/Jogos'},
+        ]}
+        mounts = {
+            '/mnt/callas-occupied': '/dev/sdc1',
+            '/mnt/callas-active-elsewhere': '/dev/nvme1n1p1',
+            '/mnt/callas-unused': '/dev/nvme1n1p2',
+        }
+        with patch.object(Path, 'is_dir', return_value=True), patch.object(
+            automount, 'inventory', return_value=active,
+        ), patch.object(automount, 'available_target', return_value=True), patch.object(
+            automount.subprocess, 'check_output', return_value='mnt-callas-unused.mount\n',
+        ) as escape, patch.object(
+            automount.subprocess, 'run', side_effect=[SimpleNamespace(returncode=1),
+                                                     SimpleNamespace(returncode=0),
+                                                     SimpleNamespace(returncode=0)],
+        ) as run:
+            automount.start_mounts(mounts)
+        self.assertEqual(run.call_args_list, [
+            call(['systemd-detect-virt', '--chroot', '--quiet']),
+            call(['systemctl', 'daemon-reload']),
+            call(['systemctl', 'start', '--', 'mnt-callas-unused.mount']),
+        ])
+        escape.assert_called_once_with(
+            ['systemd-escape', '--path', '--suffix=mount', '--', '/mnt/callas-unused'], text=True,
+        )
 
 
 if __name__ == '__main__':

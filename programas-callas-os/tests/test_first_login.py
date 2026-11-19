@@ -64,6 +64,30 @@ class FirstLoginTests(unittest.TestCase):
             self.assertEqual(self.launch('discord').call_count,1)
             self.assertEqual(self.launch('steam').call_count,1)
 
+    def test_steam_library_repair_precedes_steam_without_starting_in_first_boot(self):
+        self.configure(first=True)
+        actions = []
+        with patch.object(autostart.subprocess,'run',side_effect=lambda *a, **kw: actions.append('repair')) as repair, \
+             patch.object(autostart.os,'geteuid',return_value=1000), \
+             patch.object(autostart.os,'execvp',side_effect=lambda *a: actions.append(a[0])):
+            with patch.object(sys,'argv',['callas-autostart','steam','/usr/bin/steam']):
+                autostart.main()
+                repair.assert_not_called()
+                self.assertEqual(actions,[])
+                with patch.object(autostart,'boot_id',return_value='33333333-3333-4333-8333-333333333333'):
+                    autostart.main()
+            repair.assert_called_once_with(['/usr/local/libexec/callas-steam-libraries'],check=True,timeout=8)
+            self.assertEqual(actions,['repair','/usr/bin/steam'])
+            with patch.object(sys,'argv',['callas-autostart','discord','/usr/bin/discord']):
+                autostart.main()
+            self.assertEqual(actions,['repair','/usr/bin/steam','/usr/bin/discord'])
+
+    def test_steam_launch_survives_missing_or_stalled_library_helper(self):
+        for failure in (FileNotFoundError(), subprocess.TimeoutExpired('repair',8),
+                        subprocess.CalledProcessError(1,'repair')):
+            with self.subTest(failure=failure), patch.object(autostart.subprocess,'run',side_effect=failure):
+                self.launch('steam').assert_called_once_with('/usr/bin/steam',['/usr/bin/steam','-silent'])
+
     def test_boot_id_read_failure_never_launches_automatically(self):
         self.configure(first=True)
         with patch.object(autostart, 'boot_id', side_effect=OSError('boot ID unavailable')):

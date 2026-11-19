@@ -7,6 +7,7 @@ existing installations without pending markers are never armed by migration.
 import fcntl
 import os
 from pathlib import Path
+import subprocess
 import sys
 import uuid
 
@@ -58,7 +59,16 @@ def main():
     if os.geteuid() == 0 or len(sys.argv) < 3:
         raise ValueError('Uso interno do autostart do usuário')
     app, command = sys.argv[1], sys.argv[2:]
-    if not skip_first_start(app): os.execvp(command[0], command)
+    if skip_first_start(app):
+        return
+    if app == 'steam':
+        try:
+            subprocess.run(['/usr/local/libexec/callas-steam-libraries'], check=True, timeout=8)
+        except FileNotFoundError:
+            pass
+        except (OSError, subprocess.SubprocessError) as error:
+            print('Bibliotecas Steam do Callas OS: ' + str(error), file=sys.stderr)
+    os.execvp(command[0], command)
 
 
 if __name__ == '__main__':

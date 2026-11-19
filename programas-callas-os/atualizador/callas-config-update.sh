@@ -125,24 +125,28 @@ forcar=0
 [[ ${1:-} != --force ]] || forcar=1
 # Deploy verified helpers cheaply; policy/package/boot work is checkpointed below.
 /usr/bin/bash "$CALLAS_RELEASE_DIR/callas-security.sh" "$usuario" --helpers-only
-python "$CALLAS_RELEASE_DIR/callas-apps.py" --scan
 state_helper=(python "$CALLAS_RELEASE_DIR/callas-update-state.py")
 force_args=()
 (( ! forcar )) || force_args=(--force)
 declare -A execute
 has_work=0
+backup_created=0
 printf 'Verificando etapas alteradas e pendências; etapas concluídas serão preservadas.\n'
-for phase in security apps tools boot flatpaks browser desktop session; do
+plan_phase() {
+  local phase=$1 code
   if "${state_helper[@]}" --needed "$phase" "$CALLAS_RELEASE_DIR" "$usuario" "${force_args[@]}"; then
     execute[$phase]=1; has_work=1
   else
     code=$?; [[ $code == 1 ]] || erro "Não consegui planejar a etapa $phase."
     execute[$phase]=0
   fi
-done
-if (( has_work )); then
-  python "$CALLAS_RELEASE_DIR/callas-storage.py" --config "$usuario"
-fi
+}
+backup_config() {
+  if (( ! backup_created )); then
+    python "$CALLAS_RELEASE_DIR/callas-storage.py" --config "$usuario"
+    backup_created=1
+  fi
+}
 phase_needed() {
   if [[ ${execute[$1]} == 1 ]]; then
     printf '\n==> Aplicando etapa alterada: %s\n' "$1"
@@ -152,6 +156,25 @@ phase_needed() {
   return 1
 }
 phase_done() { "${state_helper[@]}" --complete "$1" "$CALLAS_RELEASE_DIR" "$usuario"; }
+
+plan_phase storage
+# CALLAS_PHASE_BEGIN storage
+if phase_needed storage; then
+  backup_config
+  python "$CALLAS_RELEASE_DIR/callas-automount.py" "$usuario" --live
+  como_usuario /usr/bin/timeout 12s /usr/local/libexec/callas-steam-libraries ||
+    aviso 'A Steam poderá verificar as bibliotecas no próximo login.'
+  phase_done storage
+fi
+# CALLAS_PHASE_END storage
+
+python "$CALLAS_RELEASE_DIR/callas-apps.py" --scan
+for phase in security apps tools boot flatpaks browser desktop session; do
+  plan_phase "$phase"
+done
+if (( has_work )); then
+  backup_config
+fi
 asset() {
   local result
   result=$("${state_helper[@]}" --asset "$CALLAS_RELEASE_DIR" "$1" "$2") || erro "Não consegui verificar/baixar o asset $1."

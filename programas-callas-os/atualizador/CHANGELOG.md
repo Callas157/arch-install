@@ -1,5 +1,13 @@
 # Histórico do Callas OS
 
+## 3.18.1 — 2026-11-19
+
+- Corrige a detecção de discos internos secundários com o sistema em SATA ou NVMe. Aceita disco interno marcado como hot-plug, sistema de arquivos diretamente no disco e partições de dados ao lado de partições reservadas. Inclui XFS e Btrfs de dispositivo único. Protege a origem do sistema, os volumes removíveis, os UUIDs ambíguos e as montagens configuradas pelo usuário.
+- Aplica a montagem de armazenamento pelo Update antes das etapas de aplicativos, com backup de `/etc/fstab`. Em uma sessão ativa, tenta montar os novos destinos livres e reaplicar os destinos UUID criados pela 3.18.0. Mantém o caminho de uma montagem do Dolphin já em uso e registra no log por que cada volume foi preservado ou descartado.
+- Recupera bibliotecas já existentes da Steam nativa pelos arquivos que identificam os jogos instalados. Restaura referências que ficaram com o caminho antigo e registra bibliotecas ausentes no catálogo quando pode identificá-las, como usuário e antes da abertura da Steam. Mantém os arquivos dos jogos, a biblioteca principal e a política do primeiro boot. Instalação limpa e Callas OS Update usam os mesmos auxiliares verificados.
+
+Validação: 430 testes offline executados, 429 aprovados e um opcional ignorado. Sintaxe de 98 Python e nove Bash conferida. Em dois boots QEMU/KVM com kernel Arch 7.2.15 e udev reais, o auxiliar protegeu o SATA de sistema e montou o NVMe GPT de jogos por UUID no boot seguinte, com unidade produzida pelo gerador real do systemd. A Steam foi exercitada com catálogos e jogos de teste, sem abrir o cliente na VM. O outro PC físico e sua sessão KDE ainda não foram verificados.
+
 ## 3.18.0 — 2026-11-18
 
 - Configura a montagem de partições NTFS, exFAT e ext4 elegíveis em discos internos SATA e NVMe, usando o UUID e as permissões da máquina. Preserva os discos do sistema, os volumes removíveis e as entradas de montagem existentes.

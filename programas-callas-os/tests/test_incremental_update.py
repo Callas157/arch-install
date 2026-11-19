@@ -53,14 +53,64 @@ class IncrementalTests(unittest.TestCase):
     (stage/'callas-janelas.py').write_text((stage/'callas-janelas.py').read_text()+'\n# new window fix\n')
     self.assertEqual({p for p in state.DEPENDENCIES if state.needed(p,stage,user)},{'tools','session'})
     self.assertTrue(state.needed('boot',stage,user,force=True))
- def test_automount_helper_changes_only_invalidate_security_phase(self):
+ def test_automount_helper_changes_only_invalidate_storage_phase(self):
   with tempfile.TemporaryDirectory() as temp:
    root=Path(temp);stage=self.stage(root);user=pwd.getpwuid(os.getuid()).pw_name
    with patch.object(state,'STATE',root/'receipts'),patch.object(state,'REQUIRED',{k:() for k in state.DEPENDENCIES}):
     for phase in state.DEPENDENCIES:state.complete(phase,stage,user)
     helper=stage/'callas-automount.py'
     helper.write_text(helper.read_text()+'\n# automount fix\n')
-    self.assertEqual([phase for phase in state.DEPENDENCIES if state.needed(phase,stage,user)],['security'])
+    self.assertEqual([phase for phase in state.DEPENDENCIES if state.needed(phase,stage,user)],['storage'])
+ def test_storage_migration_runs_after_backup_before_package_scan(self):
+  text=(UP/'callas-config-update.sh').read_text()
+  storage=text.split('state_helper=(python',1)[1].split('asset() {',1)[0].split('\n',1)[1]
+  fixture=r'''set -Eeuo pipefail
+usuario=fixture
+CALLAS_RELEASE_DIR=/fixture
+forcar=0
+state_helper=(state_tracker)
+state_tracker() {
+  case "$1:$2" in
+    --needed:storage) [[ $STORAGE_NEEDED == 1 ]] ;;
+    --needed:security) return 0 ;;
+    --needed:*) return 1 ;;
+    --complete:storage) printf 'receipt\n' ;;
+    *) return 99 ;;
+  esac
+}
+python() {
+  case "$1:$2:${3:-}" in
+    /fixture/callas-storage.py:--config:fixture) printf 'backup\n' ;;
+    /fixture/callas-automount.py:fixture:--live)
+      printf 'mount\n'; return "$MOUNT_STATUS" ;;
+    /fixture/callas-apps.py:--scan:) printf 'scan\n'; return "$SCAN_STATUS" ;;
+    *) return 99 ;;
+  esac
+}
+como_usuario() {
+  [[ $# == 3 && $1 == /usr/bin/timeout && $2 == 12s &&
+     $3 == /usr/local/libexec/callas-steam-libraries ]] || return 99
+  printf 'steam como usuario\n'
+  return "$STEAM_STATUS"
+}
+erro() { exit 99; }
+aviso() { printf 'tentativa no próximo login\n'; }
+'''
+  cases=(
+   (1,0,0,0,0,['backup','mount','steam como usuario','receipt','scan']),
+   (1,0,0,1,0,['backup','mount','steam como usuario','tentativa no próximo login','receipt','scan']),
+   (1,4,0,0,4,['backup','mount']),
+   (1,0,5,0,5,['backup','mount','steam como usuario','receipt','scan']),
+   (0,0,0,0,0,['scan','backup']),
+  )
+  markers={'backup','mount','steam como usuario','tentativa no próximo login','receipt','scan'}
+  for needed,mount,scan,steam,status,expected in cases:
+   with self.subTest(needed=needed,mount=mount,scan=scan,steam=steam):
+    result=subprocess.run(['bash','-c',fixture+storage],capture_output=True,text=True,
+      env=dict(os.environ,STORAGE_NEEDED=str(needed),MOUNT_STATUS=str(mount),
+               SCAN_STATUS=str(scan),STEAM_STATUS=str(steam)))
+    self.assertEqual(result.returncode,status,result.stdout+result.stderr)
+    self.assertEqual([line for line in result.stdout.splitlines() if line in markers],expected)
  def test_changed_artwork_or_missing_required_file_invalidates_only_its_phase(self):
   with tempfile.TemporaryDirectory() as temp:
    root=Path(temp);stage=self.stage(root);user=pwd.getpwuid(os.getuid()).pw_name

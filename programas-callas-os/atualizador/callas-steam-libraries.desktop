@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Bibliotecas Steam do Callas OS
+Exec=/usr/local/libexec/callas-steam-libraries
+TryExec=/usr/local/libexec/callas-steam-libraries
+OnlyShowIn=KDE;
+NoDisplay=true
+StartupNotify=false
