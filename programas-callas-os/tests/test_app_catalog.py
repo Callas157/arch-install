@@ -1,5 +1,6 @@
 """Application reconciliation with simulated package managers; no host mutations."""
 import importlib.util
+import json
 from pathlib import Path
 import tempfile
 import subprocess
@@ -23,6 +24,32 @@ class CatalogTests(unittest.TestCase):
 
     def entry(self, name, state='present', source='repo', phase='apps', **extra):
         return dict(name=name, state=state, source=source, phase=phase, **extra)
+
+    def test_gnome_disks_is_installed_and_offered_by_both_flows(self):
+        """GNOME Disks is installed by the shared catalog without a second installer list."""
+        entries = self.apps.catalog()
+        matches = [entry for entry in entries if entry['name'] == 'gnome-disk-utility']
+        self.assertEqual(matches, [self.entry('gnome-disk-utility')])
+
+        catalog_data = json.loads((UP / 'callas-apps.json').read_text())
+        defaults = [entry for entry in catalog_data['defaults']
+                    if entry['name'] == 'gnome-disk-utility']
+        self.assertEqual(len(defaults), 1)
+        self.assertEqual(defaults[0]['source'], 'repo')
+        self.assertEqual(defaults[0]['icon'], 'org.gnome.DiskUtility')
+
+        with patch.object(self.apps, 'removed_choices', return_value=set()):
+            pending = self.apps.plan(matches, {'native': {}, 'flatpak': {}}, [])
+            self.assertEqual([(item['action'], item['name']) for item in pending],
+                             [('install', 'gnome-disk-utility')])
+            self.assertEqual(self.apps.plan(matches,
+                             {'native': {'gnome-disk-utility': '46.1-3'}, 'flatpak': {}}, []), [])
+
+        security = (UP / 'callas-security.sh').read_text()
+        update = (UP / 'callas-config-update.sh').read_text()
+        self.assertIn('callas-apps.py\" --apply apps \"$usuario\"', security)
+        self.assertIn('callas-apps.py\" --apply apps \"$usuario\"', update)
+        self.assertIn('[[ ${2:-} == --installation ]]', security)
 
     def test_missing_present_retired_and_removed_from_catalog(self):
         entries = [self.entry('haruna'), self.entry('gpu-screen-recorder-gtk', 'absent')]
