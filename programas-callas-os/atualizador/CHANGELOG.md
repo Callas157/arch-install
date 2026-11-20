@@ -3,7 +3,7 @@
 ## 3.18.4 — 2026-11-20
 
 - Ao encontrar no log do kernel um volume NTFS marcado como `dirty`, permite tentar montá-lo automaticamente **somente para leitura** com `ntfs-3g`, respeitando o ponto de montagem já definido no `/etc/fstab` (inclusive `/mnt/hd-500`). Não altera UUID, tabela de partições, dados, `fstab` ou o estado `dirty`. Se não houver `ntfs-3g`, o destino não for seguro, ou o driver recusar, registra o motivo e mantém o volume sem montar.
-- Integra o resgate à opção 5, **Callas OS Update**, e instala/habilita um serviço de inicialização também no fluxo de instalação limpa. O serviço preserva o namespace de montagem compartilhado com o Dolphin e mantém o processo FUSE durante a sessão.
+- Integra o resgate à opção 5, **Callas OS Update**, e instala/habilita um serviço de inicialização também no fluxo de instalação limpa. Inclui `ntfs-3g` no catálogo compartilhado de aplicativos de sistema e repete a tentativa após preparar a dependência. O serviço preserva o namespace de montagem compartilhado com o Dolphin e mantém o processo FUSE durante a sessão.
 - A recuperação somente leitura não substitui `chkdsk` no Windows nem garante acesso a volumes fisicamente danificados. Não usa `force`, `ntfsfix -d` ou reparos automáticos destrutivos. Preserva a política de kernel/NVIDIA e as montagens existentes.
 
 Validação: testes offline de regressão adicionados em `tests/test_ntfs_rescue.py`, ainda sem execução em hardware/boot real nesta entrega; o HD afetado precisa de teste após a atualização.
