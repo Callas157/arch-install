@@ -1,5 +1,13 @@
 # Histórico do Callas OS
 
+## 3.19.0 — 2026-11-20
+
+- Adiciona **Discos (GNOME Disks)**, pacote oficial `gnome-disk-utility`, ao catálogo de aplicativos nativos do Callas OS (`present`, fase `apps`). É instalado na instalação limpa e também pela opção 5 — **Callas OS Update**, respeitando a proteção de kernel, headers, driver NVIDIA e a escolha de desinstalação do usuário.
+- Disponibiliza **Discos (GNOME Disks)** na lista de **Aplicativos padrão Callas OS** para restauração seletiva, usando o ícone `org.gnome.DiskUtility` do pacote. O aplicativo aparece no menu KDE por seu próprio arquivo desktop; não instala o desktop GNOME nem substitui Dolphin ou as configurações de montagem.
+- Nenhuma alteração automática de disco, partição, formato ou `/etc/fstab` foi introduzida. O HD500G permanece sob controle do usuário.
+
+Validação: teste de regressão do catálogo e dos caminhos compartilhados adicionada em `tests/test_app_catalog.py`; não houve execução de instalação, Update completo nem testes de hardware físico nesta entrega.
+
 ## 3.18.5 — 2026-11-20
 
 - Corrige o escopo da entrega 3.18.4: o resgate NTFS somente leitura **não corrige** uma partição marcada como `dirty` após queda de energia. Retira a tentativa automática de resgate do Callas OS Update e da inicialização, para não mascarar o erro nem confundir acesso temporário com reparação.
