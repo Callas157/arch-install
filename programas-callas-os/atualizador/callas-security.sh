@@ -89,13 +89,7 @@ ConditionPathExists=/etc/fstab
 Type=oneshot
 ExecStart=/usr/local/libexec/callas-automount --rescue
 TimeoutStartSec=90s
-NoNewPrivileges=yes
-PrivateTmp=yes
-ProtectHome=yes
-ProtectSystem=full
-ReadWritePaths=/mnt /media /run/media
-CapabilityBoundingSet=CAP_SYS_ADMIN CAP_DAC_READ_SEARCH CAP_DAC_OVERRIDE
-RestrictAddressFamilies=AF_UNIX
+# Keep the host mount namespace: FUSE mounts must remain visible in Dolphin.
 StandardOutput=journal
 StandardError=journal
 
