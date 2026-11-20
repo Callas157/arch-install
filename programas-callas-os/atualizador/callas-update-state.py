@@ -23,7 +23,7 @@ DEPENDENCIES={
     'session':('callas-game-logs.py','callas-inicio-kde.sh','callas-janelas.py','callas-nekofetch.sh','callas-version.py'),
 }
 REQUIRED={
-    'storage':('/usr/local/libexec/callas-steam-libraries','/etc/xdg/autostart/callas-steam-libraries.desktop','/usr/local/libexec/callas-automount','/etc/systemd/system/callas-ntfs-rescue.service'),
+    'storage':('/usr/local/libexec/callas-steam-libraries','/etc/xdg/autostart/callas-steam-libraries.desktop'),
     'security':('/usr/local/lib/callas-update/callas-update-gui.py','/usr/local/libexec/callas-update-gui-install','/usr/local/share/callas-os/baterias/callas_baterias.py','/usr/local/libexec/callas-baterias-install','/etc/systemd/user/callas-baterias.service','/etc/udev/rules.d/71-callas-baterias.rules','/etc/xdg/autostart/callas-baterias.desktop','/etc/callas-os/security-version','/etc/systemd/system/callas-game-events.service','/etc/sudoers.d/20-callas-security','/etc/udev/rules.d/70-callas-g920.rules','/etc/pacman.d/hooks/00-callas-kernel-policy.hook','/etc/pacman.d/hooks/00-callas-kernel-deny-remove.hook'),
     'apps':(),
     'tools':('/usr/local/share/applications/io.github.Callas157.Monitores.desktop','/etc/systemd/user/callas-janelas.service'),
