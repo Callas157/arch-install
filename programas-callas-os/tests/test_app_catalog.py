@@ -47,8 +47,8 @@ class CatalogTests(unittest.TestCase):
 
         security = (UP / 'callas-security.sh').read_text()
         update = (UP / 'callas-config-update.sh').read_text()
-        self.assertIn('callas-apps.py\" --apply apps \"$usuario\"', security)
-        self.assertIn('callas-apps.py\" --apply apps \"$usuario\"', update)
+        self.assertIn('callas-apps.py" --apply apps "$usuario"', security)
+        self.assertIn('callas-apps.py" --apply apps "$usuario"', update)
         self.assertIn('[[ ${2:-} == --installation ]]', security)
 
     def test_missing_present_retired_and_removed_from_catalog(self):
