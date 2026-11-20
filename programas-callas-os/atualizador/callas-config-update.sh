@@ -200,6 +200,12 @@ if phase_needed security; then
 fi
 # CALLAS_PHASE_END security
 
+# A security-phase catalog migration can install ntfs-3g after the first attempt.
+# Retry read-only access now, without requiring a restart or a second Update.
+if ! /usr/local/libexec/callas-automount --rescue; then
+  aviso 'O resgate NTFS continua pendente; preserve os dados e consulte o log.'
+fi
+
 # CALLAS_PHASE_BEGIN apps
 if phase_needed apps; then
 python "$CALLAS_RELEASE_DIR/callas-apps.py" --apply apps "$usuario"
