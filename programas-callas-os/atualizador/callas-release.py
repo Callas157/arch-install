@@ -40,6 +40,7 @@ FILES = (
     "programas-callas-os/atualizador/callas-automount.py",
     "programas-callas-os/atualizador/callas-steam-libraries.py",
     "programas-callas-os/atualizador/callas-steam-libraries.desktop",
+    "programas-callas-os/ferramentas/callas-hd500-reparar.sh",
     "programas-callas-os/atualizador/callas-maintenance.py",
     "programas-callas-os/atualizador/callas-native.py",
     "programas-callas-os/atualizador/callas-aur.py",
