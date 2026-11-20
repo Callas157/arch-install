@@ -8,12 +8,6 @@
       "phase": "security"
     },
     {
-      "name": "ntfs-3g",
-      "source": "repo",
-      "state": "present",
-      "phase": "security"
-    },
-    {
       "name": "gpu-screen-recorder-gtk",
       "source": "repo",
       "state": "absent",
