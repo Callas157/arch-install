@@ -348,11 +348,91 @@ def apply(user, live=False):
         start_mounts(mounts)
 
 
+
+def rescue_dirty_ntfs():
+    """Fail closed: offer read-only access to configured dirty NTFS data volumes.
+
+    Never repair metadata, clear the dirty bit, use force or change /etc/fstab.
+    Only an existing, protected data mountpoint is eligible.
+    """
+    if os.geteuid() != 0:
+        raise ValueError('Resgate NTFS requer root.')
+    records = inventory('findmnt', '--fstab', '--evaluate', '--json',
+                        '--list', '-o', 'SOURCE,TARGET,FSTYPE,OPTIONS').get('filesystems', [])
+    journal = subprocess.run(
+        ['journalctl', '--kernel', '--boot', '--no-pager', '--output=cat'],
+        capture_output=True, text=True, check=False,
+    )
+    if journal.returncode:
+        print('Resgate NTFS: sem mensagens verificáveis do kernel; nenhuma montagem forçada.')
+        return
+    driver = Path('/usr/bin/ntfs-3g')
+    for entry in records:
+        target = entry.get('target') or ''
+        source = entry.get('source') or ''
+        fstype = (entry.get('fstype') or '').lower()
+        options = (entry.get('options') or '').split(',')
+        if (fstype not in ('ntfs3', 'ntfs', 'ntfs-3g')
+                or 'noauto' in options
+                or not target.startswith(('/mnt/', '/media/', '/run/media/'))
+                or not source.startswith('/dev/')):
+            continue
+        mountpoint = Path(target)
+        device = Path(os.path.realpath(source))
+        if (not device.is_block_device() or device.name.startswith(('dm-', 'loop'))
+                or not available_target(target, False)):
+            # This also rejects symlinks, occupied/mounted or unprotected directories.
+            continue
+        if subprocess.run(['findmnt', '--kernel', '--mountpoint', target],
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+            continue
+        signature = subprocess.run(
+            ['blkid', '-s', 'TYPE', '-o', 'value', str(device)],
+            capture_output=True, text=True, check=False,
+        )
+        if signature.returncode or signature.stdout.strip() != 'ntfs':
+            continue
+        # A dirty NTFS marker for this exact device must be present in this boot.
+        pattern = r'ntfs3\(' + re.escape(device.name) + r'\):.*volume is dirty'
+        if not re.search(pattern, journal.stdout, re.IGNORECASE):
+            continue
+        if not driver.is_file():
+            print(f'Resgate NTFS: {device}: instale ntfs-3g; volume preservado.')
+            continue
+        owner_options = [
+            option for key in ('uid', 'gid')
+            for option in options
+            if re.fullmatch(key + r'=[0-9]{1,10}', option)
+        ]
+        mount_options = ','.join(['ro', 'nosuid', 'nodev', 'noexec', 'umask=0077', *owner_options])
+        print(f'Resgate NTFS: {device} inconsistente; tentando {target} SOMENTE LEITURA.')
+        attempt = subprocess.run(
+            ['/usr/bin/timeout', '15s', str(driver), '-o', mount_options,
+             str(device), target],
+            capture_output=True, text=True, check=False,
+        )
+        mounted = subprocess.run(
+            ['findmnt', '--kernel', '--mountpoint', target, '--noheadings', '-o', 'OPTIONS'],
+            capture_output=True, text=True, check=False,
+        )
+        mounted_options = set(mounted.stdout.strip().split(',')) if not mounted.returncode else set()
+        if attempt.returncode == 0 and 'ro' in mounted_options:
+            print(f'Resgate NTFS: {target} disponível SOMENTE PARA LEITURA. '
+                  'Copie seus dados e repare no Windows com chkdsk.')
+        else:
+            detail = (attempt.stderr or attempt.stdout).strip().replace('\n', ' ')[:350]
+            print(f'Resgate NTFS: {target} não recuperado: {detail or "montagem recusada"}. '
+                  'Sem alterações no volume; considere recuperação especializada.')
+
+
 if __name__ == '__main__':
     try:
-        if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and sys.argv[2] != '--live'):
-            raise ValueError('Uso interno: callas-automount USUARIO [--live]')
-        apply(sys.argv[1], live=len(sys.argv) == 3)
+        if sys.argv[1:] == ['--rescue']:
+            rescue_dirty_ntfs()
+        elif len(sys.argv) in (2, 3) and (len(sys.argv) == 2 or sys.argv[2] == '--live'):
+            apply(sys.argv[1], live=len(sys.argv) == 3)
+        else:
+            raise ValueError('Uso interno: callas-automount USUARIO [--live] | --rescue')
     except (KeyError, OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as error:
         print(f'Montagem automática: {error}', file=sys.stderr)
         sys.exit(1)
