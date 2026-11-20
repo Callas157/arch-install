@@ -87,6 +87,7 @@ ConditionPathExists=/etc/fstab
 
 [Service]
 Type=oneshot
+RemainAfterExit=yes
 ExecStart=/usr/local/libexec/callas-automount --rescue
 TimeoutStartSec=90s
 # Keep the host mount namespace: FUSE mounts must remain visible in Dolphin.
