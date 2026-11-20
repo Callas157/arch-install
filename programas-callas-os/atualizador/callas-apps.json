@@ -33,6 +33,12 @@
       "phase": "apps"
     },
     {
+      "name": "gnome-disk-utility",
+      "source": "repo",
+      "state": "present",
+      "phase": "apps"
+    },
+    {
       "name": "com.vysp3r.ProtonPlus",
       "source": "flatpak",
       "state": "present",
@@ -86,6 +92,13 @@
       "title": "Boxes",
       "icon": "org.gnome.Boxes",
       "description": "Máquinas virtuais"
+    },
+    {
+      "source": "repo",
+      "name": "gnome-disk-utility",
+      "title": "Discos (GNOME Disks)",
+      "icon": "org.gnome.DiskUtility",
+      "description": "Gerenciar discos, partições, formatação e integridade"
     },
     {
       "source": "repo",
