@@ -168,12 +168,6 @@ if phase_needed storage; then
 fi
 # CALLAS_PHASE_END storage
 
-# The mount may have failed earlier in this same boot after a power outage.
-# Do not touch the volume metadata: rescue is explicitly read-only.
-if ! /usr/local/libexec/callas-automount --rescue; then
-  aviso 'O resgate NTFS falhou. Confira o journal; nenhuma reparação forçada foi feita.'
-fi
-
 python "$CALLAS_RELEASE_DIR/callas-apps.py" --scan
 for phase in security apps tools boot flatpaks browser desktop session; do
   plan_phase "$phase"
@@ -199,12 +193,6 @@ if phase_needed security; then
   phase_done security
 fi
 # CALLAS_PHASE_END security
-
-# A security-phase catalog migration can install ntfs-3g after the first attempt.
-# Retry read-only access now, without requiring a restart or a second Update.
-if ! /usr/local/libexec/callas-automount --rescue; then
-  aviso 'O resgate NTFS continua pendente; preserve os dados e consulte o log.'
-fi
 
 # CALLAS_PHASE_BEGIN apps
 if phase_needed apps; then
