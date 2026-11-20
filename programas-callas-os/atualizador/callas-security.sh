@@ -75,34 +75,21 @@ for name in callas-discord.py callas-browser.py callas-defaults.py callas-uninst
   fi
 done
 
-# The same verified helper serves a clean installation and Callas OS Update.
-# Never change a user's fstab, clear the NTFS dirty flag or mount damaged data RW.
-install -o root -g root -m 0755 "$stage/callas-automount.py" /usr/local/libexec/callas-automount
-cat > /etc/systemd/system/callas-ntfs-rescue.service <<'CALLAS_NTFS_RESCUE_SERVICE'
-[Unit]
-Description=Callas OS - resgate somente leitura de NTFS inconsistente
-Documentation=man:ntfs-3g(8)
-After=local-fs.target
-ConditionPathExists=/etc/fstab
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/usr/local/libexec/callas-automount --rescue
-TimeoutStartSec=90s
-# Keep the host mount namespace: FUSE mounts must remain visible in Dolphin.
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-CALLAS_NTFS_RESCUE_SERVICE
-chmod 0644 /etc/systemd/system/callas-ntfs-rescue.service
-if systemd-detect-virt --chroot >/dev/null 2>&1; then
-  systemctl --root=/ enable callas-ntfs-rescue.service
-else
-  systemctl daemon-reload
-  systemctl enable callas-ntfs-rescue.service
+# Retire the 3.18.4 automatic read-only fallback. Do not stop an already
+# mounted FUSE volume in a running session; disable only future startups.
+rescue_unit=/etc/systemd/system/callas-ntfs-rescue.service
+if [[ -f $rescue_unit && ! -L $rescue_unit ]] &&
+   grep -Fqx 'ExecStart=/usr/local/libexec/callas-automount --rescue' "$rescue_unit"; then
+  if systemd-detect-virt --chroot >/dev/null 2>&1; then
+    systemctl --root=/ disable callas-ntfs-rescue.service || :
+  else
+    systemctl disable callas-ntfs-rescue.service || :
+  fi
+  rm -f -- "$rescue_unit"
+  if ! systemd-detect-virt --chroot >/dev/null 2>&1; then
+    systemctl daemon-reload || :
+  fi
+  printf 'Serviço antigo de resgate NTFS somente leitura desativado; o disco não foi alterado.\n'
 fi
 
 # Distribute the optional clock without installing a user applet on Update.
