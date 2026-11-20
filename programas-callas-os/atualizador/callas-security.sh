@@ -8,7 +8,7 @@ usuario=${SUDO_USER:-${1:-}}
 [[ -n $usuario && $usuario != root ]] && id "$usuario" >/dev/null || exit 1
 stage=${CALLAS_RELEASE_DIR:?Arquivos de atualização não preparados}
 [[ -d $stage && ! -L $stage && $(stat -c %u "$stage") == 0 ]] || exit 1
-for name in callas-widget.py relogio-moderno.plasmoid callas-automount.py callas-steam-libraries.py callas-steam-libraries.desktop; do
+for name in callas-widget.py relogio-moderno.plasmoid callas-automount.py callas-steam-libraries.py callas-steam-libraries.desktop callas-hd500-reparar.sh; do
   [[ -f $stage/$name && ! -L $stage/$name && $(stat -c %u "$stage/$name") == 0 ]] || {
     echo "Arquivo verificado ausente/inseguro: $name" >&2; exit 1;
   }
@@ -95,6 +95,10 @@ fi
 # Distribute the optional clock without installing a user applet on Update.
 install -o root -g root -m 0755 "$stage/callas-widget.py" /usr/local/libexec/callas-widget
 install -o root -g root -m 0644 "$stage/relogio-moderno.plasmoid" /usr/local/share/callas-os/relogio-moderno.plasmoid
+
+# This is an opt-in maintenance tool. Never execute it during setup or Update.
+# It requires explicit destructive confirmation from the Central and fresh root auth.
+install -o root -g root -m 0755 "$stage/callas-hd500-reparar.sh" /usr/local/libexec/callas-hd500-reparar
 
 # Read /etc/fstab and reconcile Steam settings as the logged-in user.
 install -d -m 0755 /etc/xdg/autostart
