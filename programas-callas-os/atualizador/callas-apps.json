@@ -39,6 +39,12 @@
       "phase": "apps"
     },
     {
+      "name": "smartmontools",
+      "source": "repo",
+      "state": "present",
+      "phase": "apps"
+    },
+    {
       "name": "com.vysp3r.ProtonPlus",
       "source": "flatpak",
       "state": "present",
