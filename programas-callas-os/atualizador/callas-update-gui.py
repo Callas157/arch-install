@@ -31,6 +31,7 @@ NVIDIA_HELPER = '/usr/local/libexec/callas-kernel-policy'
 UNINSTALL_HELPER = '/usr/local/libexec/callas-uninstall'
 DEFAULTS_HELPER = '/usr/local/libexec/callas-defaults'
 WIDGET_HELPER = '/usr/local/libexec/callas-widget'
+HD500_HELPER = '/usr/local/libexec/callas-hd500-reparar'
 DEFAULT_ICONS = Path('/usr/local/share/callas-os/default-app-icons.json')
 ID = 'io.github.Callas157.AtualizadorDoSistema'
 CRITICAL = ('linux', 'linux-lts', 'linux-zen', 'linux-hardened', 'systemd', 'glibc',
@@ -105,6 +106,7 @@ def action_command(action):
         return ['/usr/local/libexec/callas-maintenance', '--' + action, user]
     if action == 'repair': return [BACKEND, '--instalar']
     if action == 'games': return ['/usr/local/libexec/callas-game-logs', '--collect', user]
+    if action == 'hd500': return [HD500_HELPER, '--recriar']
     if action == 'codex': return ['/usr/bin/python3', '-u', str(Path(__file__).resolve()), '--install-codex']
     if action.startswith('nvidia:'):
         return [NVIDIA_HELPER, '--nvidia-select', action.split(':', 1)[1]]
@@ -881,6 +883,7 @@ class MaintenanceDialog(QDialog):
         options = [('Limpeza segura', 'edit-clear', 'clean'),
             ('Espaço, backups e VMs', 'folder-open', 'report'),
             ('Verificar pacotes órfãos', 'applications-all', 'orphans'),
+            ('HD500G: verificar e recriar', 'drive-harddisk', 'hd500'),
             ('Reaplicar modo manual', 'appointment-soon', 'repair'),
             ('Diagnóstico de jogo', 'view-list-details', 'games'),
             ('Atualizar Flatpaks', 'system-software-update', 'flatpaks')]
@@ -1057,7 +1060,7 @@ class Window(QWidget):
 
     def set_details_visible(self, visible):
         self.details.setVisible(visible)
-        self.input_row.setVisible(visible and self.process is not None and self.action != 'codex')
+        self.input_row.setVisible(visible and self.process is not None and self.action not in ('codex', 'hd500'))
         self.details_button.setText('Ocultar detalhes' if visible else 'Mostrar detalhes')
         if visible:
             target = self.details if self.input_row.isHidden() else self.input_row
@@ -1144,6 +1147,17 @@ class Window(QWidget):
         command = action_command(action)
         if not Path(command[0]).is_file():
             self.stage.setText('Função indisponível'); self.status.setText('O auxiliar desta função não está instalado: ' + command[0]); return
+        if not confirmed and action == 'hd500':
+            self.confirm_action(
+                'HD500G — operação destrutiva',
+                'ATENÇÃO: esta operação APAGA DEFINITIVAMENTE todos os arquivos da partição HD500G de 500 GB.\n\n'
+                'O HD já apresentou erros físicos de leitura e 1 setor pendente. Nem uma formatação completa garante recuperação.\n\n'
+                'A Central verificará modelo, UUID e tamanho para proteger seu NVMe do Arch, '
+                'tentará regravar e examinar toda a partição, recriar ext4, corrigir a montagem e criar SteamLibrary. '
+                'Se o disco continuar falhando, a execução será interrompida.\n\n'
+                'Feche Steam e Dolphin usando esse HD antes de começar. Deseja realmente apagar e testar o HD500G?',
+                lambda: self.start('hd500', True), 'APAGAR E TESTAR')
+            return
         if not confirmed and action in ('sistema', 'repair'):
             title, text = (('Atualizar geral', 'Atualizar o sistema e os aplicativos? Esta função inclui kernel, com as proteções existentes do Callas OS.')
                 if action == 'sistema' else ('Atualizações manuais', 'Desativar os agendamentos de atualização e manter somente os botões manuais da Central?'))
@@ -1153,7 +1167,8 @@ class Window(QWidget):
         except (OSError, subprocess.SubprocessError, RuntimeError): self.before = None
         self.reboot_pending = False; self.restart_panel.hide()
         self.details.clear(); self.pending = ''; self.decoder.reset()
-        self.stage.setText('Preparando atualização' if action not in ('report', 'games', 'orphans') else 'Preparando diagnóstico')
+        self.stage.setText('Preparando o HD500G' if action == 'hd500' else
+                           'Preparando atualização' if action not in ('report', 'games', 'orphans') else 'Preparando diagnóstico')
         self.status.setText('Aguardando autorização. Depois, acompanhe as etapas abaixo.')
         self.bar.setRange(0, 0)
         env = os.environ.copy()
@@ -1174,7 +1189,7 @@ class Window(QWidget):
         self.notifier = QSocketNotifier(master, QSocketNotifier.Read, self)
         self.notifier.activated.connect(self.read_output)
         for button in self.buttons: button.setEnabled(False)
-        show_details = (not self.details.isHidden() or action in ('games', 'orphans', 'codex')
+        show_details = (not self.details.isHidden() or action in ('games', 'orphans', 'codex', 'hd500')
                         or action.startswith('nvidia:'))
         self.set_details_visible(show_details)
         if action == 'codex':
@@ -1226,7 +1241,9 @@ class Window(QWidget):
         self.input_row.hide(); self.bar.setRange(0, 100)
         if code == 0:
             self.bar.setValue(100); self.stage.setText('Concluído com sucesso')
-            self.status.setText('Codex instalado. Abra pelo menu KDE ou pelo botão Codex.' if self.action == 'codex' else 'A função terminou. Você já pode escolher outra opção.')
+            self.status.setText('Codex instalado. Abra pelo menu KDE ou pelo botão Codex.' if self.action == 'codex' else
+                                'HD500G: testes e preparação concluídos. Leia os detalhes antes de usar o disco.' if self.action == 'hd500' else
+                                'A função terminou. Você já pode escolher outra opção.')
             try: after = package_state()
             except (OSError, subprocess.SubprocessError, RuntimeError): after = None
             if self.action.startswith('nvidia:'):
