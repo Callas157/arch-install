@@ -1,5 +1,13 @@
 # Histórico do Callas OS
 
+## 3.18.5 — 2026-11-20
+
+- Corrige o escopo da entrega 3.18.4: o resgate NTFS somente leitura **não corrige** uma partição marcada como `dirty` após queda de energia. Retira a tentativa automática de resgate do Callas OS Update e da inicialização, para não mascarar o erro nem confundir acesso temporário com reparação.
+- Desativa, em instalações que receberam a 3.18.4, somente o serviço `callas-ntfs-rescue.service` criado pelo Callas OS. Não desmonta volumes em uso, não modifica os dados, o UUID ou o `/etc/fstab`. Restabelece os mesmos auxiliares de montagem da 3.18.3.
+- O reparo completo do sistema de arquivos NTFS deve ser feito com `chkdsk <letra>: /f` no Windows após assegurar que não há outro sistema utilizando o volume. O `ntfsfix` do Linux é limitado e não equivale ao `chkdsk`; nenhuma promessa de reparo automático pós-queda de energia.
+
+Validação: conferência das alterações de código e do manifesto do projeto; sem execução de `chkdsk`, atualização completa, montagem real ou testes de boot na máquina física.
+
 ## 3.18.4 — 2026-11-20
 
 - Ao encontrar no log do kernel um volume NTFS marcado como `dirty`, permite tentar montá-lo automaticamente **somente para leitura** com `ntfs-3g`, respeitando o ponto de montagem já definido no `/etc/fstab` (inclusive `/mnt/hd-500`). Não altera UUID, tabela de partições, dados, `fstab` ou o estado `dirty`. Se não houver `ntfs-3g`, o destino não for seguro, ou o driver recusar, registra o motivo e mantém o volume sem montar.
