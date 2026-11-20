@@ -75,6 +75,41 @@ for name in callas-discord.py callas-browser.py callas-defaults.py callas-uninst
   fi
 done
 
+# The same verified helper serves a clean installation and Callas OS Update.
+# Never change a user's fstab, clear the NTFS dirty flag or mount damaged data RW.
+install -o root -g root -m 0755 "$stage/callas-automount.py" /usr/local/libexec/callas-automount
+cat > /etc/systemd/system/callas-ntfs-rescue.service <<'CALLAS_NTFS_RESCUE_SERVICE'
+[Unit]
+Description=Callas OS - resgate somente leitura de NTFS inconsistente
+Documentation=man:ntfs-3g(8)
+After=local-fs.target
+ConditionPathExists=/etc/fstab
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/callas-automount --rescue
+TimeoutStartSec=90s
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=full
+ReadWritePaths=/mnt /media /run/media
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_DAC_READ_SEARCH CAP_DAC_OVERRIDE
+RestrictAddressFamilies=AF_UNIX
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+CALLAS_NTFS_RESCUE_SERVICE
+chmod 0644 /etc/systemd/system/callas-ntfs-rescue.service
+if systemd-detect-virt --chroot >/dev/null 2>&1; then
+  systemctl --root=/ enable callas-ntfs-rescue.service
+else
+  systemctl daemon-reload
+  systemctl enable callas-ntfs-rescue.service
+fi
+
 # Distribute the optional clock without installing a user applet on Update.
 install -o root -g root -m 0755 "$stage/callas-widget.py" /usr/local/libexec/callas-widget
 install -o root -g root -m 0644 "$stage/relogio-moderno.plasmoid" /usr/local/share/callas-os/relogio-moderno.plasmoid
