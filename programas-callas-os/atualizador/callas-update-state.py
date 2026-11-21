@@ -15,7 +15,7 @@ import urllib.request
 STATE=Path('/var/lib/callas-os')
 DEPENDENCIES={
     'storage':('callas-automount.py','callas-steam-libraries.py','callas-steam-libraries.desktop','callas-autostart.py'),
-    'security':('callas-browser.py','callas-defaults.py','default-app-icons.json','callas-uninstall.py','callas-apps.py','callas-apps.json','callas-update-gui.py','callas-update-gui-install.py','callas-baterias-install.py','callas-baterias.tar.gz','callas-security.sh','callas-game-logs.py','callas-native.py','callas-kernel-policy.py','callas-hd500-reparar.sh'),
+    'security':('callas-browser.py','callas-defaults.py','default-app-icons.json','callas-uninstall.py','callas-apps.py','callas-apps.json','callas-update-gui.py','callas-update-gui-install.py','callas-baterias-install.py','callas-baterias.tar.gz','callas-security.sh','callas-game-logs.py','callas-native.py','callas-kernel-policy.py','callas-nvidia-prepare.py','callas-hd500-reparar.sh'),
     'apps':('callas-apps.py','callas-apps.json','callas-spotify-permissions.sh','callas-aur-install.py','callas-native.py','callas-kernel-check.sh'),
     'tools':('callas-monitores.py','callas-janelas.py','callas-inicio-kde.sh','callas-kde-desligamento-login.sh'),
     'boot':('callas.script','callas.plymouth','callas-boot-theme.py'),
@@ -37,7 +37,7 @@ REQUIRED={
 REQUIRED['security'] += tuple('/usr/local/libexec/' + name for name in (
     'callas-browser', 'callas-defaults', 'callas-uninstall', 'callas-apps', 'callas-apps.json', 'callas-update-state', 'callas-native',
     'callas-aur', 'callas-aur-install', 'callas-autostart', 'callas-kernel-policy',
-    'callas-game-logs', 'callas-spotify-permissions', 'callas-version',
+    'callas-nvidia-prepare', 'callas-game-logs', 'callas-spotify-permissions', 'callas-version',
     'callas-nekofetch', 'callas-release', 'callas-logs', 'callas-kernel-check',
     'callas-hd500-reparar',
     'put-update', 'callas-storage', 'callas-maintenance'))
