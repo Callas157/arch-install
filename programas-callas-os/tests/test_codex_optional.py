@@ -128,11 +128,12 @@ class OptionalCodexTests(unittest.TestCase):
             launcher.write_text('#!/bin/sh\nexit 0\n'); launcher.chmod(0o755)
             with patch.object(gui, 'codex_launcher', return_value=launcher), \
                  patch.object(gui, 'codex_installed_version', return_value=(1, 3, 3)), \
-                 patch.object(gui.subprocess, 'Popen') as popen:
+                 patch.object(gui.subprocess, 'Popen') as popen, \
+                 patch.object(window, 'start') as start:
                 window.codex()
                 popen.assert_not_called()
                 window.confirm_yes.click()
-                self.assertEqual(window.action, 'codex')
+                start.assert_called_once_with('codex')
             # Versão local mais nova não pode sofrer downgrade.
             with patch.object(gui, 'codex_launcher', return_value=launcher), \
                  patch.object(gui, 'codex_installed_version', return_value=(1, 5, 0)), \
