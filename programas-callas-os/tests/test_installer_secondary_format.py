@@ -57,22 +57,22 @@ lsblk() {
         self.assertEqual(process.returncode, 0, process.stderr)
         self.assertNotIn('Discos secundários', process.stdout)
         self.assertNotIn('Armazenamento', process.stdout)
-        self.assertEqual(process.stdout, 'SELECTED=\\n')
+        self.assertEqual(process.stdout, 'SELECTED=\n')
 
     def test_one_secondary_labeled_second_of_two(self):
-        process = self.run_selection('\\n')
+        process = self.run_selection('\n')
         self.assertEqual(process.returncode, 0, process.stderr)
         self.assertIn('Armazenamento 2 de 2', process.stdout)
         self.assertNotIn('Armazenamento 3', process.stdout)
 
     def test_multiple_secondary_disks_numbered(self):
-        process = self.run_selection('n\\nsim\\nAPAGAR /dev/sdc\\n', eligible='/dev/sdb /dev/sdc')
+        process = self.run_selection('n\nsim\nAPAGAR /dev/sdc\n', eligible='/dev/sdb /dev/sdc')
         self.assertEqual(process.returncode, 0, process.stderr)
         self.assertIn('Armazenamento 2 de 3', process.stdout)
         self.assertIn('Armazenamento 3 de 3', process.stdout)
         self.assertEqual(process.stdout.count('Discos secundários'), 1)
         self.assertIn('Dados preservados em /dev/sdb', process.stdout)
-        self.assertIn('SELECTED=/dev/sdc\\n', process.stdout)
+        self.assertIn('SELECTED=/dev/sdc\n', process.stdout)
 
     def test_no_is_default(self):
         for answer in ('\n', 'n\n', 'não\n'):
