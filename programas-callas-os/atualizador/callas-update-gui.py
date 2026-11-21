@@ -43,10 +43,58 @@ CODEX_REF = 'd71a0e916c545c845c8991d7365a8771ced99c81'
 CODEX_SHA256 = 'f1ed256b4b0542e1142f69887c752336c3500531df937cd3d96e51e49f1eb134'
 CODEX_URL = ('https://raw.githubusercontent.com/Callas157/arch-install/' + CODEX_REF
              + '/programas-callas-os/codex/codex.tar.gz')
+CODEX_OVERLAY_REF = '3372b447397f9bf4843e910f6f85866c54246d7a'
+CODEX_TARGET_VERSION = '1.4.0'
+# Fontes verificadas pelo git blob SHA-1, além do commit HTTPS imutável.
+CODEX_OVERLAY = {
+    'callas_chat/__init__.py': '96e3ce8d9fefc0cff5d4c6d50910be6302b6ab81',
+    'callas_chat/ui.py': 'abbbe108df1691193432520a452e89a8ee4ef36b',
+    'callas_chat/backend.py': '2fa165e8ef10cd9b1afe953df32bf5f80c55cc2c',
+    'callas_chat/history.py': '9c5729bb4cc9afc78314dbe00dddbf6853184f45',
+    'callas_chat/theme.qss': '4cab54742dd534f75f3c4cf86b1175770d89cf34',
+    'LEIA-ME.txt': '9f89eb0bf42a649add27727cf2967739f0fecdfe',
+}
 CODEX_ICON = '<svg\n  width="32"\n  height="32"\n  viewBox="0 0 20 20"\n  fill="none"\n  xmlns="http://www.w3.org/2000/svg"\n>\n  <path\n    d="M13.333 11.418C13.7002 11.418 13.9978 11.7159 13.998 12.083C13.998 12.4503 13.7003 12.748 13.333 12.748H10.833C10.4657 12.748 10.168 12.4503 10.168 12.083C10.1682 11.7159 10.4659 11.418 10.833 11.418H13.333Z"\n    fill="#88caff"\n  />\n  <path\n    d="M6.74121 7.34668C7.0561 7.15796 7.46442 7.26036 7.65332 7.5752L8.90332 9.6582C9.02949 9.86874 9.02961 10.1323 8.90332 10.3428L7.65332 12.4258C7.46441 12.7403 7.05597 12.8427 6.74121 12.6543C6.42637 12.4654 6.32396 12.0561 6.5127 11.7412L7.55664 10L6.5127 8.25879C6.324 7.94395 6.4265 7.53562 6.74121 7.34668Z"\n    fill="#88caff"\n  />\n  <path\n    fill-rule="evenodd"\n    clip-rule="evenodd"\n    d="M9.00195 1.75C10.1157 1.75021 11.1362 2.15467 11.9238 2.82227C12.1849 2.77516 12.455 2.74903 12.7295 2.74902C15.2262 2.74978 17.2507 4.77449 17.251 7.27148C17.2509 7.54581 17.2238 7.81473 17.1768 8.0752C17.8448 8.86317 18.2499 9.88479 18.25 10.999C18.2496 12.9609 16.9996 14.6284 15.2549 15.2549C14.6285 16.9998 12.9608 18.2497 10.999 18.25C9.88486 18.25 8.86411 17.8448 8.07617 17.1768C7.8155 17.2239 7.54592 17.2509 7.27148 17.251C4.77445 17.2507 2.7504 15.2257 2.75 12.7285C2.75003 12.4539 2.77608 12.1848 2.82324 11.9238C2.20237 11.1913 1.80895 10.2574 1.75684 9.23438L1.75 9.00098C1.75022 7.03932 2.99952 5.36992 4.74414 4.74316C5.37104 2.99851 7.04034 1.75002 9.00195 1.75ZM9.00195 3.07812C7.52474 3.07814 6.27967 4.08156 5.91504 5.44531C5.85362 5.67419 5.67418 5.85363 5.44531 5.91504C4.08208 6.27984 3.07836 7.52408 3.07812 9.00098C3.07826 9.88321 3.43594 10.682 4.01465 11.2607C4.1816 11.4283 4.24663 11.6728 4.18555 11.9014C4.11505 12.1653 4.07719 12.4429 4.07715 12.7285C4.07755 14.4925 5.50753 15.9225 7.27148 15.9229C7.55712 15.9228 7.83548 15.886 8.09961 15.8154L8.18652 15.7979C8.38833 15.7722 8.59297 15.8403 8.73926 15.9863C9.31801 16.5649 10.1168 16.9218 10.999 16.9219C12.4759 16.9216 13.7203 15.9183 14.085 14.5547L14.1133 14.4707C14.1918 14.2821 14.3542 14.1386 14.5547 14.085C15.9181 13.7203 16.9225 12.4758 16.9229 10.999C16.9228 10.1168 16.5648 9.31802 15.9863 8.73926C15.819 8.57175 15.7544 8.3274 15.8154 8.09863C15.886 7.83454 15.9238 7.5568 15.9238 7.27148C15.9235 5.50751 14.4924 4.07762 12.7285 4.07715C12.4424 4.0772 12.164 4.11412 11.9004 4.18457C11.672 4.24541 11.4282 4.18048 11.2607 4.01367C10.7183 3.47141 9.98306 3.12271 9.16699 3.08105L9.00195 3.07812Z"\n    fill="#88caff"\n  />\n</svg>\n'
 
 def codex_launcher():
     return Path.home() / '.local/bin/callas-chat'
+
+
+def codex_installed_version():
+    """Não substituir instalação personalizada sem versão identificável."""
+    data = Path(os.environ.get('XDG_DATA_HOME', str(Path.home()/'.local/share')))
+    marker = data/'callas-chat/app/callas_chat/__init__.py'
+    try:
+        match = re.search(r"__version__\s*=\s*['\"](\d+\.\d+\.\d+)['\"]",
+                          marker.read_text(encoding='utf-8'))
+        return tuple(int(part) for part in match.group(1).split('.')) if match else None
+    except (OSError, ValueError):
+        return None
+
+
+def apply_codex_overlay(staging):
+    """Atualizar fontes no pacote antigo assinado usando um snapshot GitHub imutável."""
+    root = Path(staging)
+    for relative, expected in CODEX_OVERLAY.items():
+        url = ('https://raw.githubusercontent.com/Callas157/arch-install/' +
+               CODEX_OVERLAY_REF + '/programas-callas-os/codex/' + relative)
+        response = urllib.request.urlopen(
+            urllib.request.Request(url, headers={'User-Agent': 'CallasOS-Codex'}), timeout=60)
+        with response:
+            if not response.url.startswith('https://'):
+                raise ValueError('Fonte Codex sem HTTPS.')
+            content = response.read(256 * 1024 + 1)
+        if len(content) > 256 * 1024:
+            raise ValueError('Fonte Codex maior que o limite.')
+        git_blob = b'blob ' + str(len(content)).encode('ascii') + b'\0' + content
+        if hashlib.sha1(git_blob).hexdigest() != expected:
+            raise ValueError('Verificação de integridade do Codex 1.4.0 falhou: ' + relative)
+        target = root/relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.is_symlink():
+            raise ValueError('Destino simbólico recusado: ' + relative)
+        target.write_bytes(content)
+
 
 def install_codex():
     if os.geteuid() == 0: raise ValueError('Instale Codex no seu usuário normal, sem sudo.')
@@ -66,6 +114,7 @@ def install_codex():
                     or any(not m.isfile() or Path(m.name).is_absolute() or '..' in Path(m.name).parts for m in members)):
                 raise ValueError('Conteúdo inválido no pacote Codex.')
             archive.extractall(folder, members=members, filter='data')
+        apply_codex_overlay(folder)
         env = os.environ.copy()
         env.pop('CALLAS_KERNEL_UPDATE_CONTEXT', None)
         subprocess.run(['/usr/bin/python3', '-u', str(Path(folder)/'installer.py')],
@@ -1267,17 +1316,24 @@ class Window(QWidget):
     def codex(self, confirmed=False):
         if self.process is not None: return
         launcher = codex_launcher()
-        if launcher.is_file() and os.access(launcher, os.X_OK):
+        existing = launcher.is_file() and os.access(launcher, os.X_OK)
+        version = codex_installed_version() if existing else None
+        needs_update = existing and version is not None and version < (1, 4, 0)
+        if existing and not needs_update:
             try: subprocess.Popen([str(launcher)], start_new_session=True)
             except OSError as exc: self.status.setText('Codex: ' + str(exc))
             return
         if not confirmed:
-            self.confirm_action('Instalar Codex',
-                'Baixar e instalar Codex no seu perfil e adicioná-lo ao menu KDE?\n\n'
-                'O ditado baixa um modelo de voz de aproximadamente 1,5 GB. '
-                'Depois, entre com sua própria conta ChatGPT. '
-                'O sistema pedirá senha somente se faltar alguma dependência.',
-                lambda: self.codex(True), 'Instalar')
+            title = 'Atualizar Codex' if needs_update else 'Instalar Codex'
+            details = ('Atualizar o cliente para 1.4.0? Feche a janela atual do Codex antes de confirmar. '
+                       'Conversas, anexos, microfone, login e preferências serão preservados. '
+                       'A versão anterior do código será mantida em app.previous.' if needs_update else
+                       'Baixar e instalar Codex no seu perfil e adicioná-lo ao menu KDE?\n\n'
+                       'O ditado baixa um modelo de voz de aproximadamente 1,5 GB. '
+                       'Depois, entre com sua própria conta ChatGPT. '
+                       'O sistema pedirá senha somente se faltar alguma dependência.')
+            self.confirm_action(title, details, lambda: self.codex(True),
+                                'Atualizar' if needs_update else 'Instalar')
             return
         self.start('codex')
 
