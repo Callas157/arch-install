@@ -623,7 +623,7 @@ class Window(QMainWindow):
         QTimer.singleShot(30, lambda: self.scroll.verticalScrollBar().setValue(self.scroll.verticalScrollBar().maximum()))
 
     def connected(self):
-        self.connection.setText('● Conectado ao Codex')
+        self.connection.setText('● Conectado ao ' + ('GPT (API)' if self.provider == 'gpt' else 'Codex'))
         self.reconnect.hide()
         self.error_box.hide()
         self.activity.setText('Pronto. Digite, cole uma foto ou use o microfone.')
@@ -1107,8 +1107,13 @@ class Window(QMainWindow):
         if not provider or provider == self.provider or self.busy: return
         self.settings.setValue('provider', provider)
         self.backend.close()
+        # Não tentar retomar thread do outro perfil após trocar de provedor.
+        self.reconnect_thread = ''
         self.provider = provider
         self.backend.provider = provider
+        self.account_text = 'Verificando conta…'
+        self.account.setText(self.account_text)
+        self.login_button.hide()
         self.pins = load_pins(provider)
         self.model = str(self.settings.value('model_'+provider, ''))
         self.effort = str(self.settings.value('effort_'+provider, ''))
