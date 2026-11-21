@@ -81,9 +81,20 @@ def patch_595_atomic_tree(source):
         return False
     if source.is_symlink() or not source.is_dir() or source.stat().st_uid != os.geteuid():
         raise RuntimeError('Fonte NVIDIA insegura/ausente: ' + str(source))
-    header = source / 'nvidia-drm/nvidia-drm-conftest.h'
-    probe = source / 'conftest.sh'
-    nvswitch = source / 'nvidia/linux_nvswitch.c'
+    # Arch packages the upstream tree below /usr/src/nvidia-VERSION/kernel-open,
+    # whereas the Deepin source example can expose its files at the root.
+    # Match only known layouts; never patch an unrelated directory.
+    if (source / 'kernel-open/nvidia-drm/nvidia-drm-conftest.h').is_file():
+        tree = source / 'kernel-open'
+    elif (source / 'nvidia-drm/nvidia-drm-conftest.h').is_file():
+        tree = source
+    else:
+        raise RuntimeError('Árvore NVIDIA 595 desconhecida: esperado kernel-open/nvidia-drm ou nvidia-drm.')
+    if tree.is_symlink() or tree.stat().st_uid != os.geteuid():
+        raise RuntimeError('Árvore NVIDIA insegura: ' + str(tree))
+    header = tree / 'nvidia-drm/nvidia-drm-conftest.h'
+    probe = tree / 'conftest.sh'
+    nvswitch = tree / 'nvidia/linux_nvswitch.c'
     planned = {}
     for path in (header, probe, nvswitch):
         if path.is_symlink() or not path.is_file() or path.stat().st_uid != os.geteuid():
@@ -305,7 +316,10 @@ def main():
                         continue
                     if copy.is_symlink() and not resolved.is_relative_to(dkms_dir.resolve()):
                         raise RuntimeError('Link DKMS NVIDIA fora do diretório esperado: ' + str(copy))
-                    if resolved.is_dir() and (resolved / 'nvidia-drm/nvidia-drm-conftest.h').is_file():
+                    if resolved.is_dir() and (
+                        (resolved / 'kernel-open/nvidia-drm/nvidia-drm-conftest.h').is_file()
+                        or (resolved / 'nvidia-drm/nvidia-drm-conftest.h').is_file()
+                    ):
                         prepare_compat_tree(resolved, release)
                 patched = True
             print(f'>>> Reparando NVIDIA {PINNED} para {name} ({release})', flush=True)
