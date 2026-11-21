@@ -51,7 +51,7 @@ def prepare_system_dependencies():
     subprocess.run([*command, '--', str(guard), '--install', *missing], check=True)
 
 
-def install(skip_dependencies=False):
+def install(skip_dependencies=False, app_only=False):
     if os.geteuid() == 0:
         raise ValueError('Execute como seu usuário normal, sem sudo. O instalador pede sudo apenas se faltar um pacote.')
     home = Path.home()
@@ -60,7 +60,12 @@ def install(skip_dependencies=False):
     base.mkdir(parents=True, exist_ok=True, mode=0o700)
     if base.is_symlink(): raise ValueError('A pasta do aplicativo não pode ser um link simbólico.')
     interpreter = Path(sys.executable)
-    if not skip_dependencies:
+    if app_only:
+        # Atualização: usar obrigatoriamente o mesmo virtualenv já em produção.
+        interpreter = base/'venv/bin/python'
+        if not (base/'app').is_dir() or (base/'app').is_symlink() or not interpreter.is_file():
+            raise ValueError('Instalação anterior incompleta: não é seguro substituir o aplicativo sem seu ambiente virtual.')
+    elif not skip_dependencies:
         prepare_system_dependencies()
         venv = base/'venv'
         if not (venv/'bin/python').exists():
@@ -108,7 +113,7 @@ def install(skip_dependencies=False):
     if shutil.which('update-desktop-database'):
         subprocess.run(['update-desktop-database', str(desktop.parent)], check=False)
     for command in ('kbuildsycoca6',):
-        if shutil.which(command) and not skip_dependencies:
+        if shutil.which(command) and not skip_dependencies and not app_only:
             subprocess.run([command, '--noincremental'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
     print('\nCodex instalado! Procure “Codex” no menu do KDE.')
     print('Para abrir pelo terminal:', executable)
@@ -118,8 +123,10 @@ def install(skip_dependencies=False):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Instalar Codex neste usuário')
     parser.add_argument('--sem-dependencias', action='store_true', help='Reinstalar somente os arquivos do app; para testes ou dependências já preparadas')
+    parser.add_argument('--somente-aplicativo', action='store_true',
+                        help='Atualizar somente o cliente existente, preservando obrigatoriamente o virtualenv e o Whisper')
     args = parser.parse_args()
-    try: install(args.sem_dependencias)
+    try: install(args.sem_dependencias, args.somente_aplicativo)
     except Exception as exc:
         print('Instalação interrompida: '+str(exc), file=sys.stderr)
         raise SystemExit(1)
