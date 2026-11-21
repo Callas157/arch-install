@@ -82,13 +82,24 @@ lsblk() {
                 self.assertIn('SELECTED=\n', process.stdout)
 
     def test_mistyped_confirmation_preserves_files(self):
-        process = self.run_selection('1\nAPAGAR /dev/sda\n')
+        process = self.run_selection('1\napagar\n')
         self.assertEqual(process.returncode, 0, process.stderr)
         self.assertIn('SELECTED=\n', process.stdout)
         self.assertIn('será preservado', process.stdout)
 
+    def test_previous_confirmation_with_device_is_no_longer_accepted(self):
+        process = self.run_selection('1\\nAPAGAR /dev/sdb\\n')
+        self.assertEqual(process.returncode, 0, process.stderr)
+        self.assertIn('SELECTED=\\n', process.stdout)
+
+    def test_number_two_does_not_request_confirmation(self):
+        process = self.run_selection('2\\n')
+        self.assertEqual(process.returncode, 0, process.stderr)
+        self.assertIn('SELECTED=\\n', process.stdout)
+        self.assertNotIn('CONFIRMAÇÃO FINAL', process.stdout)
+
     def test_exact_double_confirmation(self):
-        process = self.run_selection('1\nAPAGAR /dev/sdb\n')
+        process = self.run_selection('1\nAPAGAR\n')
         self.assertEqual(process.returncode, 0, process.stderr)
         self.assertIn('SELECTED=/dev/sdb\n', process.stdout)
 
@@ -101,6 +112,8 @@ lsblk() {
         self.assertIn('FORMATAR_SECUNDARIOS_IDS=()', src)
         self.assertIn('Digite 1 ou 2:', src)
         self.assertIn('case $CALLAS_FORMATAR_RESPOSTA in', src)
+        self.assertIn('if [[ $CALLAS_FORMATAR_CONFIRMA == "APAGAR" ]]; then', src)
+        self.assertNotIn('"APAGAR $CALLAS_OUTRO_DISCO"', src)
         self.assertIn('callas_disco_secundario_seguro "$CALLAS_OUTRO_DISCO"', formatting)
         self.assertIn('wipefs -af "$CALLAS_OUTRO_DISCO"', formatting)
         self.assertIn('mkfs.ext4 -F -L CALLAS_DADOS "$CALLAS_PARTICAO_DADOS"', formatting)
