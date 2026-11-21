@@ -1,10 +1,11 @@
 # Codex opcional — cliente 1.3.3
 
-O botão **Codex** da Central oferece instalação no perfil do usuário. Quando o
-aplicativo já existe, o mesmo botão apenas o abre. O aplicativo é publicado em
-`programas-callas-os/codex/`, separado de `instalar-arch.sh`. Nenhum pacote do
-chat é incluído em `callas-release.FILES`: o estágio da instalação limpa e do
-Callas OS Update distribui a Central e seu botão, sem instalar o aplicativo.
+O botão **Codex** da Central oferece instalação no perfil do usuário. Se
+já existe na versão mais recente, apenas abre; versões antigas recebem atualização.
+O aplicativo é publicado em `programas-callas-os/codex/`, separado de `instalar-arch.sh`.
+Nenhum pacote do chat é incluído em `callas-release.FILES`: a instalação limpa
+distribui apenas a Central e seu botão; o Callas OS Update atualiza o Codex
+automaticamente somente quando ele já está instalado e desatualizado.
 
 O download usa a URL de um commit imutável e o SHA-256 gravado na Central.
 Antes da extração, rejeita pacotes grandes, caminhos externos, links e arquivos
@@ -107,3 +108,11 @@ contas, conversas, anexos ou modelos locais.
 - Mantidos o Whisper, anexos, ajustes visuais, aprovação atual e o perfil original ~/.codex. O launcher antigo não é removido e os dados do Codex não são apagados.
 - O pacote tar.gz 1.3.3 permanece como base assinada; a Central 3.22.2 aplica o overlay 1.4.0 de fontes pinadas por commit e hash antes de executar o instalador. É necessário atualizar a Central antes de obter 1.4.0.
 - Verificações estáticas de fonte e protocolo realizadas; ainda sem teste de login real, projeto API, ambiente gráfico KDE ou hardware.
+
+## Callas OS 3.22.3 — Atualização automática do cliente já instalado
+
+- Executar **Callas OS Update** verifica a versão do Codex do usuário. Apenas clientes existentes com versão conhecida inferior a 1.4.0 recebem a atualização, sem precisar usar novamente o botão Codex da Central. Perfil sem chat instalado não baixa nada.
+- A instalação usa o pacote de base imutável verificado por SHA-256, o overlay de fontes verificado por Git blob e o instalador atualizado `--somente-aplicativo`, preservando obrigatoriamente `venv/bin/python` anterior, autenticação, histórico, anexos, Whisper e executável Codex. O instalador falha sem substituir código quando o virtualenv anterior não está disponível.
+- Se o aplicativo estiver aberto, não encerra processos nem toca na pasta do cliente. A alteração é adiada; o Callas OS Update verifica novamente mesmo sem commits novos no sistema.
+- Código mais novo ou instalações com versão desconhecida permanecem intactos para impedir downgrade. Falhas são registradas no log do Update e podem ser repetidas na próxima execução. Não há instalação automática do Codex após instalação limpa.
+- Testes de regressão de cenários seguros adicionados; teste físico KDE não realizado neste atendimento.
