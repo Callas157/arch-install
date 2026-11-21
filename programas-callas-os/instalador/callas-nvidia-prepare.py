@@ -33,6 +33,125 @@ NEW = '''void* NV_API_CALL os_dmem_cgroup_register_region(NvU64 size, const char
     if (IS_ERR(region))'''
 
 
+# Linux 7.2 renamed drm_atomic_state to drm_atomic_commit. The Deepin 25
+# RTX 3060/595.71.05 report used unconditional renames; these aliases instead
+# apply only to new kernels so the same DKMS source still builds for linux-lts.
+DRM_COMPAT = """/* Callas OS NVIDIA 595.71.05: DRM atomic API on Linux >= 7.2. */
+#if !defined(NV_BSD)
+#include <linux/version.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 2, 0)
+#define drm_atomic_state drm_atomic_commit
+#define drm_atomic_state_alloc drm_atomic_commit_alloc
+#define drm_atomic_state_clear drm_atomic_commit_clear
+#define drm_atomic_state_default_clear drm_atomic_commit_default_clear
+#define drm_atomic_state_default_release drm_atomic_commit_default_release
+#define drm_atomic_state_free drm_atomic_commit_put
+#define drm_atomic_state_get drm_atomic_commit_get
+#define drm_atomic_state_init drm_atomic_commit_init
+#define drm_atomic_state_put drm_atomic_commit_put
+#endif
+#endif
+"""
+DRM_PROBE = """#include <linux/version.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 2, 0)
+#define drm_atomic_state drm_atomic_commit
+#endif
+"""
+STRNCPY_WRAPPER = """/* Preserve strncpy's zero-padding on kernels without strncpy(). */
+static char *callas_595_strncpy(char *dest, const char *src, size_t length)
+{
+    size_t i;
+    for (i = 0; i < length && src[i] != '\\0'; ++i)
+        dest[i] = src[i];
+    for (; i < length; ++i)
+        dest[i] = '\\0';
+    return dest;
+}
+
+"""
+
+
+def patch_595_atomic_tree(source):
+    """Idempotent, signature-checked patch for NVIDIA 595.71.05 sources only.
+
+    Source-level version gates make linux-lts (6.x) continue to use its old
+    API; no kernel, pacman or DKMS state is modified by this function.
+    """
+    if PINNED != '595.71.05':
+        return False
+    if source.is_symlink() or not source.is_dir() or source.stat().st_uid != 0:
+        raise RuntimeError('Fonte NVIDIA insegura/ausente: ' + str(source))
+    header = source / 'nvidia-drm/nvidia-drm-conftest.h'
+    probe = source / 'conftest.sh'
+    nvswitch = source / 'nvidia/linux_nvswitch.c'
+    planned = {}
+    for path in (header, probe, nvswitch):
+        if path.is_symlink() or not path.is_file() or path.stat().st_uid != 0:
+            raise RuntimeError('Arquivo NVIDIA 595 esperado não existe ou é inseguro: ' + str(path))
+        content = path.read_text(encoding='utf-8')
+        result = content
+        if path == header:
+            anchor = '#include "nvtypes.h"\\n'
+            if '/* Callas OS NVIDIA 595.71.05:' not in content:
+                if content.count(anchor) != 1:
+                    raise RuntimeError('Cabeçalho NVIDIA DRM desconhecido: ' + str(path))
+                result = content.replace(anchor, anchor + '\\n' + DRM_COMPAT, 1)
+        elif path == probe:
+            anchor = '#include <drm/drm_modeset_helper_vtables.h>\\n'
+            if DRM_PROBE not in content:
+                if content.count(anchor) != 2:
+                    raise RuntimeError('Detecção DRM NVIDIA 595 desconhecida; não aplicarei substituição indiscriminada.')
+                result = content.replace(anchor, anchor + DRM_PROBE, 2)
+        else:
+            if 'static char *callas_595_strncpy' not in content:
+                a = 'strncpy(regkey_val, regkey_val_start, regkey_val_len);'
+                b = 'return strncpy(dest, src, length);'
+                anchor = '#define CREATE_TRACE_POINTS\\n'
+                if content.count(a) != 1 or content.count(b) != 1 or content.count(anchor) != 1:
+                    raise RuntimeError('Fonte NVSwitch NVIDIA 595 desconhecida.')
+                result = content.replace(a, 'callas_595_strncpy(regkey_val, regkey_val_start, regkey_val_len);')
+                result = result.replace(b, 'return callas_595_strncpy(dest, src, length);')
+                result = result.replace(anchor, STRNCPY_WRAPPER + anchor, 1)
+        if result != content:
+            planned[path] = result
+    # Validate every expected input before changing any file. On write failure
+    # restore from in-memory originals (best effort) and abort compilation.
+    originals = {path: path.read_text(encoding='utf-8') for path in planned}
+    written = []
+    try:
+        for path, updated in planned.items():
+            with tempfile.NamedTemporaryFile('w', encoding='utf-8', dir=path.parent,
+                                             prefix='.callas-595-', delete=False) as stream:
+                temporary = Path(stream.name)
+                try:
+                    stream.write(updated)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                    os.chmod(temporary, path.stat().st_mode & 0o777)
+                    os.replace(temporary, path)
+                    written.append(path)
+                finally:
+                    temporary.unlink(missing_ok=True)
+    except OSError:
+        for path in written:
+            path.write_text(originals[path], encoding='utf-8')
+        raise
+    if planned:
+        print('Compatibilidade NVIDIA 595.71.05 Linux 7.2+: DRM/conftest/strncpy aplicada com proteção do kernel LTS.', flush=True)
+    return bool(planned)
+
+
+def prepare_compat_tree(source, release):
+    if not re.fullmatch(r'\\d+\\.\\d+\\.\\d+[-_a-zA-Z0-9.]*', release):
+        raise RuntimeError('Release do kernel inválido.')
+    if kernel_family(release) >= (7, 2):
+        patch_595_atomic_tree(source)
+    if kernel_family(release) >= (7, 3):
+        patch_73_source(source / 'kernel-open/nvidia/os-interface.c' if
+                        (source / 'kernel-open/nvidia/os-interface.c').is_file()
+                        else source / 'nvidia/os-interface.c')
+
+
 def run(*command):
     print('+', ' '.join(command), flush=True)
     result = subprocess.run(command, check=False)
@@ -158,8 +277,8 @@ def main():
         try:
             inspect_modules(release)
         except RuntimeError:
-            if not patched and kernel_family(release) >= (7, 3):
-                patch_73_source()
+            if not patched and kernel_family(release) >= (7, 2):
+                prepare_compat_tree(Path('/usr/src') / ('nvidia-' + PINNED), release)
                 patched = True
             print(f'>>> Reparando NVIDIA {PINNED} para {name} ({release})', flush=True)
             run('dkms', 'build', '--force', '-m', 'nvidia', '-v', PINNED, '-k', release)
@@ -174,7 +293,14 @@ def main():
 
 if __name__ == '__main__':
     try:
-        main()
+        if len(sys.argv) == 4 and sys.argv[1] == '--compat-tree':
+            if os.geteuid() != 0:
+                raise RuntimeError('Preparação de fonte NVIDIA exige root.')
+            prepare_compat_tree(Path(sys.argv[2]), sys.argv[3])
+        elif len(sys.argv) == 1:
+            main()
+        else:
+            raise RuntimeError('Argumentos inválidos para o preparador NVIDIA.')
     except (OSError, RuntimeError) as error:
         print('ERRO NVIDIA DKMS: ' + str(error), file=sys.stderr)
         print_build_logs()
