@@ -50,6 +50,36 @@ fi
 
 loadkeys "$TECLADO" || true
 
+# Banner de boas-vindas no próprio terminal da ISO, sem dependência de figlet.
+python - <<'CALLAS_WELCOME'
+import os, sys
+font = {
+ 'A': (' ### ', '#   #', '#####', '#   #', '#   #'),
+ 'C': (' ####', '#    ', '#    ', '#    ', ' ####'),
+ 'E': ('#####', '#    ', '#### ', '#    ', '#####'),
+ 'L': ('#    ', '#    ', '#    ', '#    ', '#####'),
+ 'M': ('#   #', '## ##', '# # #', '#   #', '#   #'),
+ 'O': (' ### ', '#   #', '#   #', '#   #', ' ### '),
+ 'S': (' ####', '#    ', ' ### ', '    #', '#### '),
+ 'W': ('#   #', '#   #', '# # #', '## ##', '#   #'),
+ ' ': ('     ',) * 5,
+}
+palette = (36, 34, 35, 31, 33, 32, 96, 95)
+colors = sys.stdout.isatty() and not os.getenv('NO_COLOR') and os.getenv('TERM') != 'dumb'
+print('\n')
+for title in ('WELCOME', 'CALLAS OS'):
+    for row in range(5):
+        pieces = []
+        for index, letter in enumerate(title):
+            cell = font[letter][row]
+            if colors and letter != ' ':
+                cell = f'\033[1;{palette[index % len(palette)]}m{cell}\033[0m'
+            pieces.append(cell)
+        print('  ' + ' '.join(pieces).rstrip())
+    print()
+print('      INSTALADOR AUTOMÁTICO  ·  ARCH LINUX  ·  KDE PLASMA\n')
+CALLAS_WELCOME
+
 # ---------------- Detecção do processador ----------------
 if grep -q "GenuineIntel" /proc/cpuinfo; then
   UCODE_PACKAGE="intel-ucode"
@@ -198,6 +228,56 @@ echo " TODOS OS DADOS DESTE DISCO SERÃO APAGADOS:"
 lsblk -o NAME,SIZE,MODEL,FSTYPE "$DISCO"
 echo "=========================================================="
 
+# ---------------- Discos secundários — opção destrutiva explícita ----------------
+# Não formatar é o padrão; pendrives, disco do SO e volumes ocupados são excluídos.
+FORMATAR_SECUNDARIOS=()
+FORMATAR_SECUNDARIOS_IDS=()
+callas_disco_secundario_seguro() {
+  local alvo=$1 esperado=${2:-} tran tipo ro rm id node kind fs
+  [[ -b $alvo ]] || return 1
+  [[ $(readlink -f -- "$alvo") == "$alvo" ]] || return 1
+  [[ $alvo != "$DISCO" && $alvo != "$BOOTDISK" ]] || return 1
+  tipo=$(lsblk -dnro TYPE "$alvo") || return 1
+  tran=$(lsblk -dnro TRAN "$alvo") || return 1
+  rm=$(lsblk -dnro RM "$alvo") || return 1
+  ro=$(lsblk -dnro RO "$alvo") || return 1
+  id=$(lsblk -dnro MAJ:MIN "$alvo") || return 1
+  [[ $tipo == disk && $rm == 0 && $ro == 0 && $tran =~ ^(ata|sata|nvme)$ ]] || return 1
+  [[ -z $esperado || $esperado == "$id" ]] || return 1
+  [[ -z $(lsblk -nr -o MOUNTPOINTS "$alvo" | sed '/^$/d') ]] || return 1
+  while read -r node kind; do
+    [[ -n $node && ( $kind == disk || $kind == part ) ]] || return 1
+    [[ ! -d /sys/class/block/${node##*/}/holders || -z $(ls -A "/sys/class/block/${node##*/}/holders") ]] || return 1
+    fs=$(lsblk -dnro FSTYPE "$node") || return 1
+    case $fs in
+      crypto_LUKS|LVM2_member|linux_raid_member|zfs_member|btrfs) return 1 ;;
+    esac
+  done < <(lsblk -nrpo NAME,TYPE "$alvo")
+}
+
+printf '\n>>> Discos secundários — converter para ext4 (opcional)\n'
+printf 'PADRÃO: preservar. Formatar APAGA TODOS os arquivos e partições do disco.\n'
+mapfile -t CALLAS_DISCOS_DISPONIVEIS < <(lsblk -dnpo NAME,TYPE,RM,RO | awk '$2=="disk" && $3==0 && $4==0 {print $1}')
+for CALLAS_OUTRO_DISCO in "${CALLAS_DISCOS_DISPONIVEIS[@]}"; do
+  callas_disco_secundario_seguro "$CALLAS_OUTRO_DISCO" || continue
+  printf '\nDisco secundário detectado:\n'
+  lsblk -o NAME,SIZE,MODEL,FSTYPE,MOUNTPOINTS "$CALLAS_OUTRO_DISCO"
+  read -rp "Apagar todo o disco $CALLAS_OUTRO_DISCO e criar ext4? [s/N]: " CALLAS_FORMATAR_RESPOSTA
+  case ${CALLAS_FORMATAR_RESPOSTA,,} in
+    s|sim)
+      read -rp "CONFIRMAÇÃO FINAL — digite APAGAR $CALLAS_OUTRO_DISCO: " CALLAS_FORMATAR_CONFIRMA
+      if [[ $CALLAS_FORMATAR_CONFIRMA == "APAGAR $CALLAS_OUTRO_DISCO" ]]; then
+        FORMATAR_SECUNDARIOS+=("$CALLAS_OUTRO_DISCO")
+        FORMATAR_SECUNDARIOS_IDS+=("$(lsblk -dnro MAJ:MIN "$CALLAS_OUTRO_DISCO")")
+        printf 'Formatação autorizada (após validação): %s\n' "$CALLAS_OUTRO_DISCO"
+      else
+        printf 'Confirmação inválida: %s será preservado.\n' "$CALLAS_OUTRO_DISCO"
+      fi
+      ;;
+    *) printf 'Dados preservados em %s.\n' "$CALLAS_OUTRO_DISCO" ;;
+  esac
+done
+
 read -rp "Nome do usuário (minúsculas, sem espaços): " USUARIO
 [[ "$USUARIO" =~ ^[a-z_][a-z0-9_-]{0,31}$ && "$USUARIO" != root && "$USUARIO" != put-aur ]] || { echo "Nome de usuário inválido."; exit 1; }
 
@@ -286,6 +366,14 @@ compile(payload, str(source), 'exec')
 print('Complemento de armazenamento validado, sem alteração dos outros discos.')
 CALLAS_STORAGE_STAGE
 
+# Revalida TODOS os dispositivos selecionados antes de qualquer gravação.
+for CALLAS_I in "${!FORMATAR_SECUNDARIOS[@]}"; do
+  callas_disco_secundario_seguro "${FORMATAR_SECUNDARIOS[$CALLAS_I]}" "${FORMATAR_SECUNDARIOS_IDS[$CALLAS_I]}" || {
+    echo 'ERRO: disco secundário alterado ou ocupado; nenhuma formatação iniciada.' >&2
+    exit 1
+  }
+done
+
 # ---------------- Particionamento ----------------
 echo ">>> Particionando $DISCO"
 umount -R /mnt 2>/dev/null || true
@@ -305,6 +393,29 @@ mkfs.ext4 -F "$RAIZ"
 
 mount "$RAIZ" /mnt
 mount --mkdir -o fmask=0077,dmask=0077 "$EFI" /mnt/boot
+
+# Somente unidades explicitamente selecionadas e confirmadas são formatadas.
+for CALLAS_I in "${!FORMATAR_SECUNDARIOS[@]}"; do
+  CALLAS_OUTRO_DISCO=${FORMATAR_SECUNDARIOS[$CALLAS_I]}
+  callas_disco_secundario_seguro "$CALLAS_OUTRO_DISCO" "${FORMATAR_SECUNDARIOS_IDS[$CALLAS_I]}" || {
+    echo 'ERRO: disco secundário alterado ou montado; formatação bloqueada.' >&2
+    exit 1
+  }
+  echo ">>> Formatando somente o secundário autorizado: $CALLAS_OUTRO_DISCO (ext4)"
+  wipefs -af "$CALLAS_OUTRO_DISCO"
+  sgdisk --zap-all "$CALLAS_OUTRO_DISCO"
+  sgdisk -n 1:0:0 -t 1:8300 -c 1:"CALLAS_DADOS" "$CALLAS_OUTRO_DISCO"
+  partprobe "$CALLAS_OUTRO_DISCO"
+  udevadm settle
+  if [[ $CALLAS_OUTRO_DISCO =~ [0-9]$ ]]; then CALLAS_SEP=p; else CALLAS_SEP=; fi
+  CALLAS_PARTICAO_DADOS="${CALLAS_OUTRO_DISCO}${CALLAS_SEP}1"
+  [[ -b $CALLAS_PARTICAO_DADOS ]] || {
+    echo "ERRO: partição secundária não apareceu: $CALLAS_PARTICAO_DADOS" >&2
+    exit 1
+  }
+  mkfs.ext4 -F -L CALLAS_DADOS "$CALLAS_PARTICAO_DADOS"
+  echo "Novo volume ext4: $CALLAS_PARTICAO_DADOS"
+done
 
 # ---------------- Instalação base ----------------
 echo ">>> Instalando pacotes (isso demora)"
