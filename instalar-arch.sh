@@ -280,14 +280,11 @@ if (( ${#CALLAS_DISCOS_ELEGIVEIS[@]} > 0 )); then
     read -rp 'Digite 1 ou 2: ' CALLAS_FORMATAR_RESPOSTA
     case $CALLAS_FORMATAR_RESPOSTA in
       1)
-        read -rp "CONFIRMAÇÃO FINAL — digite somente APAGAR (em maiúsculas) para apagar $CALLAS_OUTRO_DISCO: " CALLAS_FORMATAR_CONFIRMA
-        if [[ $CALLAS_FORMATAR_CONFIRMA == "APAGAR" ]]; then
-          FORMATAR_SECUNDARIOS+=("$CALLAS_OUTRO_DISCO")
-          FORMATAR_SECUNDARIOS_IDS+=("$(lsblk -dnro MAJ:MIN "$CALLAS_OUTRO_DISCO")")
-          printf 'Formatação autorizada (após validação): %s\n' "$CALLAS_OUTRO_DISCO"
-        else
-          printf 'Confirmação inválida: %s será preservado.\n' "$CALLAS_OUTRO_DISCO"
-        fi
+        # A opção 1, escolhida após o aviso explícito de perda de dados,
+        # já é a autorização de formatação deste disco secundário.
+        FORMATAR_SECUNDARIOS+=("$CALLAS_OUTRO_DISCO")
+        FORMATAR_SECUNDARIOS_IDS+=("$(lsblk -dnro MAJ:MIN "$CALLAS_OUTRO_DISCO")")
+        printf 'Formatação autorizada: %s (ext4).\n' "$CALLAS_OUTRO_DISCO"
         ;;
       2|'') printf 'Dados preservados em %s.\n' "$CALLAS_OUTRO_DISCO" ;;
       *) printf 'Opção inválida: %s será preservado, sem formatação.\n' "$CALLAS_OUTRO_DISCO" ;;
