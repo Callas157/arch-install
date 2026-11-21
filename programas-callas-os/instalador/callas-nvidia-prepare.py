@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """Prepare the selected NVIDIA branch for installed Arch kernels; never change packages.
 
-Clean-install helper. Fails before mkinitcpio/GRUB if the DKMS modules are missing.
+Clean-install and live repair helper. Preserves matching modules; fails closed on DKMS errors.
 No partitioning, mounting, kernel/package upgrade, or NVIDIA version changes.
 """
 import os
@@ -13,7 +13,7 @@ import sys
 import tempfile
 
 VERSION_FILE = Path('/etc/callas-nvidia-version')
-PINNED = VERSION_FILE.read_text().strip()
+PINNED = os.environ.get('CALLAS_NVIDIA_REPAIR_TARGET') or VERSION_FILE.read_text().strip()
 if not re.fullmatch(r'[0-9]+(?:\.[0-9]+){2,3}', PINNED):
     raise RuntimeError('Versão NVIDIA selecionada inválida.')
 SOURCE = Path('/usr/src') / f'nvidia-{PINNED}' / 'kernel-open/nvidia/os-interface.c'
@@ -98,7 +98,7 @@ def patch_73_source(path=SOURCE):
     tmp = None
     try:
         with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent,
-                                         prefix='.callas-nvidia-610-', delete=False) as stream:
+                                         prefix='.callas-nvidia-', delete=False) as stream:
             tmp = Path(stream.name)
             stream.write(patched)
             stream.flush()
@@ -152,15 +152,22 @@ def main():
         if package_version(pkg) != PINNED:
             raise RuntimeError(f'{pkg} não corresponde à NVIDIA {PINNED}. Nenhum pacote foi trocado.')
     kernels = versions()
-    if any(kernel_family(release) >= (7, 3) for release in kernels.values()):
-        patch_73_source()
+    patched = False
     for name in ('linux', 'linux-lts'):
         release = kernels[name]
-        print(f'>>> Compilando NVIDIA {PINNED} para {name} ({release})', flush=True)
-        run('dkms', 'build', '--force', '-m', 'nvidia', '-v', PINNED, '-k', release)
-        run('dkms', 'install', '--force', '-m', 'nvidia', '-v', PINNED, '-k', release)
-        run('depmod', '-a', release)
-        inspect_modules(release)
+        try:
+            inspect_modules(release)
+        except RuntimeError:
+            if not patched and kernel_family(release) >= (7, 3):
+                patch_73_source()
+                patched = True
+            print(f'>>> Reparando NVIDIA {PINNED} para {name} ({release})', flush=True)
+            run('dkms', 'build', '--force', '-m', 'nvidia', '-v', PINNED, '-k', release)
+            run('dkms', 'install', '--force', '-m', 'nvidia', '-v', PINNED, '-k', release)
+            run('depmod', '-a', release)
+            inspect_modules(release)
+        else:
+            print(f'NVIDIA {PINNED} já válida para {name} ({release}); preservada.', flush=True)
         print(f'OK: todos os 4 módulos NVIDIA foram verificados para {release}.', flush=True)
     print('OK: NVIDIA '+PINNED+' pronta para gerar initramfs. Nenhum kernel/driver foi alterado.')
 
