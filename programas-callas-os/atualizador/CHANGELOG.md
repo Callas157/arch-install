@@ -1,5 +1,11 @@
 # Histórico do Callas OS
 
+## 3.24.2 — 2026-11-21
+
+- **Correção do preparador NVIDIA 595.71.05 no Arch:** os arquivos DRM, conftest e NVSwitch estão dentro de `/usr/src/nvidia-595.71.05/kernel-open/` no empacotamento Arch; a adaptação anterior pesquisava apenas `/usr/src/nvidia-595.71.05/nvidia-drm/` e poderia falhar antes de compilar. O preparador passa a reconhecer a estrutura real do Arch e preserva compatibilidade com a estrutura sem `kernel-open/` usada em outras distribuições.
+- Aplicada a mesma detecção às cópias independentes do DKMS `source`/`build`, incluindo os testes offline de reconhecimento, idempotência e proteção contra estruturas não reconhecidas. O Callas OS Update continua bloqueando propositalmente a fase boot quando a NVIDIA instalada (595) diverge da versão fixada (610); somente a reparação manual na Central pode autorizar a correção da fixação.
+- **Validação pendente:** esta correção de caminho foi verificada contra a listagem oficial do pacote DKMS Arch e as fontes upstream. Não houve compilação real da 595 no Linux 7.3.5 nem teste de reinicialização em RTX 3060; caso o reparo falhe, não reiniciar e preservar o log.
+
 ## 3.24.1 — 2026-11-21
 
 - **Compatibilidade NVIDIA 595.71.05 ↔ Linux 7.3:** adaptação da fonte Open DKMS baseada no relato Deepin 25 com RTX 3060 (https://bbs.deepin.org.cn/en/post/302605), conferida contra os arquivos da tag 595.71.05 do repositório NVIDIA/open-gpu-kernel-modules. Corrige o nome `struct drm_atomic_state` → `struct drm_atomic_commit`, a família de funções `drm_atomic_state_*`, e os dois testes `conftest.sh` de callbacks CRTC/plano. Trata também as chamadas `strncpy` NVSwitch com cópia/zero-padding equivalente.
