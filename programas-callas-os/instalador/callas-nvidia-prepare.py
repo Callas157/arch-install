@@ -152,6 +152,19 @@ def prepare_compat_tree(source, release):
                         else source / 'nvidia/os-interface.c')
 
 
+def prepare_installed_source():
+    """Pacman PostTransaction pre-DKMS: patch only the newly installed source."""
+    if os.geteuid() != 0:
+        raise RuntimeError('Compatibilidade NVIDIA exige root.')
+    if PINNED != '595.71.05':
+        return
+    releases = versions()
+    newer = [value for value in releases.values() if kernel_family(value) >= (7, 2)]
+    if not newer:
+        return
+    prepare_compat_tree(Path('/usr/src') / ('nvidia-' + PINNED), newer[0])
+
+
 def run(*command):
     print('+', ' '.join(command), flush=True)
     result = subprocess.run(command, check=False)
@@ -307,7 +320,9 @@ def main():
 
 if __name__ == '__main__':
     try:
-        if len(sys.argv) == 4 and sys.argv[1] == '--compat-tree':
+        if sys.argv[1:] == ['--compat-installed']:
+            prepare_installed_source()
+        elif len(sys.argv) == 4 and sys.argv[1] == '--compat-tree':
             if os.geteuid() != 0:
                 raise RuntimeError('Preparação de fonte NVIDIA exige root.')
             prepare_compat_tree(Path(sys.argv[2]), sys.argv[3])
