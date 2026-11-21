@@ -2316,7 +2316,35 @@ if (( nvidia )); then
     }
     nvidia_pkgs+=("$arquivo")
   done
-  pacman -U --noconfirm "${nvidia_pkgs[@]}"
+  # Fixação inicial antes do pacman: o hook DKMS precisa conhecer a versão
+  # durante PostTransaction. Em instalação nova não existe escolha anterior.
+  printf '%s\\n' "$nvidia_version" > /etc/callas-nvidia-version
+  # A NVIDIA 595.71.05 precisa da adaptação DRM antes do hook 70-dkms-install.
+  # Hook temporário apenas para o pacote inicial, instalado na ordem correta.
+  if [[ $nvidia_version == 595.71.05 ]]; then
+    install -d -m 0755 /etc/pacman.d/hooks
+    cat > /etc/pacman.d/hooks/30-callas-nvidia-initial-compat.hook <<'CALLAS_NVIDIA_INIT_HOOK'
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = nvidia-open-dkms
+
+[Action]
+Description = Preparar NVIDIA 595.71.05 para DRM Linux 7.2+ antes do DKMS
+When = PostTransaction
+Exec = /usr/local/libexec/callas-nvidia-prepare --compat-installed
+CALLAS_NVIDIA_INIT_HOOK
+  fi
+  pacman -U --noconfirm "${nvidia_pkgs[@]}" ||
+    { echo 'ERRO: a instalação da pilha NVIDIA assinada falhou; não concluir boot.' >&2; exit 1; }
+  rm -f /etc/pacman.d/hooks/30-callas-nvidia-initial-compat.hook
+  for pacote in nvidia-open-dkms nvidia-utils lib32-nvidia-utils; do
+    instalado=$(pacman -Q "$pacote" | awk '{sub(/-[^-]*$/, "", $2); print $2}') ||
+      { echo "ERRO: pacote NVIDIA ausente: $pacote" >&2; exit 1; }
+    [[ $instalado == "$nvidia_version" ]] ||
+      { echo "ERRO: $pacote não corresponde à NVIDIA $nvidia_version." >&2; exit 1; }
+  done
   # Só o gerenciador NVIDIA pode mudar a versão selecionada. O IgnorePkg
   # continua protegendo a pilha das atualizações gerais e do Paru.
   sed -i '/^# CALLAS_NVIDIA_610_BEGIN$/,/^# CALLAS_NVIDIA_610_END$/d' /etc/pacman.conf
