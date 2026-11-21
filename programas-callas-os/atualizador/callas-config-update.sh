@@ -623,6 +623,19 @@ done
 /usr/local/libexec/callas-kernel-check --verify-only ||
   erro 'Kernel/boot com falha; atualização não concluída. Não reinicie antes de corrigir.'
 # END completion boot gate
+
+# CALLAS OPTIONAL CODEX UPDATE
+# Nunca instalar o chat durante uma instalação limpa ou em usuário sem Codex.
+# Verificação rápida no perfil comum, sem sudo para arquivos de usuário.
+# Se estiver aberto, nenhuma janela ou processo é interrompido; a próxima
+# execução do Callas OS Update verificará novamente, mesmo com release igual.
+codex_updater=/usr/local/lib/callas-update/callas-update-gui.py
+if [[ -f "$codex_updater" && ! -L "$codex_updater" ]]; then
+  if ! como_usuario /usr/bin/python3 "$codex_updater" --update-installed-codex; then
+    aviso 'Codex opcional não atualizado nesta execução; será verificado novamente no próximo Callas OS Update.'
+  fi
+fi
+
 printf '%s\n' "$VERSAO" > "$VERSAO_ARQ"
 /usr/local/libexec/callas-version --complete "$CALLAS_RELEASE_DIR/VERSION" "$CALLAS_RELEASE_REF"
 migration_closed=1
