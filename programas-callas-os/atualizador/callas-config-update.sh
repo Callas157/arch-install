@@ -338,6 +338,13 @@ fi
 
 # CALLAS_PHASE_BEGIN boot
 if phase_needed boot; then
+# Primeiro reparar apenas módulos da versão NVIDIA escolhida. Divergência
+# entre a versão fixada e a instalada exige confirmação explícita na Central;
+# não tocar em Plymouth, initramfs ou GRUB antes desta verificação.
+if pacman -Qq nvidia-utils >/dev/null 2>&1; then
+  /usr/local/libexec/callas-kernel-policy --nvidia-repair ||
+    erro 'NVIDIA inconsistente. Na Central > Driver NVIDIA, confirme "Reparar versão instalada"; depois execute o Callas OS Update novamente. Não reinicie enquanto houver falhas.'
+fi
 # GRUB: transição em tela cheia; não abre janela de terminal sobre o tema.
 # Validate legacy entries before changing any boot assets. The helper supports
 # microcode, old indentation/paths and EFI command variants without rewriting them.
