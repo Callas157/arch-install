@@ -102,14 +102,14 @@ class PrepareTests(unittest.TestCase):
             drm.mkdir()
             nv = source / "nvidia"
             nv.mkdir()
-            (drm / "nvidia-drm-conftest.h").write_text('#include "nvtypes.h"\\n')
+            (drm / "nvidia-drm-conftest.h").write_text('#include "nvtypes.h"\n')
             (source / "conftest.sh").write_text(
-                ('#include <drm/drm_modeset_helper_vtables.h>\\n'
-                 'struct drm_atomic_state *state;\\n') * 2)
+                ('#include <drm/drm_modeset_helper_vtables.h>\n'
+                 'struct drm_atomic_state *state;\n') * 2)
             (nv / "linux_nvswitch.c").write_text(
-                "#define CREATE_TRACE_POINTS\\n"
-                "strncpy(regkey_val, regkey_val_start, regkey_val_len);\\n"
-                "return strncpy(dest, src, length);\\n")
+                "#define CREATE_TRACE_POINTS\n"
+                "strncpy(regkey_val, regkey_val_start, regkey_val_len);\n"
+                "return strncpy(dest, src, length);\n")
             self.assertTrue(mod.patch_595_atomic_tree(source))
             header = (drm / "nvidia-drm-conftest.h").read_text()
             conftest = (source / "conftest.sh").read_text()
@@ -131,12 +131,12 @@ class PrepareTests(unittest.TestCase):
             nv = source / "nvidia"
             nv.mkdir()
             header = drm / "nvidia-drm-conftest.h"
-            header.write_text('#include "nvtypes.h"\\n')
+            header.write_text('#include "nvtypes.h"\n')
             (source / "conftest.sh").write_text("incompatible conftest")
-            (nv / "linux_nvswitch.c").write_text("#define CREATE_TRACE_POINTS\\n")
+            (nv / "linux_nvswitch.c").write_text("#define CREATE_TRACE_POINTS\n")
             with self.assertRaisesRegex(RuntimeError, "Detecção DRM"):
                 mod.patch_595_atomic_tree(source)
-            self.assertEqual(header.read_text(), '#include "nvtypes.h"\\n')
+            self.assertEqual(header.read_text(), '#include "nvtypes.h"\n')
 
 
 
