@@ -503,4 +503,62 @@ class UiTests(unittest.TestCase):
         stop.assert_not_called()
 
 
+    def test_provider_switch_keeps_codex_preferences_and_separate_pins(self):
+        from callas_chat.history import save_pins
+        save_pins('codex', {'codex-pin': 'Do sistema'})
+        save_pins('gpt', {'gpt-pin': 'Do GPT'})
+        self.window.pins = {'codex-pin': 'Do sistema'}
+        self.window.provider_selector.setCurrentIndex(1)
+        self.assertEqual(self.window.provider, 'gpt')
+        self.assertEqual(self.backend.provider, 'gpt')
+        self.assertEqual(self.window.pins, {'gpt-pin': 'Do GPT'})
+        self.window.provider_selector.setCurrentIndex(0)
+        self.assertEqual(self.window.provider, 'codex')
+        self.assertEqual(self.window.pins, {'codex-pin': 'Do sistema'})
+
+    def test_gpt_api_key_enters_only_the_local_auth_protocol(self):
+        self.window.provider_selector.setCurrentIndex(1)
+        with patch('callas_chat.ui.QInputDialog.getText', return_value=('sk-test-placeholder', True)):
+            self.window.start_login()
+        method, params, callback, _ = self.backend.requests[-1]
+        self.assertEqual(method, 'account/login/start')
+        self.assertEqual(params, {'type': 'apiKey', 'apiKey': 'sk-test-placeholder'})
+        self.assertNotIn('sk-test-placeholder', (Path(self.temp.name)/'settings.ini').read_text() if
+                         (Path(self.temp.name)/'settings.ini').exists() else '')
+
+    def test_clear_history_paginates_and_never_targets_pinned_ids(self):
+        from PySide6.QtWidgets import QMessageBox
+        self.window.pins = {'keep': 'Conversa fixa'}
+        with patch.object(QMessageBox, 'question', return_value=QMessageBox.Yes), \
+             patch.object(QMessageBox, 'information') as notify:
+            self.window.clear_unpinned_history()
+            self.assertEqual(self.backend.requests[-1][0], 'thread/list')
+            self.backend.requests[-1][2]({'data': [{'id': 'keep'}, {'id': 'trash1'}], 'nextCursor': 'next'})
+            self.assertEqual(self.backend.requests[-1][1]['cursor'], 'next')
+            self.backend.requests[-1][2]({'data': [{'id': 'trash2'}], 'nextCursor': None})
+            self.assertEqual(self.backend.requests[-1][0], 'thread/delete')
+            self.assertEqual(self.backend.requests[-1][1]['threadId'], 'trash1')
+            self.backend.requests[-1][2]({})
+            self.assertEqual(self.backend.requests[-1][1]['threadId'], 'trash2')
+            self.backend.requests[-1][2]({})
+            self.assertEqual(self.window.pins, {'keep': 'Conversa fixa'})
+            self.assertEqual([r[1]['threadId'] for r in self.backend.requests if r[0] == 'thread/delete'],
+                             ['trash1', 'trash2'])
+            notify.assert_called_once()
+
+    def test_model_and_effort_go_to_codex_turn(self):
+        self.window.refresh_models()
+        self.backend.requests[-1][2]({'data': [{'model': 'gpt-6.1-sol',
+            'displayName': 'GPT-6.1 Sol',
+            'supportedReasoningEfforts': [{'reasoningEffort': 'high'}]}]})
+        self.window.model_selector.setCurrentIndex(self.window.model_selector.findData('gpt-6.1-sol'))
+        self.window.effort_selector.setCurrentIndex(self.window.effort_selector.findData('high'))
+        self.window.thread_id = 'existing-thread'
+        self.window.editor.setPlainText('Diagnostique')
+        self.window.send()
+        method, params, _, _ = self.backend.requests[-1]
+        self.assertEqual(method, 'turn/start')
+        self.assertEqual((params['model'], params['effort']), ('gpt-6.1-sol', 'high'))
+
+
 if __name__ == '__main__': unittest.main()
