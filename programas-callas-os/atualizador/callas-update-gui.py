@@ -43,12 +43,12 @@ CODEX_REF = 'd71a0e916c545c845c8991d7365a8771ced99c81'
 CODEX_SHA256 = 'f1ed256b4b0542e1142f69887c752336c3500531df937cd3d96e51e49f1eb134'
 CODEX_URL = ('https://raw.githubusercontent.com/Callas157/arch-install/' + CODEX_REF
              + '/programas-callas-os/codex/codex.tar.gz')
-CODEX_OVERLAY_REF = 'e34adfbfc992231ad3edc833a81e9b3b475c1ba3'
+CODEX_OVERLAY_REF = 'ff717550da3d6675e21c87fa28cd81fb1e104f02'
 CODEX_TARGET_VERSION = '1.4.0'
 # Fontes verificadas pelo git blob SHA-1, além do commit HTTPS imutável.
 CODEX_OVERLAY = {
     'callas_chat/__init__.py': '96e3ce8d9fefc0cff5d4c6d50910be6302b6ab81',
-    'callas_chat/ui.py': '4e205908e5f7d0f71d62e77fd6cbefe681f27955',
+    'callas_chat/ui.py': '3cec324faeb6ce98f85b9c5420607a614d5b195e',
     'callas_chat/backend.py': '2fa165e8ef10cd9b1afe953df32bf5f80c55cc2c',
     'callas_chat/history.py': '9c5729bb4cc9afc78314dbe00dddbf6853184f45',
     'callas_chat/theme.qss': '4cab54742dd534f75f3c4cf86b1175770d89cf34',
