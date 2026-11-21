@@ -1,5 +1,14 @@
 # Histórico do Callas OS
 
+## 3.21.0 — 2026-11-20
+
+- A instalação limpa exibe no próprio terminal da ISO um banner grande **WELCOME / CALLAS OS**, em caracteres `#`, colorido em terminais compatíveis e monocromático nos demais, antes da seleção dos discos. Não exige figlet e não altera o boot ou os wallpapers.
+- Depois de escolher o disco principal, mas antes do nome do usuário e da senha repetida, o instalador percorre os **discos internos secundários** elegíveis (SATA/ATA/NVMe), independentemente da quantidade. Para cada um, a pergunta oferece **[s/N]**; o padrão preserva integralmente o disco, independentemente de NTFS, exFAT ou ext4. Um pedido de formatação precisa ser seguido pela confirmação exata `APAGAR /dev/...`; caso contrário, nada é agendado.
+- A formatação autorizada apaga **o disco físico secundário inteiro**, recria uma partição de dados GPT Linux e formata em **ext4**. Antes da primeira operação destrutiva e antes de cada disco, a seleção é revalidada com dispositivo e identificador maior:menor. Pendrive USB, mídia removível, disco principal, disco da ISO, discos montados, RAID/LVM/criptografia e pools Btrfs não são candidatos. Não há conversão de NTFS preservando arquivos: ext4 é criação de um novo sistema de arquivos.
+- As novas partições ext4 são entregues ao mecanismo de montagem por UUID e de permissões da instalação limpa; permanece manual apenas a adição da biblioteca na Steam. **Nenhum código do Callas OS Update**, kernel ou NVIDIA foi modificado. Mantém a preferência por NVIDIA 610.57.04 e kernels atuais do Arch, com validação de boot já existente.
+
+Verificações: sintaxe Bash do instalador e compilação do trecho Python do banner verificadas em cópia de texto; seis testes offline de seleção simulada passaram (padrão Não, confirmação exata, cancelamento e ordem das perguntas). Inclui regressões em `tests/test_installer_secondary_format.py`. Não foram testadas formatações em hardware real, instalação limpa completa, queda de energia ou compatibilidade do driver com kernels futuros. O backup anterior no Google Drive foi dispensado somente nesta entrega após concordância do usuário nesta conversa.
+
 ## 3.20.0 — 2026-11-20
 
 - Instalação limpa: complementa a descoberta e a montagem por UUID que o instalador já executava via `callas-security.sh`. O novo componente finaliza a preparação de volumes internos ext4 e o acesso do usuário; a descoberta existente continua excluindo USB/removíveis e discos do sistema, sem formatar ou alterar UUID dos discos secundários. Os volumes elegíveis são acessíveis pelo Dolphin no boot sem solicitação de senha para montar.
