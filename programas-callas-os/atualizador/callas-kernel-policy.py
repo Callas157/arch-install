@@ -277,7 +277,8 @@ dkms build -m nvidia -v "$2" -k "$3" --dkmstree "$4"
 
 def run_driver_transaction(paths, version, work):
     env = dict(os.environ, CALLAS_KERNEL_UPDATE_CONTEXT=DRIVER_CONTEXT,
-               CALLAS_NVIDIA_TARGET=version, CALLAS_NVIDIA_PACKAGES=str(paths[0].parent),
+               CALLAS_NVIDIA_TARGET=version, CALLAS_NVIDIA_REPAIR_TARGET=version,
+               CALLAS_NVIDIA_PACKAGES=str(paths[0].parent),
                LC_ALL='C', PATH='/usr/bin:/bin')
     subprocess.run(['/usr/bin/pacman', '--config', str(work / 'pacman.conf'),
                     '--hookdir', str(HOOK_DIRECTORY), '--hookdir', str(work / 'hooks'),
@@ -339,6 +340,16 @@ def select_driver(version):
                 '[Trigger]\nOperation = Remove\nType = Package\nTarget = *\n\n'
                 '[Action]\nWhen = PreTransaction\nNeedsTargets\nAbortOnFail\n'
                 'Exec = /usr/local/libexec/callas-kernel-policy --remove\n')
+            # The archive package installs unpatched DKMS sources. This hook
+            # runs before 70-dkms-install and after pacman unpacked the source;
+            # otherwise the candidate preflight would succeed but the real
+            # installed module would still fail to build on Linux 7.3.
+            (work / 'hooks/30-callas-nvidia-compat.hook').write_text(
+                '[Trigger]\\nOperation = Install\\nOperation = Upgrade\\n'
+                'Type = Package\\nTarget = nvidia-open-dkms\\n\\n'
+                '[Action]\\nDescription = Adaptar NVIDIA 595 para a API DRM do kernel\\n'
+                'When = PostTransaction\\n'
+                'Exec = /usr/local/libexec/callas-nvidia-prepare --compat-installed\\n')
             old_urls = []
             if all(packages[p].rsplit('-', 1)[0] == current for p in DRIVER):
                 for package in selected_urls:
