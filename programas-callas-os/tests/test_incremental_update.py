@@ -320,4 +320,34 @@ asset() { asset_changed=0; [[ $1 != "$CHANGE_ASSET" ]] || asset_changed=1; }
      self.assertEqual(calls.count('grub-mkconfig'),2 if fail=='grub' else 0)
 
 
+ def test_session_update_does_not_interrupt_discord_or_kwin(self):
+  source=(UP/'callas-config-update.sh').read_text()
+  phase=source.split('# CALLAS_PHASE_BEGIN session\\n',1)[1].split('# CALLAS_PHASE_END session\\n',1)[0]
+  for forbidden in ('start callas-janelas.service','restart callas-discord-memory.service',
+      'restart callas-game-logs.service','callas-inicio-kde','kwriteconfig6','kwinrulesrc'):
+   self.assertNotIn(forbidden,phase)
+  self.assertIn('phase_done session',phase)
+  self.assertIn('daemon-reload',phase)
+  script='''set -Eeuo pipefail
+usuario=fixture
+home="$TEST_HOME"
+phase_needed() { [[ $1 == session ]]; }
+phase_done() { printf 'done %s\\n' "$1"; }
+id() { echo 1000; }
+como_usuario() { printf 'user-call %s\\n' "$*"; }
+runuser() { printf 'runuser-call %s\\n' "$*"; }
+aviso() { printf 'warning %s\\n' "$*"; }
+'''+phase.replace('[[ -S "$runtime_sessao/bus" ]]','[[ ${TEST_ACTIVE_SESSION:-0} == 1 ]]')
+  for active in ('0','1'):
+   with self.subTest(active_session=active),tempfile.TemporaryDirectory() as temp:
+    result=subprocess.run(['bash','-c',script],capture_output=True,text=True,
+      env=dict(os.environ,TEST_HOME=temp,TEST_ACTIVE_SESSION=active))
+    self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+    self.assertIn('done session',result.stdout)
+    self.assertIn('Discord e memória de janelas preservados',result.stdout)
+    self.assertNotIn(' start ',result.stdout)
+    self.assertNotIn(' restart ',result.stdout)
+    if active=='1':self.assertIn('daemon-reload',result.stdout)
+    else:self.assertNotIn('daemon-reload',result.stdout)
+
 if __name__=='__main__':unittest.main()

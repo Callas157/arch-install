@@ -1,5 +1,11 @@
 # Histórico do Callas OS
 
+## 3.22.1 — 2026-11-21
+
+- Corrigido o Callas OS Update para preservar janelas, regras do KWin e autostart da sessão durante atualizações de periféricos e aplicativos. A etapa session não reaplica callas-inicio-kde nem inicia callas-janelas.service, que reiniciava a memória persistente do Discord e podia bloquear a migração do G920. Também não reinicia callas-game-logs.service. Serviços em execução e preferências do usuário ficam intactos; arquivos já provisionados serão usados normalmente no próximo login KDE. A instalação limpa não muda.
+- Com ou sem sessão gráfica ativa, a fase é concluída após preparar seus arquivos. O daemon-reload opcional somente atualiza definições, sem iniciar ou reiniciar serviços. O driver nativo do G920, o teste de marchas e o pacote python-evdev da 3.22.0 continuam mantidos. A etapa independente do Brave aberto continua com o comportamento anterior.
+- Teste offline de regressão adicionado para a sessão ativa e sem sessão; não houve teste físico KDE ou do volante.
+
 ## 3.22.0 — 2026-11-21
 
 - **G920 e câmbio Driving Force Shifter opcional:** adicionada tela **Central Callas OS → Volante G920 e câmbio** para reconhecer a base HID `046d:c262`, exibir sinais do volante/pedais e testar individualmente as seis marchas e a ré. O shifter é conectado à base e envia entradas como botões, sem dispositivo USB separado. O resultado diferencia sinal recebido pelo Linux de configuração do ETS2/Steam; falta de sinal não comprova defeito físico.

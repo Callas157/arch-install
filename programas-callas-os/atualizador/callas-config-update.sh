@@ -576,15 +576,11 @@ fi
 
 # CALLAS_PHASE_BEGIN session
 if phase_needed session; then
-session_pending=0
-# Repair the persistent theme without depending on a running graphical session.
-como_usuario kwriteconfig6 --file kdeglobals --group KDE --key LookAndFeelPackage org.kde.breezedark.desktop
-como_usuario kwriteconfig6 --file kdeglobals --group General --key ColorScheme BreezeDark
-
-# Reaplica somente os ajustes seguros de sessão já existentes na instalação.
-if [[ -x /usr/local/libexec/callas-inicio-kde ]]; then
-  como_usuario /usr/local/libexec/callas-inicio-kde || aviso "Alguns ajustes de sessão KDE não puderam ser reaplicados."
-fi
+# Em atualizações de aplicativos/periféricos, não reconfigurar janelas nem
+# preferências de autostart: o Discord, Steam, KWin e seus estados permanecem
+# intocados. O instalador e o login KDE cuidam do primeiro provisionamento.
+# Não iniciar callas-janelas: esse serviço reinicia a memória do Discord.
+# Os auxiliares e arquivos systemd já são preparados na etapa tools.
 if [[ -x /usr/local/libexec/callas-nekofetch ]]; then
   if [[ -f $home/.config/nekofetch/layout.jsonc ]]; then
     como_usuario /usr/local/libexec/callas-version --configure-neko
@@ -593,33 +589,21 @@ if [[ -x /usr/local/libexec/callas-nekofetch ]]; then
   fi
 fi
 
-# Patch independente: ativa a memória automaticamente na sessão Plasma existente.
-# O systemd do usuário fornece o ambiente gráfico; sudo/root não grava kwinrulesrc.
+# Atualiza apenas definições do systemd do usuário, SEM restart de serviços.
+# Se não há sessão ativa, as definições valem no próximo login KDE.
 uid_sessao=$(id -u "$usuario")
 runtime_sessao="/run/user/$uid_sessao"
 if [[ -S "$runtime_sessao/bus" ]]; then
   sessao_systemctl=(runuser -u "$usuario" -- env -i PATH=/usr/bin:/bin HOME="$home"
     USER="$usuario" LOGNAME="$usuario" LANG=C.UTF-8 XDG_RUNTIME_DIR="$runtime_sessao"
     DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_sessao/bus" systemctl --user)
-  "${sessao_systemctl[@]}" daemon-reload
-  if ! "${sessao_systemctl[@]}" start callas-janelas.service; then
-    runuser -u "$usuario" -- env -i PATH=/usr/bin:/bin HOME="$home" XDG_RUNTIME_DIR="$runtime_sessao" \
-      DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_sessao/bus" \
-      journalctl --user -u callas-janelas.service -n 40 --no-pager || :
-    erro 'A memória de janelas falhou; o diagnóstico foi incluído neste log. As etapas concluídas não serão repetidas na próxima tentativa.'
-  fi
-  if ! "${sessao_systemctl[@]}" restart callas-game-logs.service; then
-    erro 'O monitor de diagnósticos de jogos não iniciou; a etapa ficará pendente.'
-  fi
-  printf 'Memória de janelas ativada automaticamente. Não depende do configurador de monitores.\n'
-else
-  session_pending=1
-  printf 'Sem sessão gráfica ativa: a memória será ativada automaticamente no próximo login KDE.\n'
+  "${sessao_systemctl[@]}" daemon-reload ||
+    aviso 'Não consegui recarregar definições do usuário; o próximo login KDE fará isso.'
 fi
-
+printf 'Discord e memória de janelas preservados. Nenhum serviço de sessão reiniciado.\n'
+printf 'Configurações de serviços serão usadas normalmente no próximo login KDE.\n'
 como_usuario kbuildsycoca6 --noincremental || aviso 'O menu será atualizado no próximo login.'
-
-(( session_pending )) || phase_done session
+phase_done session
 fi
 # CALLAS_PHASE_END session
 
