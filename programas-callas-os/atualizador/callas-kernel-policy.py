@@ -366,7 +366,7 @@ def installed_release_map():
         if name not in PAIRS:
             continue
         release = base.parent.name
-        if name in found or not re.fullmatch(r'[a-zA-Z0-9_.+\\-]+', release):
+        if name in found or not re.fullmatch(r'[a-zA-Z0-9_.+-]+', release):
             raise RuntimeError('Identificação ambígua do kernel ' + name)
         if not (base.parent / 'build/Makefile').is_file():
             raise RuntimeError('Headers ausentes para ' + release)
@@ -432,7 +432,7 @@ def repair_driver(*, adopt_installed=False, expected=None):
                 output = result.stdout or ''
                 lines.append(output)
                 if output:
-                    print(output, end='' if output.endswith('\\n') else '\\n', flush=True)
+                    print(output, end='' if output.endswith('\n') else '\n', flush=True)
                 if result.returncode:
                     raise RuntimeError(f'Falha (código {result.returncode}): {args[0]}')
             except subprocess.TimeoutExpired as error:
@@ -450,7 +450,7 @@ def repair_driver(*, adopt_installed=False, expected=None):
                                                  prefix='.callas-nvidia-', delete=False) as marker:
                     marker_path = Path(marker.name)
                     try:
-                        marker.write(installed + '\\n')
+                        marker.write(installed + '\n')
                         marker.flush()
                         os.fchmod(marker.fileno(), 0o644)
                         os.fsync(marker.fileno())
@@ -465,7 +465,7 @@ def repair_driver(*, adopt_installed=False, expected=None):
             print('Versão fixada não alterada. Não reinicie; consulte o log do reparo.', file=sys.stderr)
             raise
         finally:
-            logfile.write_text('\\n'.join(lines) + '\\n')
+            logfile.write_text('\n'.join(lines) + '\n')
             logfile.chmod(0o600)
 
 
