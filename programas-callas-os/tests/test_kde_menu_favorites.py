@@ -21,8 +21,8 @@ EXPECTED = [
 def favorites(source: str, destination: str, end_token: str):
     pattern = (
         r"cat > " + re.escape(destination)
-        + r" <<'" + re.escape(end_token) + r"'\\n(.*?)\\n"
-        + re.escape(end_token) + r"(?:\\n|$)"
+        + r" <<'" + re.escape(end_token) + r"'\n(.*?)\n"
+        + re.escape(end_token) + r"(?:\n|$)"
     )
     match = re.search(pattern, source, re.DOTALL)
     if match is None:
