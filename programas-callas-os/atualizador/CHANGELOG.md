@@ -1,5 +1,14 @@
 # Histórico do Callas OS
 
+## 3.24.3 — 2026-11-21
+
+- **Instalação limpa NVIDIA:** o instalador oficial prepara a fonte DKMS da NVIDIA 595.71.05 em hook temporário PostTransaction `30-callas-nvidia-initial-compat.hook` antes do hook `70-dkms-install`. A versão escolhida é registrada antes da transação para que o preparador identifique o alvo correto. Depois, a instalação confirma os três pacotes essenciais (`nvidia-open-dkms`, `nvidia-utils`, `lib32-nvidia-utils`), executa o preparador nos dois kernels e só gera initramfs/GRUB depois da validação de módulos. Qualquer falha interrompe a instalação; não substitui silenciosamente por outra série.
+- **Compatibilidade NVIDIA 595.71.05 em kernels Linux 7.2/7.3:** além do mapeamento DRM atomic, foram restaurados os caminhos corretos dos callbacks DRM quando os testes `conftest` não reconheciam a API nova, e corrigidas as chamadas `strncpy` removidas do Linux em `nvidia-modeset`, `nvidia-uvm` e `os-interface`. O patch preserva a API antiga do Linux LTS em tempo de compilação e mantém verificação exata das assinaturas da fonte.
+- **Troca manual da Central:** continua usando pacotes do arquivo oficial com assinatura, compilação isolada antes da troca, hook de compatibilidade antes do DKMS instalado, validação de módulos dos dois kernels, logs e tentativa de rollback. Reparo da versão já instalada requer confirmação; o Callas OS Update não troca 610 por 595 automaticamente.
+- **Diagnóstico:** botão `Copiar detalhes` na Central para enviar erros e logs sem transcrever capturas.
+- **Testes e limite:** sintaxe Bash do instalador validada em cópia byte a byte correspondente à `main`; regressões offline adicionadas para a ordem dos hooks, compilação antes do initramfs, detecção dos dois layouts de fonte e assinaturas da NVIDIA. `bash -n` e testes simulados não comprovam compilação real, KMS/Wayland nem primeiro boot na RTX 3060 com Linux 7.3.5. Instalação limpa ainda exige ensaio real antes de ser considerada garantida.
+- **Backup:** instalador original v3.24.2, verificado por comparação binária e SHA-256, salvo no Google Drive em `CallasOS/CallasOS 3.24.2/instalar-arch.sh`, junto com metadados. Link curto e nome do instalador preservados.
+
 ## 3.24.2 — 2026-11-21
 
 - **Correção do preparador NVIDIA 595.71.05 no Arch:** os arquivos DRM, conftest e NVSwitch estão dentro de `/usr/src/nvidia-595.71.05/kernel-open/` no empacotamento Arch; a adaptação anterior pesquisava apenas `/usr/src/nvidia-595.71.05/nvidia-drm/` e poderia falhar antes de compilar. O preparador passa a reconhecer a estrutura real do Arch e preserva compatibilidade com a estrutura sem `kernel-open/` usada em outras distribuições.
