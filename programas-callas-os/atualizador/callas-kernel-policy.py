@@ -305,7 +305,10 @@ def select_driver(version):
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         current = VERSION_FILE.read_text().strip()
         packages = installed_driver()
-        if current == version and all(value.rsplit('-', 1)[0] == version for value in packages.values()):
+        if current == version and all(packages[name].rsplit('-', 1)[0] == version for name in DRIVER):
+            # The GUI exposes a dedicated repair path for missing modules.
+            if not modules_coherent(version):
+                raise RuntimeError('Módulos NVIDIA ausentes. Use "Reparar versão instalada" na Central.')
             return
         catalog = driver_catalog(packages)
         if version not in catalog:
@@ -352,6 +355,121 @@ def select_driver(version):
                 raise
 
 
+
+def installed_release_map():
+    """Determine the actual installed kernel releases; never use uname here."""
+    found = {}
+    for base in MODULES.glob('*/pkgbase'):
+        if base.is_symlink() or not base.is_file():
+            continue
+        name = base.read_text().strip()
+        if name not in PAIRS:
+            continue
+        release = base.parent.name
+        if name in found or not re.fullmatch(r'[a-zA-Z0-9_.+\\-]+', release):
+            raise RuntimeError('Identificação ambígua do kernel ' + name)
+        if not (base.parent / 'build/Makefile').is_file():
+            raise RuntimeError('Headers ausentes para ' + release)
+        found[name] = release
+    if set(found) != set(PAIRS):
+        raise RuntimeError('Os kernels linux e linux-lts e seus headers são necessários.')
+    return found
+
+
+def modules_coherent(version):
+    """Read-only, installed-kernel test for all four NVIDIA modules."""
+    for release in installed_release_map().values():
+        for name in ('nvidia', 'nvidia-modeset', 'nvidia-uvm', 'nvidia-drm'):
+            result = subprocess.run(['/usr/bin/modinfo', '-k', release, '-F', 'version', name],
+                                    capture_output=True, text=True, timeout=10)
+            magic = subprocess.run(['/usr/bin/modinfo', '-k', release, '-F', 'vermagic', name],
+                                   capture_output=True, text=True, timeout=10)
+            if result.returncode or result.stdout.strip() != version:
+                return False
+            if magic.returncode or not magic.stdout.split() or magic.stdout.split()[0] != release:
+                return False
+    return True
+
+
+def repair_driver(*, adopt_installed=False, expected=None):
+    """Rebuild the installed branch only. Adopting a mismatched pin requires a click."""
+    check_hooks()
+    command(['/usr/bin/mountpoint', '-q', '/boot'])
+    with DRIVER_LOCK.open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        packages = installed_driver()
+        versions = {packages[name].rsplit('-', 1)[0] for name in DRIVER}
+        if len(versions) != 1:
+            raise RuntimeError('Pacotes NVIDIA essenciais de versões diferentes. Nenhuma troca automática permitida.')
+        installed = versions.pop()
+        if not DRIVER_VERSION.fullmatch(installed):
+            raise RuntimeError('Versão NVIDIA instalada inválida.')
+        if expected is not None and installed != expected:
+            raise RuntimeError('A NVIDIA mudou desde a confirmação. Reabra a Central.')
+        fixed = VERSION_FILE.read_text().strip() if VERSION_FILE.is_file() else ''
+        if fixed != installed and not adopt_installed:
+            raise RuntimeError(
+                f'NVIDIA instalada {installed}, mas fixada {fixed or "ausente"}. '
+                'Abra Central Callas OS > Driver NVIDIA e confirme "Reparar versão instalada". '
+                'Não mudarei sua escolha automaticamente.')
+        if modules_coherent(installed) and fixed == installed:
+            print('NVIDIA ' + installed + ' já íntegra nos kernels linux e linux-lts. Nenhuma recompilação.', flush=True)
+            return
+        env = dict(os.environ, PATH='/usr/bin:/bin', LC_ALL='C',
+                   CALLAS_NVIDIA_REPAIR_TARGET=installed,
+                   CALLAS_KERNEL_UPDATE_CONTEXT=DRIVER_CONTEXT,
+                   CALLAS_NVIDIA_TARGET=installed)
+        logs = Path('/var/lib/callas-os')
+        logs.mkdir(parents=True, exist_ok=True)
+        logfile = logs / 'nvidia-repair-last.log'
+        lines = [f'Reparo NVIDIA: instalado={installed}; fixado={fixed or "ausente"}; adoção={adopt_installed}']
+        def step(args, *, timeout=1800):
+            print('Executando: ' + ' '.join(map(str, args)), flush=True)
+            try:
+                result = subprocess.run(args, env=env, stdin=subprocess.DEVNULL,
+                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                        text=True, errors='replace', timeout=timeout)
+                output = result.stdout or ''
+                lines.append(output)
+                if output:
+                    print(output, end='' if output.endswith('\\n') else '\\n', flush=True)
+                if result.returncode:
+                    raise RuntimeError(f'Falha (código {result.returncode}): {args[0]}')
+            except subprocess.TimeoutExpired as error:
+                raise RuntimeError('Tempo excedido durante o reparo: ' + str(args[0])) from error
+        try:
+            print('Reparando módulos sem instalar outro driver ou atualizar kernels.', flush=True)
+            step(['/usr/bin/python3', '/usr/local/libexec/callas-nvidia-prepare'])
+            if not modules_coherent(installed):
+                raise RuntimeError('A compilação não entregou os quatro módulos nos dois kernels.')
+            # Both sets of modules must exist BEFORE rewriting boot images.
+            step(['/usr/bin/mkinitcpio', '-P'])
+            step([KERNEL_CHECK, '--verify-only'])
+            if fixed != installed:
+                with tempfile.NamedTemporaryFile(mode='w', dir=VERSION_FILE.parent,
+                                                 prefix='.callas-nvidia-', delete=False) as marker:
+                    marker_path = Path(marker.name)
+                    try:
+                        marker.write(installed + '\\n')
+                        marker.flush()
+                        os.fchmod(marker.fileno(), 0o644)
+                        os.fsync(marker.fileno())
+                        marker_path.replace(VERSION_FILE)
+                    finally:
+                        marker_path.unlink(missing_ok=True)
+                print('Fixação NVIDIA atualizada somente após validar módulos e boot: ' + installed, flush=True)
+            print('Reparo concluído. Reinicie apenas depois de terminar a atualização.', flush=True)
+        except Exception as error:
+            lines.append('FALHA: ' + str(error))
+            print('Reparo não concluído: ' + str(error), file=sys.stderr)
+            print('Versão fixada não alterada. Não reinicie; consulte o log do reparo.', file=sys.stderr)
+            raise
+        finally:
+            logfile.write_text('\\n'.join(lines) + '\\n')
+            logfile.chmod(0o600)
+
+
+
 def guard(targets, context, version):
     targets = set(targets)
     if version and targets & PINNED:
@@ -391,12 +509,24 @@ def main():
         packages = installed_driver()
         state = {'fixed': current, 'installed': packages['nvidia-utils'].rsplit('-', 1)[0],
                  'coherent': all(packages[p].rsplit('-', 1)[0] == current for p in DRIVER),
+                 'modules_ok': modules_coherent(packages['nvidia-utils'].rsplit('-', 1)[0]),
                  'versions': []}
         try:
             state['versions'] = list(driver_catalog(packages))
         except (OSError, ValueError):
             state['error'] = 'Arquivo do Arch indisponível. Tente atualizar a lista.'
         print(json.dumps(state))
+        return 0
+    if os.geteuid() == 0 and args == ['--nvidia-repair']:
+        if VERSION_FILE.exists():
+            repair_driver()
+        else:
+            print('Sem NVIDIA fixada: verificação de reparo ignorada.', flush=True)
+        return 0
+    if os.geteuid() == 0 and len(args) == 2 and args[0] == '--nvidia-repair-installed':
+        if not DRIVER_VERSION.fullmatch(args[1]):
+            raise RuntimeError('Versão NVIDIA inválida na confirmação.')
+        repair_driver(adopt_installed=True, expected=args[1])
         return 0
     if os.geteuid() == 0 and len(args) == 2 and args[0] == '--nvidia-select':
         select_driver(args[1])
