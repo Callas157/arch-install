@@ -197,7 +197,7 @@ class OptionalCodexTests(unittest.TestCase):
             gui.install_codex(app_only=True)
             overlay.assert_called_once()
             self.assertEqual(run.call_count, 1)
-            self.assertEqual(run.call_args.args[0][-1], '--sem-dependencias')
+            self.assertEqual(run.call_args.args[0][-1], '--somente-aplicativo')
 
 
     def test_process_opened_during_download_prevents_last_second_install(self):
