@@ -274,9 +274,12 @@ if (( ${#CALLAS_DISCOS_ELEGIVEIS[@]} > 0 )); then
     CALLAS_INDICE_DISCO=$(( CALLAS_INDICE_DISCO + 1 ))
     printf '\n>>> Armazenamento %s de %s — disco secundário\n' "$CALLAS_INDICE_DISCO" "$CALLAS_TOTAL_DISCOS"
     lsblk -o NAME,SIZE,MODEL,FSTYPE,MOUNTPOINTS "$CALLAS_OUTRO_DISCO"
-    read -rp "Apagar TODO o disco $CALLAS_OUTRO_DISCO e criar ext4? [s/N]: " CALLAS_FORMATAR_RESPOSTA
-    case ${CALLAS_FORMATAR_RESPOSTA,,} in
-      s|sim)
+    printf '\nDeseja formatar este armazenamento secundário para ext4?\n'
+    printf '  1 - SIM, apagar todo o disco e formatar em ext4\n'
+    printf '  2 - NÃO, manter meus arquivos (padrão seguro)\n'
+    read -rp 'Digite 1 ou 2: ' CALLAS_FORMATAR_RESPOSTA
+    case $CALLAS_FORMATAR_RESPOSTA in
+      1)
         read -rp "CONFIRMAÇÃO FINAL — digite APAGAR $CALLAS_OUTRO_DISCO: " CALLAS_FORMATAR_CONFIRMA
         if [[ $CALLAS_FORMATAR_CONFIRMA == "APAGAR $CALLAS_OUTRO_DISCO" ]]; then
           FORMATAR_SECUNDARIOS+=("$CALLAS_OUTRO_DISCO")
@@ -286,7 +289,8 @@ if (( ${#CALLAS_DISCOS_ELEGIVEIS[@]} > 0 )); then
           printf 'Confirmação inválida: %s será preservado.\n' "$CALLAS_OUTRO_DISCO"
         fi
         ;;
-      *) printf 'Dados preservados em %s.\n' "$CALLAS_OUTRO_DISCO" ;;
+      2|'') printf 'Dados preservados em %s.\n' "$CALLAS_OUTRO_DISCO" ;;
+      *) printf 'Opção inválida: %s será preservado, sem formatação.\n' "$CALLAS_OUTRO_DISCO" ;;
     esac
   done
 fi
