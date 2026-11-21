@@ -1,5 +1,13 @@
 # Histórico do Callas OS
 
+## 3.21.4 — 2026-11-20
+
+- Corrigido o diálogo de formatação opcional de discos secundários na instalação limpa. O menu permanece **1 = SIM, formatar ext4** e **2 = NÃO, preservar arquivos**. Após a opção 1, o instalador agora exige **somente a palavra `APAGAR` em maiúsculas**, sem nome nem caminho do dispositivo. A unidade continua identificada por dispositivo, tamanho, modelo e sistema de arquivos no próprio diálogo.
+- `2`, Enter e opções inválidas preservam os arquivos. `apagar`, `APAGAR /dev/sdb` ou qualquer texto que não seja exatamente `APAGAR` não autoriza formatação. A filtragem de unidades internas, o bloqueio do pendrive da ISO, a separação do disco principal e a revalidação antes de apagar permanecem intactos.
+- **Nenhuma outra configuração foi modificada**: Callas OS Update, favoritos do KDE, dock, montagem de dados, Steam, kernel e NVIDIA 610.57.04 preservados.
+- Sintaxe `bash -n` e sete testes de seleção simulada concluídos, sem disco físico. A regressão existente foi atualizada para a nova confirmação e inclui opções válidas/inválidas. Não foi realizado teste de instalação limpa em hardware.
+- Backup da versão 3.21.3 realizado antes da alteração e verificado byte a byte no Google Drive (`CallasOS/CallasOS 3.21.3`, SHA-256 `079696d92ba5c523e6339da7320a9109c8be6bdc620f50345b47be719c13ca4c`).
+
 ## 3.21.3 — 2026-11-20
 
 - **Favoritos padrão do menu KDE Plasma (Kickoff):** reduzidos a exatamente quatro lançadores, nesta ordem: **Central Callas OS**, **Steam**, **Discord** e **Configurações do Sistema**. Retirados dos favoritos padrão os extras antigos (Monitores, Konsole, Bazaar, ProtonPlus, Mission Center, qBittorrent, Spotify e Solaar), sem desinstalar nenhum aplicativo.
