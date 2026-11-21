@@ -1,5 +1,14 @@
 # Histórico do Callas OS
 
+## 3.21.3 — 2026-11-20
+
+- **Favoritos padrão do menu KDE Plasma (Kickoff):** reduzidos a exatamente quatro lançadores, nesta ordem: **Central Callas OS**, **Steam**, **Discord** e **Configurações do Sistema**. Retirados dos favoritos padrão os extras antigos (Monitores, Konsole, Bazaar, ProtonPlus, Mission Center, qBittorrent, Spotify e Solaar), sem desinstalar nenhum aplicativo.
+- O instalador limpo e a etapa `desktop` do Callas OS Update passaram a escrever a mesma lista em `/etc/xdg/kicker-extra-favoritesrc`, com `IgnoreDefaults=true`. A etapa é detectada por hash de conteúdo para reaplicação no Update. De acordo com o comportamento do KDE, essa configuração **define favoritos padrão para novas contas**; preferências personalizadas já salvas nas contas existentes não são apagadas ou reescritas automaticamente.
+- **A dock/barra inferior não foi alterada**: permanece com os lançadores Dolphin e Brave já configurados. O pedido altera somente o menu Kickoff, não autostart de Steam/Discord nem os programas instalados.
+- Proteções mantidas: nenhum ajuste em kernel, NVIDIA 610.57.04, rotinas de armazenamento, permissões de usuário ou outras configurações da Central.
+- Testes: `bash -n` no instalador de conteúdo idêntico ao publicado e validação estática dos dois blocos Kickoff (quatro IDs na mesma ordem) concluídos. Adicionada regressão offline `tests/test_kde_menu_favorites.py`, ainda sem validação em uma sessão KDE real.
+- Antes de editar o instalador, o original da versão **3.21.2** foi salvo e verificado byte a byte no Google Drive, em `CallasOS/CallasOS 3.21.2`, com SHA-256 `617830fc5c4e0c8625257e03636adea042e3c157bdf9f47c53935b81d5290591`. 
+
 ## 3.21.2 — 2026-11-20
 
 - A instalação limpa preserva a seleção inicial do disco do sistema, que continuará sendo apagado conforme aviso existente. Cada armazenamento **secundário** elegível agora recebe um menu numérico: `1 — SIM, formatar em ext4` e `2 — NÃO, preservar arquivos`. Somente a opção literal `1` permite prosseguir à confirmação final obrigatória `APAGAR /dev/...`. Resposta inválida, vazia ou `2` preserva o disco; mídia USB, disco da ISO e disco principal continuam excluídos da escolha secundária.
