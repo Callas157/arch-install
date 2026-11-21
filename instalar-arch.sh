@@ -2298,7 +2298,7 @@ if (( nvidia )); then
   [[ -s $nvidia_manifest ]] || { echo 'ERRO: manifesto NVIDIA 595 ausente.' >&2; exit 1; }
   nvidia_version=$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$nvidia_manifest")
   [[ $nvidia_version == 595.* ]] || { echo 'ERRO: versão inicial NVIDIA não pertence à série 595.' >&2; exit 1; }
-  mapfile -t nvidia_urls < <(python -c 'import json,sys; print(*json.load(open(sys.argv[1]))["packages"].values(),sep="\\n")' "$nvidia_manifest")
+  mapfile -t nvidia_urls < <(python -c 'import json,sys; print(*json.load(open(sys.argv[1]))["packages"].values(),sep="\n")' "$nvidia_manifest")
   (( ${#nvidia_urls[@]} >= 3 )) || { echo 'ERRO: pilha NVIDIA inicial incompleta.' >&2; exit 1; }
 
   nvidia_dir=$(mktemp -d /var/tmp/callas-nvidia.XXXXXXXX)
