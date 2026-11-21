@@ -49,3 +49,8 @@ QLabel#recordingCaption { color: #edb4c0; font-size: 10pt; font-weight: 600; bac
 QLabel#recordingTime { color: #c0cbe1; font-size: 10pt; font-family: "Noto Sans Mono"; background: transparent; }
 
 QWidget#recorderPanel, QWidget#recordingWaveform, QStackedWidget#composerStack { background: transparent; border: none; }
+
+QComboBox { background: #1a2433; color: #e8edf5; border: 1px solid #354965; border-radius: 8px; padding: 7px 9px; min-height: 19px; }
+QComboBox:hover { border-color: #7e90e8; }
+QComboBox:disabled { color: #69768a; }
+QComboBox QAbstractItemView { background: #1a2433; color: #e8edf5; border: 1px solid #354965; selection-background-color: #344b70; }
