@@ -121,6 +121,29 @@ class PrepareTests(unittest.TestCase):
             self.assertFalse(mod.patch_595_atomic_tree(source))
             self.assertEqual(header, (drm / "nvidia-drm-conftest.h").read_text())
 
+    def test_patch_recognizes_arch_kernel_open_tree(self):
+        with mock.patch.dict(os.environ, {"CALLAS_NVIDIA_REPAIR_TARGET": "595.71.05"}):
+            mod = load(PREPARE, "compat_arch")
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tree = root / "kernel-open"
+            drm = tree / "nvidia-drm"
+            drm.mkdir(parents=True)
+            nv = tree / "nvidia"
+            nv.mkdir()
+            (drm / "nvidia-drm-conftest.h").write_text('#include "nvtypes.h"\n')
+            (tree / "conftest.sh").write_text(
+                ('#include <drm/drm_modeset_helper_vtables.h>\n'
+                 'struct drm_atomic_state *state;\n') * 2)
+            (nv / "linux_nvswitch.c").write_text(
+                "#define CREATE_TRACE_POINTS\n"
+                "strncpy(regkey_val, regkey_val_start, regkey_val_len);\n"
+                "return strncpy(dest, src, length);\n")
+            self.assertTrue(mod.patch_595_atomic_tree(root))
+            self.assertIn("drm_atomic_commit",
+                          (drm / "nvidia-drm-conftest.h").read_text())
+            self.assertFalse(mod.patch_595_atomic_tree(root))
+
     def test_patch_rejects_unknown_595_source_without_partial_writes(self):
         with mock.patch.dict(os.environ, {"CALLAS_NVIDIA_REPAIR_TARGET": "595.71.05"}):
             mod = load(PREPARE, "compat_unknown")
