@@ -102,13 +102,44 @@ class OptionalCodexTests(unittest.TestCase):
     def test_valid_download_runs_installer_as_user(self):
         data = bundle()
         with self.download_fixture(data), patch.object(gui, 'CODEX_SHA256', hashlib.sha256(data).hexdigest()), \
+             patch.object(gui, 'apply_codex_overlay') as overlay, \
              patch.object(gui.subprocess, 'run') as run:
             gui.install_codex()
+            overlay.assert_called_once()
             self.assertEqual(run.call_count, 1)
             args = run.call_args.args[0]
             self.assertEqual(args[:2], ['/usr/bin/python3', '-u'])
             self.assertTrue(args[2].endswith('/installer.py'))
             self.assertTrue(run.call_args.kwargs['check'])
+
+
+    def test_verified_overlay_rejects_changed_source_before_install(self):
+        with tempfile.TemporaryDirectory() as folder:
+            remote = io.BytesIO(b'código adulterado'); remote.url = 'https://raw.githubusercontent.com/test'
+            with patch.object(gui, 'CODEX_OVERLAY', {'callas_chat/ui.py': '0' * 40}), \
+                 patch.object(gui.urllib.request, 'urlopen', return_value=remote):
+                with self.assertRaisesRegex(ValueError, 'integridade'):
+                    gui.apply_codex_overlay(folder)
+
+    def test_old_codex_asks_to_update_newer_stays_untouched(self):
+        window = gui.Window()
+        with tempfile.TemporaryDirectory() as folder:
+            launcher = Path(folder)/'app'
+            launcher.write_text('#!/bin/sh\nexit 0\n'); launcher.chmod(0o755)
+            with patch.object(gui, 'codex_launcher', return_value=launcher), \
+                 patch.object(gui, 'codex_installed_version', return_value=(1, 3, 3)), \
+                 patch.object(gui.subprocess, 'Popen') as popen:
+                window.codex()
+                popen.assert_not_called()
+                window.confirm_yes.click()
+                self.assertEqual(window.action, 'codex')
+            # Versão local mais nova não pode sofrer downgrade.
+            with patch.object(gui, 'codex_launcher', return_value=launcher), \
+                 patch.object(gui, 'codex_installed_version', return_value=(1, 5, 0)), \
+                 patch.object(gui.subprocess, 'Popen') as popen:
+                window.codex()
+                popen.assert_called_once()
+        window.close(); window.deleteLater()
 
 
 if __name__ == '__main__': unittest.main()
