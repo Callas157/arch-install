@@ -175,11 +175,36 @@ def archive_index(package):
 
 
 def driver_catalog(packages):
-    with ThreadPoolExecutor(max_workers=len(packages)) as pool:
-        indices = dict(zip(packages, pool.map(archive_index, packages)))
-    common = set.intersection(*(set(index) for index in indices.values()))
-    return {version: [indices[package][version] for package in packages]
-            for version in sorted(common, key=lambda value: tuple(map(int, value.split('.'))), reverse=True)}
+    """Only the three driver components are mandatory. Optional tools are not
+    allowed to hide an otherwise usable signed driver version."""
+    names = list(dict.fromkeys((*DRIVER, *packages)))
+    def safe_index(package):
+        try:
+            return archive_index(package)
+        except (OSError, ValueError):
+            if package in DRIVER:
+                raise
+            return {}
+    with ThreadPoolExecutor(max_workers=min(len(names), 8)) as pool:
+        indices = dict(zip(names, pool.map(safe_index, names)))
+    common = set.intersection(*(set(indices[package]) for package in DRIVER))
+    return {
+        version: {package: indices[package][version] for package in names
+                  if version in indices[package]}
+        for version in sorted(common, key=lambda value: tuple(map(int, value.split('.'))), reverse=True)
+    }
+
+
+def default_driver():
+    """Resolve the newest complete, signed 595 branch before wiping any disk."""
+    catalog = driver_catalog((*DRIVER, 'nvidia-settings', 'libxnvctrl'))
+    version = next((candidate for candidate in catalog if candidate.startswith('595.')), None)
+    if version is None:
+        raise RuntimeError('Não encontrei a pilha NVIDIA Open DKMS 595 completa e assinada no Arch Linux Archive. Disco preservado.')
+    selected = {p: catalog[version][p] for p in DRIVER}
+    if all(p in catalog[version] for p in ('nvidia-settings', 'libxnvctrl')):
+        selected.update({p: catalog[version][p] for p in ('nvidia-settings', 'libxnvctrl')})
+    return {'version': version, 'packages': selected}
 
 
 def download_driver(urls, directory):
@@ -198,11 +223,11 @@ def driver_preflight(targets, version, directory):
     if not DRIVER_VERSION.fullmatch(version):
         raise RuntimeError('Versão NVIDIA inválida.')
     installed = installed_driver()
-    if set(targets) != set(installed):
-        raise RuntimeError('A troca só pode alterar os pacotes NVIDIA instalados.')
+    if not set(DRIVER) <= set(targets) or not set(targets) <= set(installed):
+        raise RuntimeError('A seleção deve trocar a pilha NVIDIA Open DKMS completa, sem outros pacotes.')
     paths = list(directory.glob('*.pkg.tar.zst'))
     metadata = [command(['/usr/bin/pacman', '-Qp', path]).split() for path in paths]
-    if (len(metadata) != len(installed) or {row[0] for row in metadata} != set(installed)
+    if (len(metadata) != len(targets) or {row[0] for row in metadata} != set(targets)
             or any(row[1].rsplit('-', 1)[0] != version for row in metadata)):
         raise RuntimeError('Os pacotes não correspondem à seleção NVIDIA.')
     by_package = {row[0]: path for row, path in zip(metadata, paths)}
@@ -252,8 +277,10 @@ def run_driver_transaction(paths, version, work):
                     '--hookdir', str(HOOK_DIRECTORY), '--hookdir', str(work / 'hooks'),
                     '-U', '--noconfirm', '--', *map(str, paths)], check=True, env=env,
                    stdin=subprocess.DEVNULL)
-    if any(value.rsplit('-', 1)[0] != version for value in installed_driver().values()):
-        raise RuntimeError('O pacman não confirmou toda a pilha NVIDIA selecionada.')
+    installed = installed_driver()
+    selected_names = {command(['/usr/bin/pacman', '-Qp', path]).split()[0] for path in paths}
+    if any(installed[name].rsplit('-', 1)[0] != version for name in selected_names):
+        raise RuntimeError('O pacman não confirmou todos os componentes NVIDIA substituídos.')
     if Path('/var/lib/callas-os/kernel-check-failed').exists():
         raise RuntimeError('A verificação de boot após a troca NVIDIA falhou.')
     subprocess.run([KERNEL_CHECK, '--verify-only'], check=True, env=env)
@@ -281,8 +308,20 @@ def select_driver(version):
         if current == version and all(value.rsplit('-', 1)[0] == version for value in packages.values()):
             return
         catalog = driver_catalog(packages)
-        if current not in catalog or version not in catalog:
-            raise RuntimeError('O arquivo oficial não oferece a pilha completa selecionada e a versão de retorno.')
+        if version not in catalog:
+            raise RuntimeError('A versão escolhida não possui os três pacotes NVIDIA Open DKMS assinados no arquivo oficial.')
+        selected_urls = {p: catalog[version][p] for p in DRIVER}
+        # nvidia-settings and libxnvctrl form an optional pair; do not update
+        # only one side if the matching version is absent.
+        tools = ('nvidia-settings', 'libxnvctrl')
+        if all(p in packages and p in catalog[version] for p in tools):
+            selected_urls.update({p: catalog[version][p] for p in tools})
+        for p in DRIVER_OPTIONAL:
+            if p not in tools and p in packages and p in catalog[version]:
+                selected_urls[p] = catalog[version][p]
+        skipped = sorted(set(packages) - set(selected_urls))
+        if skipped:
+            print('Complementos opcionais sem pacote correspondente preservados: ' + ', '.join(skipped), flush=True)
         with tempfile.TemporaryDirectory(prefix='callas-nvidia-selection-', dir='/var/tmp') as temp:
             work = Path(temp)
             (work / 'pacman.conf').write_text('[options]\nArchitecture = auto\nSigLevel = Required\nLocalFileSigLevel = Required\n')
@@ -292,16 +331,18 @@ def select_driver(version):
                 '[Action]\nWhen = PreTransaction\nNeedsTargets\nAbortOnFail\n'
                 'Exec = /usr/local/libexec/callas-kernel-policy --remove\n')
             old_urls = []
-            if all(value.rsplit('-', 1)[0] == current for value in packages.values()):
-                for (package, old_version), url in zip(packages.items(), catalog[current]):
-                    architecture = url.rsplit('-', 1)[-1]
-                    old_urls.append(f'{ARCHIVE_URL}/{package[0]}/{package}/{package}-{old_version}-{architecture}')
+            if all(packages[p].rsplit('-', 1)[0] == current for p in DRIVER):
+                for package in selected_urls:
+                    old_version = packages[package]
+                    old_urls.append(f'{ARCHIVE_URL}/{package[0]}/{package}/{package}-{old_version}-x86_64.pkg.tar.zst')
             elif version != current:
-                raise RuntimeError('A pilha instalada diverge da fixação. Selecione a versão fixada para repará-la.')
-            previous = download_driver(old_urls, work / 'previous') if old_urls else []
+                raise RuntimeError('Os componentes essenciais divergem da fixação. Primeiro repare a versão fixada.')
+            previous = download_driver(old_urls, work / 'previous')
             for path in previous:
                 command(['/usr/bin/pacman-key', '--verify', str(path) + '.sig', path])
-            selected = download_driver(catalog[version], work / 'selected')
+            selected = download_driver(list(selected_urls.values()), work / 'selected')
+            for path in selected:
+                command(['/usr/bin/pacman-key', '--verify', str(path) + '.sig', path])
             try:
                 run_driver_transaction(selected, version, work)
             except Exception:
@@ -340,13 +381,16 @@ def guard(targets, context, version):
 
 def main():
     args = sys.argv[1:]
+    if args == ['--nvidia-default']:
+        print(json.dumps(default_driver(), sort_keys=True))
+        return 0
     if args == ['--nvidia-list']:
         if not VERSION_FILE.is_file():
             raise RuntimeError('Nenhum driver NVIDIA fixado foi encontrado neste Callas OS.')
         current = VERSION_FILE.read_text().strip()
         packages = installed_driver()
         state = {'fixed': current, 'installed': packages['nvidia-utils'].rsplit('-', 1)[0],
-                 'coherent': all(value.rsplit('-', 1)[0] == current for value in packages.values()),
+                 'coherent': all(packages[p].rsplit('-', 1)[0] == current for p in DRIVER),
                  'versions': []}
         try:
             state['versions'] = list(driver_catalog(packages))
