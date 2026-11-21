@@ -13,7 +13,7 @@ for name in callas-widget.py relogio-moderno.plasmoid callas-automount.py callas
     echo "Arquivo verificado ausente/inseguro: $name" >&2; exit 1;
   }
 done
-for name in callas-discord.py callas-browser.py callas-defaults.py callas-uninstall.py callas-apps.py callas-apps.json callas-kernel-policy.py callas-game-logs.py callas-update-state.py callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
+for name in callas-discord.py callas-browser.py callas-defaults.py callas-uninstall.py callas-apps.py callas-apps.json callas-kernel-policy.py callas-nvidia-prepare.py callas-game-logs.py callas-update-state.py callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
   [[ -f $stage/$name && ! -L $stage/$name && $(stat -c %u "$stage/$name") == 0 ]] || {
     echo "Arquivo verificado ausente/inseguro: $name" >&2; exit 1;
   }
@@ -41,7 +41,7 @@ fi
 # No lingering passwordless pacman access, even after an interrupted old update.
 rm -f /etc/sudoers.d/put-update /etc/sudoers.d/99-callas-instalacao
 rm -f /etc/put-update-aur.sudoers /etc/put-update-paru.conf
-for name in callas-discord.py callas-browser.py callas-defaults.py callas-uninstall.py callas-apps.py callas-apps.json callas-kernel-policy.py callas-game-logs.py callas-update-state.py callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
+for name in callas-discord.py callas-browser.py callas-defaults.py callas-uninstall.py callas-apps.py callas-apps.json callas-kernel-policy.py callas-nvidia-prepare.py callas-game-logs.py callas-update-state.py callas-spotify-permissions.sh callas-aur-install.py callas-autostart.py callas-version.py callas-nekofetch.sh callas-release.py callas-logs.py callas-kernel-check.sh put-update.sh callas-aur.py callas-storage.py callas-maintenance.py callas-native.py; do
   source_file="$stage/$name"
   [[ -f $source_file && ! -L $source_file && $(stat -c %u "$source_file") == 0 ]] || exit 1
   case $name in
@@ -52,6 +52,7 @@ for name in callas-discord.py callas-browser.py callas-defaults.py callas-uninst
     callas-apps.py) target=callas-apps ;;
     callas-apps.json) target=callas-apps.json ;;
     callas-kernel-policy.py) target=callas-kernel-policy ;;
+    callas-nvidia-prepare.py) target=callas-nvidia-prepare ;;
     callas-game-logs.py) target=callas-game-logs ;;
     callas-update-state.py) target=callas-update-state ;;
     callas-spotify-permissions.sh) target=callas-spotify-permissions ;;
