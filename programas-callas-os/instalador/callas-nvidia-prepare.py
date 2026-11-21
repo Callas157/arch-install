@@ -278,7 +278,21 @@ def main():
             inspect_modules(release)
         except RuntimeError:
             if not patched and kernel_family(release) >= (7, 2):
-                prepare_compat_tree(Path('/usr/src') / ('nvidia-' + PINNED), release)
+                main_source = Path('/usr/src') / ('nvidia-' + PINNED)
+                prepare_compat_tree(main_source, release)
+                # Some DKMS installations retain physical (non-symlink) copies
+                # of source/build. Mirror only recognizable trees, never touch
+                # other NVIDIA versions or remove the working LTS modules.
+                dkms_dir = Path('/var/lib/dkms/nvidia') / PINNED
+                for name_copy in ('source', 'build'):
+                    copy = dkms_dir / name_copy
+                    if copy.is_symlink():
+                        if copy.resolve() != main_source.resolve():
+                            raise RuntimeError('Link DKMS NVIDIA inesperado: ' + str(copy))
+                        continue
+                    if copy.is_dir() and copy != main_source:
+                        if (copy / 'nvidia-drm/nvidia-drm-conftest.h').is_file():
+                            prepare_compat_tree(copy, release)
                 patched = True
             print(f'>>> Reparando NVIDIA {PINNED} para {name} ({release})', flush=True)
             run('dkms', 'build', '--force', '-m', 'nvidia', '-v', PINNED, '-k', release)
