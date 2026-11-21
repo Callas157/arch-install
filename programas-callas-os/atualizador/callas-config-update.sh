@@ -533,7 +533,7 @@ install -d /etc/xdg
 cat > /etc/xdg/kicker-extra-favoritesrc <<'EOF'
 [General]
 IgnoreDefaults=true
-Prepend=io.github.Callas157.Monitores.desktop;systemsettings.desktop;io.github.Callas157.AtualizadorDoSistema.desktop;steam.desktop;org.kde.konsole.desktop;io.github.kolunmi.Bazaar.desktop;com.vysp3r.ProtonPlus.desktop;io.missioncenter.MissionCenter.desktop;org.qbittorrent.qBittorrent.desktop;spotify.desktop;solaar.desktop;
+Prepend=io.github.Callas157.AtualizadorDoSistema.desktop;steam.desktop;discord.desktop;systemsettings.desktop;
 EOF
 
 # Energia: sem suspensão, escurecimento ou desligamento automático de tela.
