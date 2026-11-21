@@ -1,5 +1,13 @@
 # Histórico do Callas OS
 
+## 3.22.3 — 2026-11-21
+
+- O **Callas OS Update** agora verifica o Codex opcional já instalado durante a atualização do sistema. Versões 1.3.x conhecidas são atualizadas automaticamente para o cliente 1.4.0, sem novo clique no botão Codex e sem reinstalar Whisper, Node ou dependências existentes.
+- Em instalação limpa ou perfis sem Codex, não ocorre download, instalação, criação de conta nem modificação de arquivos do chat. Versões já atuais, futuras ou sem marcador identificável são preservadas sem reescrita.
+- Se o Codex estiver aberto, não é fechado nem reiniciado; a atualização é adiada e a próxima execução do Callas OS Update verifica novamente, mesmo que o sistema já esteja na última release.
+- Instalação roda com as permissões normais do usuário, reutiliza pacote 1.3.3 com SHA-256 e overlay 1.4.0 fixado e verificado por blob Git. O instalador continua preservando contas, conversas, anexos e backup do código anterior em app.previous.
+- Testes adicionados para perfis não instalados, versão desconhecida/mais nova, sessão aberta, instalação somente dos arquivos do aplicativo e repetição sem nova release. Publicação no repositório sem ensaio de atualização física KDE neste atendimento.
+
 ## 3.22.2 — 2026-11-21
 
 - Cliente Codex opcional 1.4.0: menu contextual para fixar e excluir conversas, limpeza paginada de histórico que não seleciona fixadas, seletor de modelo e nível de raciocínio na barra de envio.
