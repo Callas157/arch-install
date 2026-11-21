@@ -96,7 +96,7 @@ def apply_codex_overlay(staging):
         target.write_bytes(content)
 
 
-def install_codex():
+def install_codex(*, app_only=False):
     if os.geteuid() == 0: raise ValueError('Instale Codex no seu usuário normal, sem sudo.')
     print('==> Baixando Codex do GitHub…', flush=True)
     request = urllib.request.Request(CODEX_URL, headers={'User-Agent': 'CallasOS-Codex'})
@@ -117,9 +117,59 @@ def install_codex():
         apply_codex_overlay(folder)
         env = os.environ.copy()
         env.pop('CALLAS_KERNEL_UPDATE_CONTEXT', None)
-        subprocess.run(['/usr/bin/python3', '-u', str(Path(folder)/'installer.py')],
-                       check=True, env=env)
+        command = ['/usr/bin/python3', '-u', str(Path(folder)/'installer.py')]
+        if app_only:
+            # Dependências e Whisper já existem: trocar somente os arquivos do cliente.
+            command.append('--sem-dependencias')
+        subprocess.run(command, check=True, env=env)
     print('==> Codex instalado! Abra pelo menu KDE ou pelo botão Codex da Central.', flush=True)
+
+
+def codex_running_for_user():
+    """Não substituir o pacote de uma sessão Codex/IA Studio ainda em execução."""
+    uid = os.getuid()
+    for process in Path('/proc').iterdir():
+        if not process.name.isdecimal() or int(process.name) == os.getpid():
+            continue
+        try:
+            if process.stat().st_uid != uid:
+                continue
+            arguments = (process/'cmdline').read_bytes().split(b'\\0')
+            if b'-m' in arguments:
+                index = arguments.index(b'-m')
+                if index + 1 < len(arguments) and arguments[index + 1] == b'callas_chat':
+                    return True
+        except (OSError, ValueError):
+            continue
+    return False
+
+
+def auto_update_installed_codex():
+    """Somente atualizações opcionais, sem instalar o Codex em perfis novos."""
+    if os.geteuid() == 0:
+        raise ValueError('A atualização do Codex precisa executar como usuário normal.')
+    launcher = codex_launcher()
+    if not launcher.is_file() or not os.access(launcher, os.X_OK):
+        print('Codex não instalado; download opcional ignorado.', flush=True)
+        return 0
+    current = codex_installed_version()
+    if current is None:
+        print('Codex personalizado ou sem versão identificável; preservado.', flush=True)
+        return 0
+    target = tuple(int(value) for value in CODEX_TARGET_VERSION.split('.'))
+    if current >= target:
+        print('Codex já atualizado; nenhum arquivo alterado.', flush=True)
+        return 0
+    if codex_running_for_user():
+        print('Codex aberto: atualização adiada para o próximo Callas OS Update, sem interromper a conversa.', flush=True)
+        return 0
+    print('Codex instalado e desatualizado: aplicando atualização segura para ' + CODEX_TARGET_VERSION, flush=True)
+    install_codex(app_only=True)
+    final = codex_installed_version()
+    if final != target:
+        raise ValueError('Versão final do Codex não corresponde à atualização esperada.')
+    print('Codex atualizado automaticamente; conversas e autenticação preservadas.', flush=True)
+    return 0
 
 
 def package_state():
@@ -1531,7 +1581,12 @@ def main():
     return app.exec()
 
 if __name__ == '__main__':
-    if '--install-codex' in sys.argv[1:]:
+    if '--update-installed-codex' in sys.argv[1:]:
+        try: sys.exit(auto_update_installed_codex())
+        except Exception as exc:
+            print('Falha na atualização opcional do Codex: ' + str(exc), file=sys.stderr)
+            sys.exit(1)
+    elif '--install-codex' in sys.argv[1:]:
         try: install_codex()
         except Exception as exc:
             print('Não foi possível instalar Codex: ' + str(exc), file=sys.stderr)
