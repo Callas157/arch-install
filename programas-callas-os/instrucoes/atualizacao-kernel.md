@@ -6,7 +6,7 @@ Leia junto com [AGENTS.md](../AGENTS.md) e [versionamento.md](versionamento.md).
 
 Leia a seção “Regra obrigatória: cada opção respeita seu escopo” em [AGENTS.md](../AGENTS.md) antes de alterar qualquer fluxo. **A opção 5 — Callas OS Update só atende aplicativos (adição/remoção autorizada) e configurações do Linux/Callas OS. Não altera pacotes de kernel, headers ou driver NVIDIA**, inclusive reinstalação, remoção, substituição e downgrade. Uma dependência incompatível interrompe a transação; não autoriza atualização geral, troca do driver ou ativação/antecipação do agendamento.
 
-A NVIDIA **610.57.04** deve permanecer por decisão do usuário. A opção 4 pode tratar kernel/headers com as validações abaixo; não é autorização automática para mudar a NVIDIA fixada.
+O driver NVIDIA escolhido pelo usuário deve permanecer fixo nas atualizações gerais. Em instalações novas, a série **595** é o padrão; instalações anteriores preservam sua escolha. A opção 4 pode tratar kernel/headers com as validações abaixo; não é autorização automática para mudar a NVIDIA fixada.
 
 A instalação limpa atual não fixa Linux em **7.2.15**: solicita os pacotes do repositório do Arch. Não prometa essa versão sem implementar uma fixação explicitamente solicitada. A aceitação de um kernel novo na instalação limpa depende de preservar o driver e validar compatibilidade; não concede à opção 5 permissão para trocar o kernel instalado.
 
@@ -14,7 +14,7 @@ A instalação limpa atual não fixa Linux em **7.2.15**: solicita os pacotes do
 
 A opção **4 — Atualizar geral** é o único fluxo do projeto que autoriza atualizar kernels/headers em um sistema instalado. Atualizações são exclusivamente manuais; os agendamentos antigos devem permanecer desativados. Opção 2, Discord, AUR e instalação pontual não autorizam alterações de kernel.
 
-A NVIDIA permanece na versão escolhida pelo usuário, atualmente **610.57.04**. Não a atualize para contornar incompatibilidade de kernel. O instalador limpo provisiona o sistema inicial com os auxiliares compartilhados do mesmo commit; não executa a interface da opção 5 e não pode anunciar conclusão se a NVIDIA fixada ou o boot falharem.
+A NVIDIA permanece na versão escolhida pelo usuário: série **595** por padrão em instalações novas, ou a versão já selecionada na máquina existente. Não a atualize para contornar incompatibilidade de kernel. O instalador limpo provisiona o sistema inicial com os auxiliares compartilhados do mesmo commit; não executa a interface da opção 5 e não pode anunciar conclusão se a NVIDIA fixada ou o boot falharem.
 
 ## Antes da transação
 
