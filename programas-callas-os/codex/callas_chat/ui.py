@@ -700,7 +700,7 @@ class Window(QMainWindow):
         menu = QMenu(self)
         pin = menu.addAction('Desafixar conversa' if thread_id in self.pins else 'Fixar conversa')
         delete = menu.addAction('Excluir conversa')
-        action = menu.exec(self.history.mapToGlobal(point))
+        action = menu.exec(self.history.viewport().mapToGlobal(point))
         if action == pin:
             if thread_id in self.pins: self.pins.pop(thread_id, None)
             else: self.pins[thread_id] = str(item.data(Qt.UserRole + 1))
@@ -1115,7 +1115,7 @@ class Window(QMainWindow):
         self.account.setText(self.account_text)
         self.login_button.hide()
         self.pins = load_pins(provider)
-        self.model = str(self.settings.value('model_'+provider, ''))
+        self.model = str(self.settings.value('model_'+provider, self.settings.value('model', '') if provider == 'codex' else '') or '')
         self.effort = str(self.settings.value('effort_'+provider, ''))
         self.model_caps = {}
         self.history.clear()
@@ -1137,7 +1137,7 @@ class Window(QMainWindow):
                 identifier = str(item.get('model') or item.get('id') or '')
                 if not identifier or item.get('hidden'): continue
                 self.model_caps[identifier] = [
-                    choice.get('reasoningEffort') for choice in item.get('supportedReasoningEfforts', [])
+                    choice.get('reasoningEffort') for choice in (item.get('supportedReasoningEfforts') or [])
                     if choice.get('reasoningEffort')]
                 models.append((str(item.get('displayName') or identifier), identifier))
             if provider == 'gpt':
