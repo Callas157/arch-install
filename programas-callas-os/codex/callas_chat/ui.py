@@ -8,9 +8,10 @@ from PySide6.QtGui import QDesktopServices, QFont, QIcon, QImage, QPixmap, QText
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QLabel, QPushButton, QLineEdit, QListWidget, QListWidgetItem, QScrollArea, QFrame,
     QTextBrowser, QPlainTextEdit, QFileDialog, QDialog, QFormLayout, QDialogButtonBox,
-    QSpinBox, QMessageBox, QInputDialog, QSizePolicy, QStackedWidget)
+    QSpinBox, QMessageBox, QInputDialog, QSizePolicy, QStackedWidget, QComboBox, QMenu)
 from .attachments import prepare_document
 from .backend import Backend
+from .history import load_pins, save_pins
 from .protocol import thread_params, turn_params, check_full_access, messages_from_thread, safe_markdown
 from .voice import Voice
 from .recorder import RecorderPanel
@@ -284,9 +285,15 @@ class Window(QMainWindow):
         self.settings = QSettings('CallasOS', 'CallasChat')
         self.cwd = self.settings.value('cwd', str(Path.home()))
         if not Path(self.cwd).is_dir(): self.cwd = str(Path.home())
-        self.model = self.settings.value('model', '')
+        self.provider = str(self.settings.value('provider', 'codex'))
+        if self.provider not in ('codex', 'gpt'): self.provider = 'codex'
+        self.model = str(self.settings.value('model_'+self.provider, self.settings.value('model', '') if self.provider == 'codex' else ''))
+        self.effort = str(self.settings.value('effort_'+self.provider, ''))
+        self.model_caps = {}
+        self.pins = load_pins(self.provider)
+        self.loaded_ids = set()
         self.font_size = int(self.settings.value('font_size', 12))
-        self.backend = backend or Backend(self)
+        self.backend = backend or Backend(self, provider=self.provider)
         self.voice = Voice(self)
         self.thread_id = self.turn_id = ''
         self.busy = False
@@ -360,7 +367,13 @@ class Window(QMainWindow):
         self.history = QListWidget()
         self.history.setWordWrap(True)
         self.history.itemClicked.connect(self.select_thread)
+        self.history.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.history.customContextMenuRequested.connect(self.history_menu)
         left.addWidget(self.history, 1)
+        self.clear_history_button = QPushButton('Limpar histórico (manter fixadas)')
+        self.clear_history_button.setObjectName('quietButton')
+        self.clear_history_button.clicked.connect(self.clear_unpinned_history)
+        left.addWidget(self.clear_history_button)
         self.more_button = QPushButton('Carregar mais conversas')
         self.more_button.clicked.connect(lambda: self.load_history(False))
         self.more_button.setObjectName('quietButton')
@@ -478,6 +491,25 @@ class Window(QMainWindow):
         self.editor.setToolTip('Enter envia · Shift+Enter quebra a linha')
         hint.setWordWrap(True)
         controls.addStretch(1)
+        self.provider_selector = QComboBox()
+        self.provider_selector.addItem('Codex', 'codex')
+        self.provider_selector.addItem('GPT (API)', 'gpt')
+        self.provider_selector.setToolTip('Trocar de conta sem substituir o login ou histórico do Codex')
+        self.provider_selector.setCurrentIndex(1 if self.provider == 'gpt' else 0)
+        self.provider_selector.currentIndexChanged.connect(self.switch_provider)
+        controls.addWidget(self.provider_selector)
+        self.model_selector = QComboBox()
+        self.model_selector.setMinimumWidth(130)
+        self.model_selector.setToolTip('Modelo (disponibilidade depende da sua conta/API)')
+        self.model_selector.addItem('Automático', '')
+        self.model_selector.currentIndexChanged.connect(self.choose_model)
+        controls.addWidget(self.model_selector)
+        self.effort_selector = QComboBox()
+        self.effort_selector.setMinimumWidth(96)
+        self.effort_selector.setToolTip('Nível de raciocínio')
+        self.effort_selector.currentIndexChanged.connect(self.choose_effort)
+        controls.addWidget(self.effort_selector)
+        self.refresh_efforts()
         self.stop_button = QPushButton('■  Interromper')
         self.stop_button.clicked.connect(self.interrupt)
         self.stop_button.hide()
@@ -597,6 +629,7 @@ class Window(QMainWindow):
         self.activity.setText('Pronto. Digite, cole uma foto ou use o microfone.')
         self.set_busy(False)
         self.backend.request('account/read', {'refreshToken': False}, self.account_loaded)
+        self.refresh_models()
         self.load_history()
         if getattr(self, 'reconnect_thread', ''):
             item = QListWidgetItem(self.heading.text())
@@ -615,28 +648,133 @@ class Window(QMainWindow):
     def account_loaded(self, result):
         account = result.get('account') or {}
         kind = account.get('type')
-        self.account_text = ('Conectado com sua conta ChatGPT' if kind == 'chatgpt' else
-                             'Conectado com chave de API' if kind == 'apiKey' else 'Entre na sua conta para conversar')
+        if self.provider == 'gpt':
+            self.account_text = ('GPT pela API configurado' if kind == 'apiKey' else
+                                 'GPT sem chave de API; configure sua chave para continuar')
+            self.login_button.setText('Configurar chave API')
+        else:
+            self.account_text = ('Conectado com sua conta ChatGPT' if kind == 'chatgpt' else
+                                 'Conectado com chave de API' if kind == 'apiKey' else 'Entre na sua conta para conversar')
+            self.login_button.setText('Entrar com ChatGPT')
         self.account.setText(self.account_text)
         self.login_button.setVisible(not bool(account))
 
+    def history_item(self, thread_id, title, folder=''):
+        pinned = thread_id in self.pins
+        item = QListWidgetItem(('📌  ' if pinned else '') + title)
+        item.setData(Qt.UserRole, thread_id)
+        item.setData(Qt.UserRole + 1, title)
+        item.setToolTip(title + ('\n' + folder if folder else ''))
+        item.setSizeHint(QSize(215, 60))
+        self.history.addItem(item)
+        return item
+
     def load_history(self, replace=True):
+        provider = self.provider
         params = {'limit': 50, 'sortKey': 'updated_at', 'sourceKinds': []}
         if not replace and self.cursor: params['cursor'] = self.cursor
         def loaded(result):
-            if replace: self.history.clear()
+            if provider != self.provider: return
+            if replace:
+                self.history.clear()
+                self.loaded_ids.clear()
+                for thread_id, title in self.pins.items():
+                    self.history_item(thread_id, title)
+                    self.loaded_ids.add(thread_id)
             for thread in result.get('data', []):
-                name = thread.get('name') or thread.get('preview') or 'Conversa sem título'
-                name = name.replace('\n', ' ')[:85]
-                item = QListWidgetItem(name)
-                item.setData(Qt.UserRole, thread['id'])
-                item.setToolTip(name+'\n'+(thread.get('cwd') or ''))
-                item.setSizeHint(QSize(215, 60))
-                self.history.addItem(item)
+                thread_id = str(thread.get('id', ''))
+                if not thread_id: continue
+                name = str(thread.get('name') or thread.get('preview') or 'Conversa sem título').replace('\n', ' ')[:85]
+                if thread_id not in self.loaded_ids:
+                    self.history_item(thread_id, name, thread.get('cwd') or '')
+                    self.loaded_ids.add(thread_id)
             self.cursor = result.get('nextCursor')
             self.more_button.setVisible(bool(self.cursor))
             self.filter_history()
-        self.backend.request('thread/list', params, loaded)
+        self.backend.request('thread/list', params, loaded, self.operation_failed)
+
+    def history_menu(self, point):
+        item = self.history.itemAt(point)
+        if item is None or self.busy: return
+        thread_id = str(item.data(Qt.UserRole))
+        menu = QMenu(self)
+        pin = menu.addAction('Desafixar conversa' if thread_id in self.pins else 'Fixar conversa')
+        delete = menu.addAction('Excluir conversa')
+        action = menu.exec(self.history.mapToGlobal(point))
+        if action == pin:
+            if thread_id in self.pins: self.pins.pop(thread_id, None)
+            else: self.pins[thread_id] = str(item.data(Qt.UserRole + 1))
+            try: save_pins(self.provider, self.pins)
+            except (OSError, ValueError) as exc:
+                self.show_error('Não consegui salvar conversa fixada: '+str(exc))
+                return
+            self.load_history()
+        elif action == delete:
+            self.delete_thread(thread_id)
+
+    def delete_thread(self, thread_id):
+        answer = QMessageBox.question(self, 'Excluir conversa',
+            'Excluir permanentemente esta conversa e eventuais conversas derivadas? Essa ação não pode ser desfeita.',
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if answer != QMessageBox.Yes: return
+        self.set_busy(True)
+        def deleted(_):
+            self.pins.pop(thread_id, None)
+            try: save_pins(self.provider, self.pins)
+            except (OSError, ValueError) as exc: self.show_error(str(exc))
+            if self.thread_id == thread_id: self.reset_conversation()
+            self.set_busy(False)
+            self.load_history()
+        self.backend.request('thread/delete', {'threadId': thread_id}, deleted, self.operation_failed)
+
+    def clear_unpinned_history(self):
+        if self.busy: return
+        answer = QMessageBox.question(self, 'Limpar histórico',
+            'Excluir permanentemente todas as conversas NÃO fixadas deste perfil? As fixadas serão mantidas. Essa ação não pode ser desfeita.',
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if answer != QMessageBox.Yes: return
+        provider = self.provider
+        protected = set(self.pins)
+        self.set_busy(True)
+        pending = []
+        seen = set()
+        def failed(error):
+            self.operation_failed(error)
+            self.load_history()
+        def enumerate_page(cursor=None):
+            params = {'limit': 100, 'sortKey': 'updated_at', 'sourceKinds': []}
+            if cursor: params['cursor'] = cursor
+            def enumerated(result):
+                if provider != self.provider: return
+                for thread in result.get('data', []):
+                    identifier = str(thread.get('id', ''))
+                    if identifier and identifier not in protected and identifier not in seen:
+                        pending.append(identifier)
+                        seen.add(identifier)
+                next_cursor = result.get('nextCursor')
+                if next_cursor: enumerate_page(next_cursor)
+                else: delete_next(0)
+            self.backend.request('thread/list', params, enumerated, failed)
+        def delete_next(index):
+            if index >= len(pending):
+                if self.thread_id in seen: self.reset_conversation()
+                self.set_busy(False)
+                self.load_history()
+                QMessageBox.information(self, 'Histórico', f'{index} conversas excluídas. Fixadas preservadas.')
+                return
+            self.activity.setText(f'Limpando histórico: {index + 1} de {len(pending)}…')
+            self.backend.request('thread/delete', {'threadId': pending[index]},
+                                 lambda _: delete_next(index + 1), failed)
+        enumerate_page()
+
+    def reset_conversation(self):
+        self.epoch += 1
+        self.thread_id = self.turn_id = ''
+        self.clear_messages()
+        self.welcome()
+        self.clear_images()
+        self.heading.setText('Uma conversa, muitas possibilidades')
+
 
     def filter_history(self, *args):
         query = self.search.text().casefold()
@@ -647,13 +785,8 @@ class Window(QMainWindow):
     def new_chat(self):
         if self.busy or self.voice.worker: return
         self.voice.stop()
-        self.epoch += 1
-        self.thread_id = self.turn_id = ''
-        self.clear_messages()
-        self.welcome()
-        self.clear_images()
+        self.reset_conversation()
         self.editor.clear()
-        self.heading.setText('Uma conversa, muitas possibilidades')
         self.error_box.hide()
         self.editor.setFocus()
 
@@ -663,7 +796,7 @@ class Window(QMainWindow):
         self.epoch += 1
         epoch = self.epoch
         thread_id = item.data(Qt.UserRole)
-        title = item.text()
+        title = str(item.data(Qt.UserRole + 1) or item.text())
         self.set_busy(True)
         self.activity.setText('Abrindo conversa…')
         params = thread_params(self.cwd)
@@ -704,6 +837,7 @@ class Window(QMainWindow):
             self.activity.setText('O Codex está trabalhando…')
             params = turn_params(self.thread_id, prompt, self.cwd, images)
             if self.model: params['model'] = self.model
+            if self.effort: params['effort'] = self.effort
             def started(result):
                 self.turn_id = result.get('turn', {}).get('id', self.turn_id)
             def failed(error):
@@ -731,7 +865,8 @@ class Window(QMainWindow):
         self.busy = busy
         self.send_button.setEnabled(not busy and self.backend.connected and not self.voice.worker)
         self.stop_button.setVisible(busy)
-        for control in (self.new_button, self.history, self.folder, self.attach_button, self.mic, self.settings_button):
+        for control in (self.new_button, self.history, self.folder, self.attach_button, self.mic, self.settings_button, self.clear_history_button,
+                        self.provider_selector, self.model_selector, self.effort_selector):
             control.setEnabled(not busy)
 
     def operation_failed(self, error):
@@ -950,11 +1085,96 @@ class Window(QMainWindow):
             QTimer.singleShot(0, self.close)
 
     def start_login(self):
+        if self.provider == 'gpt':
+            key, accepted = QInputDialog.getText(self, 'Configurar GPT pela API',
+                'Cole sua chave de API OpenAI (não será gravada nas configurações do aplicativo):',
+                QLineEdit.Password)
+            if not accepted or not key.strip(): return
+            def done(_):
+                self.backend.request('account/read', {'refreshToken': False}, self.account_loaded)
+                self.refresh_models()
+            self.backend.request('account/login/start', {'type': 'apiKey', 'apiKey': key.strip()},
+                                 done, self.operation_failed)
+            return
         def result(data):
             url = QUrl(data.get('authUrl', ''))
             if url.scheme() == 'https': QDesktopServices.openUrl(url)
             else: self.show_error('O login não forneceu uma página segura de autenticação. Tente novamente.')
         self.backend.request('account/login/start', {'type': 'chatgpt'}, result)
+
+    def switch_provider(self, _=None):
+        provider = self.provider_selector.currentData()
+        if not provider or provider == self.provider or self.busy: return
+        self.settings.setValue('provider', provider)
+        self.backend.close()
+        self.provider = provider
+        self.backend.provider = provider
+        self.pins = load_pins(provider)
+        self.model = str(self.settings.value('model_'+provider, ''))
+        self.effort = str(self.settings.value('effort_'+provider, ''))
+        self.model_caps = {}
+        self.history.clear()
+        self.loaded_ids.clear()
+        self.cursor = None
+        self.reset_conversation()
+        self.connection.setText('● Conectando ao ' + ('GPT' if provider == 'gpt' else 'Codex') + '…')
+        self.activity.setText('Preparando perfil separado…')
+        self.backend.start()
+
+    def refresh_models(self):
+        provider = self.provider
+        if not self.backend.connected: return
+        def loaded(result):
+            if provider != self.provider: return
+            self.model_caps.clear()
+            models = []
+            for item in result.get('data', []):
+                identifier = str(item.get('model') or item.get('id') or '')
+                if not identifier or item.get('hidden'): continue
+                self.model_caps[identifier] = [
+                    choice.get('reasoningEffort') for choice in item.get('supportedReasoningEfforts', [])
+                    if choice.get('reasoningEffort')]
+                models.append((str(item.get('displayName') or identifier), identifier))
+            if provider == 'gpt':
+                for label, identifier in (('GPT-6.1 Sol', 'gpt-6.1-sol'),
+                                          ('GPT-6', 'gpt-6'), ('GPT-5.5', 'gpt-5.5')):
+                    if not any(m[1] == identifier for m in models): models.append((label + ' · verificar acesso', identifier))
+            if self.model and not any(m[1] == self.model for m in models):
+                models.append((self.model + ' · personalizado', self.model))
+            self.model_selector.blockSignals(True)
+            self.model_selector.clear()
+            self.model_selector.addItem('Automático', '')
+            for label, identifier in models: self.model_selector.addItem(label, identifier)
+            index = self.model_selector.findData(self.model)
+            self.model_selector.setCurrentIndex(max(index, 0))
+            self.model_selector.blockSignals(False)
+            self.refresh_efforts()
+        self.backend.request('model/list', {'limit': 100, 'includeHidden': False}, loaded,
+                             lambda error: self.show_error('Não foi possível listar modelos: ' + str(error)))
+
+    def choose_model(self, _=None):
+        self.model = str(self.model_selector.currentData() or '')
+        self.settings.setValue('model_'+self.provider, self.model)
+        self.refresh_efforts()
+
+    def refresh_efforts(self):
+        values = self.model_caps.get(self.model) or ['low', 'medium', 'high', 'xhigh']
+        names = {'minimal': 'Mínimo', 'low': 'Baixo', 'medium': 'Médio', 'high': 'Alto',
+                 'xhigh': 'Extra alto', 'max': 'Máximo', 'none': 'Nenhum'}
+        self.effort_selector.blockSignals(True)
+        self.effort_selector.clear()
+        self.effort_selector.addItem('Padrão', '')
+        for value in values:
+            if value: self.effort_selector.addItem(names.get(value, value), value)
+        if self.effort and self.effort_selector.findData(self.effort) < 0:
+            self.effort_selector.addItem(self.effort + ' · verificar suporte', self.effort)
+        index = self.effort_selector.findData(self.effort)
+        self.effort_selector.setCurrentIndex(max(index, 0))
+        self.effort_selector.blockSignals(False)
+
+    def choose_effort(self, _=None):
+        self.effort = str(self.effort_selector.currentData() or '')
+        self.settings.setValue('effort_'+self.provider, self.effort)
 
     def open_settings(self):
         dialog = QDialog(self)
@@ -962,13 +1182,12 @@ class Window(QMainWindow):
         dialog.setMinimumWidth(470)
         layout = QVBoxLayout(dialog)
         layout.addWidget(QLabel(self.account_text))
-        login = QPushButton('Entrar com minha conta ChatGPT')
+        login = QPushButton('Configurar chave de API OpenAI' if self.provider == 'gpt' else
+                            'Entrar com minha conta ChatGPT')
         login.clicked.connect(lambda: (self.start_login(), dialog.accept()))
         layout.addWidget(login)
         form = QFormLayout()
-        model = QLineEdit(self.model)
-        model.setPlaceholderText('Automático — configuração atual do Codex')
-        form.addRow('Modelo:', model)
+        form.addRow('Modelo e raciocínio:', QLabel('Selecione ao lado de Enviar, na conversa.'))
         size = QSpinBox()
         size.setRange(10, 22)
         size.setValue(self.font_size)
@@ -991,10 +1210,9 @@ class Window(QMainWindow):
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
         if dialog.exec() == QDialog.Accepted:
-            self.model, self.font_size = model.text().strip(), size.value()
+            self.font_size = size.value()
             self.voice.gain = gain.value() / 100
             self.settings.setValue('mic_gain', self.voice.gain)
-            self.settings.setValue('model', self.model)
             self.settings.setValue('font_size', self.font_size)
             self.apply_theme()
 
