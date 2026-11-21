@@ -91,13 +91,13 @@ def patch_595_atomic_tree(source):
         content = path.read_text(encoding='utf-8')
         result = content
         if path == header:
-            anchor = '#include "nvtypes.h"\\n'
+            anchor = '#include "nvtypes.h"\n'
             if '/* Callas OS NVIDIA 595.71.05:' not in content:
                 if content.count(anchor) != 1:
                     raise RuntimeError('Cabeçalho NVIDIA DRM desconhecido: ' + str(path))
-                result = content.replace(anchor, anchor + '\\n' + DRM_COMPAT, 1)
+                result = content.replace(anchor, anchor + '\n' + DRM_COMPAT, 1)
         elif path == probe:
-            anchor = '#include <drm/drm_modeset_helper_vtables.h>\\n'
+            anchor = '#include <drm/drm_modeset_helper_vtables.h>\n'
             if DRM_PROBE not in content:
                 if content.count(anchor) != 2:
                     raise RuntimeError('Detecção DRM NVIDIA 595 desconhecida; não aplicarei substituição indiscriminada.')
@@ -106,7 +106,7 @@ def patch_595_atomic_tree(source):
             if 'static char *callas_595_strncpy' not in content:
                 a = 'strncpy(regkey_val, regkey_val_start, regkey_val_len);'
                 b = 'return strncpy(dest, src, length);'
-                anchor = '#define CREATE_TRACE_POINTS\\n'
+                anchor = '#define CREATE_TRACE_POINTS\n'
                 if content.count(a) != 1 or content.count(b) != 1 or content.count(anchor) != 1:
                     raise RuntimeError('Fonte NVSwitch NVIDIA 595 desconhecida.')
                 result = content.replace(a, 'callas_595_strncpy(regkey_val, regkey_val_start, regkey_val_len);')
@@ -142,7 +142,7 @@ def patch_595_atomic_tree(source):
 
 
 def prepare_compat_tree(source, release):
-    if not re.fullmatch(r'\\d+\\.\\d+\\.\\d+[-_a-zA-Z0-9.]*', release):
+    if not re.fullmatch(r'\d+\.\d+\.\d+[-_a-zA-Z0-9.]*', release):
         raise RuntimeError('Release do kernel inválido.')
     if kernel_family(release) >= (7, 2):
         patch_595_atomic_tree(source)
