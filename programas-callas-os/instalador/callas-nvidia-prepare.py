@@ -49,6 +49,22 @@ DRM_COMPAT = """/* Callas OS NVIDIA 595.71.05: DRM atomic API on Linux >= 7.2. *
 #define drm_atomic_state_get drm_atomic_commit_get
 #define drm_atomic_state_init drm_atomic_commit_init
 #define drm_atomic_state_put drm_atomic_commit_put
+/* Old conftests silently choose pre-7.2 callback signatures otherwise. */
+#ifndef NV_DRM_ATOMIC_STATE_REF_COUNTING_PRESENT
+#define NV_DRM_ATOMIC_STATE_REF_COUNTING_PRESENT
+#endif
+#ifndef NV_DRM_CRTC_ATOMIC_CHECK_HAS_ATOMIC_STATE_ARG
+#define NV_DRM_CRTC_ATOMIC_CHECK_HAS_ATOMIC_STATE_ARG
+#endif
+#ifndef NV_DRM_PLANE_ATOMIC_CHECK_HAS_ATOMIC_STATE_ARG
+#define NV_DRM_PLANE_ATOMIC_CHECK_HAS_ATOMIC_STATE_ARG
+#endif
+#ifndef NV_DRM_ATOMIC_HELPER_SWAP_STATE_HAS_STALL_ARG
+#define NV_DRM_ATOMIC_HELPER_SWAP_STATE_HAS_STALL_ARG
+#endif
+#ifndef NV_DRM_ATOMIC_HELPER_SWAP_STATE_RETURN_INT
+#define NV_DRM_ATOMIC_HELPER_SWAP_STATE_RETURN_INT
+#endif
 #endif
 #endif
 """
@@ -95,8 +111,11 @@ def patch_595_atomic_tree(source):
     header = tree / 'nvidia-drm/nvidia-drm-conftest.h'
     probe = tree / 'conftest.sh'
     nvswitch = tree / 'nvidia/linux_nvswitch.c'
+    modeset = tree / 'nvidia-modeset/nvidia-modeset-linux.c'
+    uvm = tree / 'nvidia-uvm/uvm_pmm_gpu.c'
+    interface = tree / 'nvidia/os-interface.c'
     planned = {}
-    for path in (header, probe, nvswitch):
+    for path in (header, probe, nvswitch, modeset, uvm, interface):
         if path.is_symlink() or not path.is_file() or path.stat().st_uid != os.geteuid():
             raise RuntimeError('Arquivo NVIDIA 595 esperado não existe ou é inseguro: ' + str(path))
         content = path.read_text(encoding='utf-8')
@@ -113,7 +132,7 @@ def patch_595_atomic_tree(source):
                 if content.count(anchor) != 2:
                     raise RuntimeError('Detecção DRM NVIDIA 595 desconhecida; não aplicarei substituição indiscriminada.')
                 result = content.replace(anchor, anchor + DRM_PROBE, 2)
-        else:
+        elif path == nvswitch:
             if 'static char *callas_595_strncpy' not in content:
                 a = 'strncpy(regkey_val, regkey_val_start, regkey_val_len);'
                 b = 'return strncpy(dest, src, length);'
@@ -123,6 +142,32 @@ def patch_595_atomic_tree(source):
                 result = content.replace(a, 'callas_595_strncpy(regkey_val, regkey_val_start, regkey_val_len);')
                 result = result.replace(b, 'return callas_595_strncpy(dest, src, length);')
                 result = result.replace(anchor, STRNCPY_WRAPPER + anchor, 1)
+        elif path == modeset:
+            old = 'return strncpy(dest, src, n);'
+            marker = '/* Callas OS strncpy compatibility */'
+            if marker not in content:
+                if content.count(old) != 1:
+                    raise RuntimeError('Fonte NVIDIA modeset sem assinatura strncpy reconhecida.')
+                replacement = (marker + "\n"
+                               "size_t i;\n"
+                               "for (i = 0; i < n && src[i] != '\\0'; ++i) dest[i] = src[i];\n"
+                               "for (; i < n; ++i) dest[i] = '\\0';\n"
+                               "return dest;")
+                result = content.replace(old, replacement, 1)
+        elif path == uvm:
+            old = 'strncpy(chunk_split_cache[level].name, "uvm_gpu_chunk_t", sizeof(chunk_split_cache[level].name) - 1);'
+            new = 'strscpy(chunk_split_cache[level].name, "uvm_gpu_chunk_t", sizeof(chunk_split_cache[level].name));'
+            if new not in content:
+                if content.count(old) != 1:
+                    raise RuntimeError('Fonte NVIDIA UVM sem assinatura strncpy reconhecida.')
+                result = content.replace(old, new, 1)
+        elif path == interface:
+            old = "strncpy(buf, current->comm, len - 1);"
+            new = "strscpy(buf, current->comm, len);"
+            if new not in content:
+                if content.count(old) != 1:
+                    raise RuntimeError('Fonte NVIDIA OS interface sem assinatura strncpy reconhecida.')
+                result = content.replace(old, new, 1)
         if result != content:
             planned[path] = result
     # Validate every expected input before changing any file. On write failure
@@ -148,7 +193,7 @@ def patch_595_atomic_tree(source):
             path.write_text(originals[path], encoding='utf-8')
         raise
     if planned:
-        print('Compatibilidade NVIDIA 595.71.05 Linux 7.2+: DRM/conftest/strncpy aplicada com proteção do kernel LTS.', flush=True)
+        print('Compatibilidade NVIDIA 595.71.05 Linux 7.2+: DRM/conftest e chamadas strncpy corrigidas; LTS preservado.', flush=True)
     return bool(planned)
 
 
