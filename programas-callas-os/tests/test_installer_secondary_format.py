@@ -66,7 +66,7 @@ lsblk() {
         self.assertNotIn('Armazenamento 3', process.stdout)
 
     def test_multiple_secondary_disks_numbered(self):
-        process = self.run_selection('n\nsim\nAPAGAR /dev/sdc\n', eligible='/dev/sdb /dev/sdc')
+        process = self.run_selection('2\n1\nAPAGAR /dev/sdc\n', eligible='/dev/sdb /dev/sdc')
         self.assertEqual(process.returncode, 0, process.stderr)
         self.assertIn('Armazenamento 2 de 3', process.stdout)
         self.assertIn('Armazenamento 3 de 3', process.stdout)
@@ -75,20 +75,20 @@ lsblk() {
         self.assertIn('SELECTED=/dev/sdc\n', process.stdout)
 
     def test_no_is_default(self):
-        for answer in ('\n', 'n\n', 'não\n'):
+        for answer in ('\n', '2\n', 'não\n', 'sim\n', '3\n'):
             with self.subTest(answer=answer):
                 process = self.run_selection(answer)
                 self.assertEqual(process.returncode, 0, process.stderr)
                 self.assertIn('SELECTED=\n', process.stdout)
 
     def test_mistyped_confirmation_preserves_files(self):
-        process = self.run_selection('s\nAPAGAR /dev/sda\n')
+        process = self.run_selection('1\nAPAGAR /dev/sda\n')
         self.assertEqual(process.returncode, 0, process.stderr)
         self.assertIn('SELECTED=\n', process.stdout)
         self.assertIn('será preservado', process.stdout)
 
     def test_exact_double_confirmation(self):
-        process = self.run_selection('sim\nAPAGAR /dev/sdb\n')
+        process = self.run_selection('1\nAPAGAR /dev/sdb\n')
         self.assertEqual(process.returncode, 0, process.stderr)
         self.assertIn('SELECTED=/dev/sdb\n', process.stdout)
 
@@ -99,6 +99,8 @@ lsblk() {
         self.assertIn('^' + '(ata|sata|nvme)' + '$', src)
         self.assertIn('FORMATAR_SECUNDARIOS=()', src)
         self.assertIn('FORMATAR_SECUNDARIOS_IDS=()', src)
+        self.assertIn('Digite 1 ou 2:', src)
+        self.assertIn('case $CALLAS_FORMATAR_RESPOSTA in', src)
         self.assertIn('callas_disco_secundario_seguro "$CALLAS_OUTRO_DISCO"', formatting)
         self.assertIn('wipefs -af "$CALLAS_OUTRO_DISCO"', formatting)
         self.assertIn('mkfs.ext4 -F -L CALLAS_DADOS "$CALLAS_PARTICAO_DADOS"', formatting)
