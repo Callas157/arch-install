@@ -14,8 +14,7 @@ def source():
 
 def selection_body():
     src = source()
-    part = src.split('# ---------------- Discos secundários — opção destrutiva explícita ----------------', 1)[1].split('read -rp "Nome do usuário', 1)[0]
-    return part[part.index("printf '\\n>>> Discos secundários"):]
+    return 'mapfile -t CALLAS_DISCOS_DISPONIVEIS' + src.split('mapfile -t CALLAS_DISCOS_DISPONIVEIS', 1)[1].split('read -rp "Nome do usuário', 1)[0]
 
 
 def format_body():
@@ -24,21 +23,26 @@ def format_body():
 
 
 class InstallerSecondaryFormatTests(unittest.TestCase):
-    def run_selection(self, answers):
+    def run_selection(self, answers, eligible='/dev/sdb'):
         fake = """set -Eeuo pipefail
 DISCO=/dev/sda
-BOOTDISK=/dev/sdc
-callas_disco_secundario_seguro() { [[ $1 == /dev/sdb ]]; }
+BOOTDISK=/dev/sdd
+FORMATAR_SECUNDARIOS=()
+FORMATAR_SECUNDARIOS_IDS=()
+callas_disco_secundario_seguro() {
+  case " $ELIGIBLE " in *" $1 "*) return 0;; *) return 1;; esac
+}
 lsblk() {
   if [[ $1 == -dnpo ]]; then
-    printf '/dev/sda disk 0 0\\n/dev/sdb disk 0 0\\n/dev/sdc disk 1 0\\n'
+    printf '/dev/sda disk 0 0\\n/dev/sdb disk 0 0\\n/dev/sdc disk 0 0\\n/dev/sdd disk 1 0\\n'
   elif [[ $1 == -dnro && $2 == MAJ:MIN ]]; then
     printf '8:16\\n'
   fi
 }
 """
         code = fake + selection_body() + "printf 'SELECTED=%s\\n' \"${FORMATAR_SECUNDARIOS[*]}\"\n".replace('\\$', '$')
-        return subprocess.run(['bash', '-c', code], input=answers, capture_output=True, text=True)
+        return subprocess.run(['bash', '-c', code], input=answers, capture_output=True, text=True,
+                              env={**os.environ, 'ELIGIBLE': eligible})
 
     def test_question_order(self):
         src = source()
@@ -47,6 +51,28 @@ lsblk() {
         self.assertLess(src.index('Nome do usuário'), src.index('Senha do usuário'))
         self.assertLess(src.index('Senha do usuário'), src.index('Repita a senha'))
         self.assertLess(src.index('CALLAS_STORAGE_STAGE'), src.index('# Revalida TODOS os dispositivos'))
+
+    def test_no_secondary_skips_entire_step(self):
+        process = self.run_selection('', eligible='')
+        self.assertEqual(process.returncode, 0, process.stderr)
+        self.assertNotIn('Discos secundários', process.stdout)
+        self.assertNotIn('Armazenamento', process.stdout)
+        self.assertEqual(process.stdout, 'SELECTED=\\n')
+
+    def test_one_secondary_labeled_second_of_two(self):
+        process = self.run_selection('\\n')
+        self.assertEqual(process.returncode, 0, process.stderr)
+        self.assertIn('Armazenamento 2 de 2', process.stdout)
+        self.assertNotIn('Armazenamento 3', process.stdout)
+
+    def test_multiple_secondary_disks_numbered(self):
+        process = self.run_selection('n\\nsim\\nAPAGAR /dev/sdc\\n', eligible='/dev/sdb /dev/sdc')
+        self.assertEqual(process.returncode, 0, process.stderr)
+        self.assertIn('Armazenamento 2 de 3', process.stdout)
+        self.assertIn('Armazenamento 3 de 3', process.stdout)
+        self.assertEqual(process.stdout.count('Discos secundários'), 1)
+        self.assertIn('Dados preservados em /dev/sdb', process.stdout)
+        self.assertIn('SELECTED=/dev/sdc\\n', process.stdout)
 
     def test_no_is_default(self):
         for answer in ('\n', 'n\n', 'não\n'):
