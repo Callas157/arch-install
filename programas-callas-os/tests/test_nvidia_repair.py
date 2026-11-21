@@ -93,5 +93,52 @@ class PrepareTests(unittest.TestCase):
         self.assertFalse(any("6.18.64-1-lts" in step for step in commands))
 
 
+    def test_patch_595_drm_is_conditional_and_idempotent(self):
+        with mock.patch.dict(os.environ, {"CALLAS_NVIDIA_REPAIR_TARGET": "595.71.05"}):
+            mod = load(PREPARE, "compat_595")
+        with TemporaryDirectory() as tmp:
+            source = Path(tmp)
+            drm = source / "nvidia-drm"
+            drm.mkdir()
+            nv = source / "nvidia"
+            nv.mkdir()
+            (drm / "nvidia-drm-conftest.h").write_text('#include "nvtypes.h"\\n')
+            (source / "conftest.sh").write_text(
+                ('#include <drm/drm_modeset_helper_vtables.h>\\n'
+                 'struct drm_atomic_state *state;\\n') * 2)
+            (nv / "linux_nvswitch.c").write_text(
+                "#define CREATE_TRACE_POINTS\\n"
+                "strncpy(regkey_val, regkey_val_start, regkey_val_len);\\n"
+                "return strncpy(dest, src, length);\\n")
+            self.assertTrue(mod.patch_595_atomic_tree(source))
+            header = (drm / "nvidia-drm-conftest.h").read_text()
+            conftest = (source / "conftest.sh").read_text()
+            nvswitch = (nv / "linux_nvswitch.c").read_text()
+            self.assertIn('#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 2, 0)', header)
+            self.assertIn('#define drm_atomic_state drm_atomic_commit', header)
+            self.assertEqual(conftest.count('#define drm_atomic_state drm_atomic_commit'), 2)
+            self.assertIn('callas_595_strncpy', nvswitch)
+            self.assertFalse(mod.patch_595_atomic_tree(source))
+            self.assertEqual(header, (drm / "nvidia-drm-conftest.h").read_text())
+
+    def test_patch_rejects_unknown_595_source_without_partial_writes(self):
+        with mock.patch.dict(os.environ, {"CALLAS_NVIDIA_REPAIR_TARGET": "595.71.05"}):
+            mod = load(PREPARE, "compat_unknown")
+        with TemporaryDirectory() as tmp:
+            source = Path(tmp)
+            drm = source / "nvidia-drm"
+            drm.mkdir()
+            nv = source / "nvidia"
+            nv.mkdir()
+            header = drm / "nvidia-drm-conftest.h"
+            header.write_text('#include "nvtypes.h"\\n')
+            (source / "conftest.sh").write_text("incompatible conftest")
+            (nv / "linux_nvswitch.c").write_text("#define CREATE_TRACE_POINTS\\n")
+            with self.assertRaisesRegex(RuntimeError, "Detecção DRM"):
+                mod.patch_595_atomic_tree(source)
+            self.assertEqual(header.read_text(), '#include "nvtypes.h"\\n')
+
+
+
 if __name__ == "__main__":
     unittest.main()
