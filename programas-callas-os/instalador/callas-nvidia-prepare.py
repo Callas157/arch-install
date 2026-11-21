@@ -162,7 +162,8 @@ def prepare_installed_source():
     newer = [value for value in releases.values() if kernel_family(value) >= (7, 2)]
     if not newer:
         return
-    prepare_compat_tree(Path('/usr/src') / ('nvidia-' + PINNED), newer[0])
+    prepare_compat_tree(Path('/usr/src') / ('nvidia-' + PINNED),
+                        max(newer, key=lambda name: kernel_family(name)))
 
 
 def run(*command):
