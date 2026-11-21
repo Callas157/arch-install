@@ -12,7 +12,8 @@ mountpoint -q /mnt || { echo 'ERRO: /mnt não está montado. Não vou montar nem
 mountpoint -q /mnt/boot || { echo 'ERRO: /mnt/boot não está montado. Não mexi nos discos.' >&2; exit 1; }
 [[ $(findmnt -no FSTYPE /mnt/boot) == vfat ]] || { echo 'ERRO: /mnt/boot não contém a partição EFI FAT32.' >&2; exit 1; }
 [[ -f /mnt/etc/arch-release && -f /mnt/etc/callas-nvidia-version ]] || { echo 'ERRO: não encontrei o Callas OS NVIDIA instalado em /mnt.' >&2; exit 1; }
-[[ $(< /mnt/etc/callas-nvidia-version) == 610.57.04 ]] || { echo 'ERRO: driver NVIDIA não corresponde a 610.57.04.' >&2; exit 1; }
+versao_nvidia=$(< /mnt/etc/callas-nvidia-version)
+[[ $versao_nvidia == 595.* || $versao_nvidia == 610.57.04 ]] || { echo 'ERRO: versão NVIDIA não reconhecida para esta recuperação.' >&2; exit 1; }
 [[ -f /mnt/usr/local/share/callas-os/install-config.sh ]] || { echo 'ERRO: o script de configuração interrompido não foi encontrado.' >&2; exit 1; }
 [[ -d /mnt/usr/local/share/callas-os/security-stage ]] || { echo 'ERRO: arquivos verificados da instalação não estão presentes.' >&2; exit 1; }
 [[ -f /mnt/usr/local/share/callas-os/security-stage/callas-security.sh ]] || { echo 'ERRO: fase interna da instalação ausente; não é seguro retomar.' >&2; exit 1; }
@@ -32,7 +33,9 @@ if not re.fullmatch(r'[0-9a-f]{40}', head):
 tree = json.loads(fetch(base + '/git/trees/' + head + '?recursive=1'))
 if tree.get('truncated'):
     raise RuntimeError('Árvore GitHub incompleta.')
-name = 'programas-callas-os/instalador/callas-nvidia-610-prepare.py'
+installed = pathlib.Path('/mnt/etc/callas-nvidia-version').read_text().strip()
+helper = 'callas-nvidia-prepare.py' if installed.startswith('595.') else 'callas-nvidia-610-prepare.py'
+name = 'programas-callas-os/instalador/' + helper
 match = [row for row in tree['tree'] if row.get('path') == name and row.get('type') == 'blob']
 if len(match) != 1:
     raise RuntimeError('Preparador NVIDIA não encontrado.')
@@ -41,7 +44,7 @@ digest = hashlib.sha1(b'blob ' + str(len(payload)).encode() + b'\0' + payload).h
 if digest != match[0]['sha']:
     raise RuntimeError('Integridade do preparador NVIDIA não confere com GitHub.')
 compile(payload, name, 'exec')
-target = pathlib.Path('/mnt/usr/local/libexec/callas-nvidia-610-prepare')
+target = pathlib.Path('/mnt/usr/local/libexec') / helper.removesuffix('.py')
 if not target.parent.is_dir() or target.is_symlink():
     raise RuntimeError('Diretório auxiliar não é seguro.')
 tmp = target.with_name('.callas-nvidia-prepare-new')
@@ -52,7 +55,11 @@ print('Preparador NVIDIA validado, commit ' + head[:12])
 CALLAS_RECOVERY_PREPARE
 
 # Repara e valida os quatro módulos para CADA kernel instalado, antes de GRUB.
-arch-chroot /mnt /usr/local/libexec/callas-nvidia-610-prepare
+if [[ $versao_nvidia == 595.* ]]; then
+  arch-chroot /mnt /usr/local/libexec/callas-nvidia-prepare
+else
+  arch-chroot /mnt /usr/local/libexec/callas-nvidia-610-prepare
+fi
 arch-chroot /mnt /usr/bin/mkinitcpio -P
 
 # Constrói uma continuação somente a partir da etapa seguinte ao mkinitcpio
