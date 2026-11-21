@@ -18,6 +18,11 @@ AUTOMOUNT = '/usr/local/libexec/callas-automount'
 MARKER = '# Montagem de discos de dados — Callas OS'
 UUID = re.compile(r'[0-9A-Fa-f]+(?:-[0-9A-Fa-f]+)*\Z')
 OS_ROOT_NAMES = {'etc', 'usr', 'var', 'boot', 'root', 'home', 'opt', 'sys', 'proc', 'dev', 'run'}
+# The optional data volume is wanted but not ordered before local-fs.target
+# when mounted with nofail. Explicit ordering keeps Steam from seeing an
+# empty mountpoint during login, without making a missing disk break boot.
+BEFORE_LOCAL_FS = 'x-systemd.before=local-fs.target'
+VALID_DATA_FS = {'ext4', 'ntfs3', 'exfat', 'ext2', 'ext3', 'xfs', 'btrfs'}
 
 
 def candidates(text):
@@ -45,21 +50,43 @@ def candidates(text):
 
 
 def prepare_fstab(text):
-    allowed = {target for target, _uuid in candidates(text)}
-    if not allowed:
-        return text
+    """Order existing Callas data mounts before login; enable ext4 boot fsck.
+
+    Only rewrite rows in the original Callas marker section with an expected
+    UUID-based /mnt/callas-... target; never alter the system/root fstab rows.
+    """
     lines = []
+    marked = False
     for line in text.splitlines(keepends=True):
+        if line.rstrip('\n') == MARKER:
+            marked = True
+            lines.append(line)
+            continue
+        if not marked or not line.strip() or line.lstrip().startswith('#'):
+            lines.append(line)
+            continue
         cells = line.split()
-        if len(cells) == 6 and cells[1] in allowed and cells[2] == 'ext4':
-            opts = cells[3].split(',')
-            if 'errors=remount-ro' not in opts:
-                opts.append('errors=remount-ro')
-            cells[3] = ','.join(opts)
-            cells[5] = '2'  # systemd-fsck repairs safe ext4 errors before mount
-            ending = '\n' if line.endswith('\n') else ''
-            line = '\t'.join(cells) + ending
-        lines.append(line)
+        if len(cells) != 6 or cells[2] not in VALID_DATA_FS or not cells[0].startswith('UUID='):
+            lines.append(line)
+            continue
+        uuid = cells[0][5:]
+        if (not UUID.fullmatch(uuid) or cells[1] != '/mnt/callas-' + uuid.lower()
+                or cells[4] != '0' or cells[5] not in ('0', '2')):
+            lines.append(line)
+            continue
+        options = cells[3].split(',')
+        if not {'nosuid', 'nodev', 'nofail'} <= set(options) or 'noauto' in options:
+            lines.append(line)
+            continue
+        if BEFORE_LOCAL_FS not in options:
+            options.append(BEFORE_LOCAL_FS)
+        if cells[2] == 'ext4':
+            if 'errors=remount-ro' not in options:
+                options.append('errors=remount-ro')
+            cells[5] = '2'  # systemd-fsck handles journal recovery at boot
+        cells[3] = ','.join(options)
+        ending = '\n' if line.endswith('\n') else ''
+        lines.append('\t'.join(cells) + ending)
     return ''.join(lines)
 
 
@@ -152,7 +179,7 @@ def main(username):
             result = subprocess.run(['umount', '--', target], capture_output=True, text=True)
             if result.returncode:
                 print('Armazenamento: aviso ao desmontar ' + target + ': ' + result.stderr.strip(), file=sys.stderr)
-    print('Armazenamento: entradas de montagem prontas; falhas ficam registradas no log.')
+    print('Armazenamento: volumes por UUID no fstab, montagem no boot e sem senha; discos ausentes não impedem inicialização.')
 
 
 if __name__ == '__main__':
