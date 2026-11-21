@@ -71,7 +71,7 @@ O instalador usa auxiliares compartilhados de `programas-callas-os/`, obtidos de
 
 | Hardware | Preparação do sistema |
 | --- | --- |
-| NVIDIA compatível com `nvidia-open` | Driver **610.57.04**, DKMS, Vulkan e bibliotecas de 32 bits |
+| NVIDIA compatível com `nvidia-open` | Driver da série **595**, Open DKMS, Vulkan e bibliotecas de 32 bits |
 | AMD Radeon | Mesa, RADV e Vulkan |
 | Intel | Mesa e Vulkan Intel |
 | Logitech G920 | Driver nativo e troca automática do modo USB |
@@ -79,7 +79,7 @@ O instalador usa auxiliares compartilhados de `programas-callas-os/`, obtidos de
 | FreeWolf F75 e variantes Attack Shark suportadas | Indicadores de bateria pelo Callas Baterias; suporte depende da identificação HID do dispositivo |
 | Rise Mode Aura Ice Black `aa88:8666` | Driver preparado quando o dispositivo é detectado |
 
-A NVIDIA **610.57.04** é mantida fixa pelo projeto. O sistema inclui os kernels **Linux e Linux LTS**, com opção de recuperação no GRUB. A compilação do driver precisa ser compatível com os kernels; a instalação não deve ser considerada concluída se essa verificação falhar. O funcionamento de cada periférico também depende do modelo e do jogo.
+A instalação limpa seleciona a versão completa assinada mais recente da série NVIDIA **595** disponível no Arch Linux Archive. A Central permite escolher outra versão compatível; atualizações gerais preservam a versão escolhida. O sistema inclui os kernels **Linux e Linux LTS**, com opção de recuperação no GRUB. A compilação do driver precisa ser compatível com os kernels; a instalação não deve ser considerada concluída se essa verificação falhar. O funcionamento de cada periférico também depende do modelo e do jogo.
 
 ## Identidade visual
 
@@ -111,7 +111,7 @@ As funções disponíveis são:
 | **1. Limpeza e manutenção** | Limpeza, espaço em disco e backups |
 | **2. Aplicativos nativos** | Atualiza aplicativos compatíveis com a base já instalada; preserva kernels |
 | **3. Monitores** | Detecta as telas conectadas e permite escolher o monitor principal para painel, notificações e login |
-| **4. Atualizar geral** | Atualiza Arch, AUR e Flatpaks; único fluxo que autoriza atualizar kernels, com verificação da NVIDIA fixada e validação final de boot |
+| **4. Atualizar geral** | Atualiza Arch, AUR e Flatpaks; único fluxo que autoriza atualizar kernels, com verificação da NVIDIA escolhida e validação final de boot |
 | **5. Callas OS Update** | Aplica configurações, ferramentas, correções e migrações de aplicativos do projeto; preserva kernels, headers e NVIDIA, e desativa os agendamentos antigos de atualização |
 | **6. Codex** | Baixa e instala o chat opcional e adiciona seu acesso ao menu KDE; quando instalado, abre o aplicativo. Entre com sua própria conta ChatGPT/OpenAI |
 
@@ -121,7 +121,7 @@ As atualizações pela Central acontecem **manualmente**: clique em **Aplicativo
 
 A **Steam** e o **Discord** mantêm seus próprios mecanismos de atualização interna. Eles continuam funcionando normalmente, inclusive quando o aplicativo pede para reiniciar para aplicar uma atualização.
 
-**Kernel e NVIDIA:** antes de trocar kernel e headers, a opção 4 testa a compilação da NVIDIA fixada em uma área isolada. Se a verificação falhar ou não puder ser concluída com segurança, a transação é interrompida e os pacotes anteriores são preservados. Não há troca automática do driver para liberar a atualização. Após uma transação aprovada, módulos, initramfs e GRUB ainda precisam ser validados. Consulte os [detalhes da proteção de kernel e NVIDIA](programas-callas-os/instrucoes/atualizacao-kernel.md).
+**Kernel e NVIDIA:** antes de trocar kernel e headers, a opção 4 testa a compilação da NVIDIA escolhida em uma área isolada. Se a verificação falhar ou não puder ser concluída com segurança, a transação é interrompida e os pacotes anteriores são preservados. Não há troca automática do driver para liberar a atualização. Após uma transação aprovada, módulos, initramfs e GRUB ainda precisam ser validados. Consulte os [detalhes da proteção de kernel e NVIDIA](programas-callas-os/instrucoes/atualizacao-kernel.md).
 
 Depois de uma atualização geral concluída, você pode **reiniciar ou deixar para depois**. Logs e backups ficam em **Documentos → Callas OS → Callas OS Logs / Callas OS Backups**. Se uma operação ficar pendente, consulte os detalhes na Central.
 
@@ -133,7 +133,7 @@ Feche o Brave antes da opção 5 para permitir a aplicação das preferências v
 
 ---
 
-**Versão atual: 3.9.0** · [VERSION](programas-callas-os/atualizador/VERSION) · [Histórico de mudanças](programas-callas-os/atualizador/CHANGELOG.md)
+**Versão atual: 3.23.0** · [VERSION](programas-callas-os/atualizador/VERSION) · [Histórico de mudanças](programas-callas-os/atualizador/CHANGELOG.md)
 
 Projeto em desenvolvimento. Mantenha seus backups em dia.
 
