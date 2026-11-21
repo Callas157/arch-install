@@ -192,11 +192,22 @@ class OptionalCodexTests(unittest.TestCase):
         data = bundle()
         with self.download_fixture(data), patch.object(gui, 'CODEX_SHA256', hashlib.sha256(data).hexdigest()), \
              patch.object(gui, 'apply_codex_overlay') as overlay, \
+             patch.object(gui, 'codex_running_for_user', return_value=False), \
              patch.object(gui.subprocess, 'run') as run:
             gui.install_codex(app_only=True)
             overlay.assert_called_once()
             self.assertEqual(run.call_count, 1)
             self.assertEqual(run.call_args.args[0][-1], '--sem-dependencias')
+
+
+    def test_process_opened_during_download_prevents_last_second_install(self):
+        data = bundle()
+        with self.download_fixture(data), patch.object(gui, 'CODEX_SHA256', hashlib.sha256(data).hexdigest()), \
+             patch.object(gui, 'apply_codex_overlay'), \
+             patch.object(gui, 'codex_running_for_user', return_value=True), \
+             patch.object(gui.subprocess, 'run') as run:
+            self.assertFalse(gui.install_codex(app_only=True))
+            run.assert_not_called()
 
 
 if __name__ == '__main__': unittest.main()
