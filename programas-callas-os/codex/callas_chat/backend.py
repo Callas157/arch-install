@@ -23,8 +23,9 @@ class Backend(QObject):
     disconnected = Signal()
     server_request = Signal(object)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, provider='codex'):
         super().__init__(parent)
+        self.provider = provider
         self.process = QProcess(self)
         self.process.readyReadStandardOutput.connect(self.read)
         self.process.readyReadStandardError.connect(self.read_errors)
@@ -51,15 +52,28 @@ class Backend(QObject):
         askpass = Path.home()/'.local/bin/codex-askpass'
         if askpass.is_file(): env.insert('SUDO_ASKPASS', str(askpass))
         env.remove('CALLAS_KERNEL_UPDATE_CONTEXT')
+        # O perfil API não altera ~/.codex nem o login ChatGPT do Codex.
+        if self.provider == 'gpt':
+            base = Path(os.environ.get('XDG_DATA_HOME', str(Path.home()/'.local/share'))) / 'callas-chat' / 'gpt-home'
+            if base.is_symlink():
+                self.error.emit('Perfil GPT inválido: link simbólico recusado.')
+                return
+            base.mkdir(parents=True, exist_ok=True, mode=0o700)
+            if base.stat().st_uid != os.getuid():
+                self.error.emit('Perfil GPT não pertence ao usuário atual.')
+                return
+            base.chmod(0o700)
+            env.insert('CODEX_HOME', str(base))
         self.process.setProcessEnvironment(env)
         self.process.setProgram(path)
         self.process.setArguments(['-c', 'approval_policy="never"', '-c',
-                                   'sandbox_mode="danger-full-access"', 'app-server', '--stdio'])
+                                   'sandbox_mode="danger-full-access"', '-c',
+                                   'cli_auth_credentials_store="auto"', 'app-server', '--stdio'])
         self.process.start()
 
     def initialize(self):
         self.request('initialize', {'clientInfo': {'name': 'callas_chat', 'title': 'Codex',
-                     'version': '1.3.0'}, 'capabilities': {'experimentalApi': False}}, self.initialized)
+                     'version': '1.4.0'}, 'capabilities': {'experimentalApi': False}}, self.initialized)
 
     def initialized(self, result):
         self.write({'method': 'initialized', 'params': {}})
