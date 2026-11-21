@@ -948,7 +948,7 @@ class NvidiaDialog(QDialog):
                     self.status.setText(self.status.text() + '\nPilha divergente. Selecione a versão fixada para reparar.')
                 self.versions.addItem('Selecione uma versão', None)
                 for version in state['versions']:
-                    label = version + (' (padrão para jogos)' if version == '610.57.04' else '')
+                    label = version + (' (série padrão do Callas OS)' if version.startswith('595.') else '')
                     self.versions.addItem(label, version)
                 if self.fixed in state['versions']:
                     self.versions.setCurrentIndex(self.versions.findData(self.fixed))
