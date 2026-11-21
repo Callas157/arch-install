@@ -1,5 +1,14 @@
 # Histórico do Callas OS
 
+## 3.23.0 — 2026-11-21
+
+- **Instalação limpa NVIDIA:** a série **595** passa a ser o padrão. Antes de qualquer formatação, o instalador consulta a versão mais nova da série com os três pacotes essenciais Open DKMS (nvidia-open-dkms, nvidia-utils, lib32-nvidia-utils) e respectivas assinaturas disponíveis no Arch Linux Archive. Se o conjunto 595 estiver indisponível, interrompe antes de apagar discos; não substitui silenciosamente por 610 ou 620.
+- Os kernels **linux e linux-lts** e seus headers continuam vindo dos repositórios atuais do Arch. O preparador novo confere a versão escolhida e recompila/testa os quatro módulos NVIDIA via DKMS em ambos os kernels antes de criar initramfs/GRUB. Aplica adaptação específica da API dmem somente quando reconhecida; fontes não reconhecidas dependem da compilação real e falham sem anunciar instalação concluída.
+- **Central Callas OS → Driver NVIDIA:** o catálogo agora considera essenciais somente os três pacotes do driver, permitindo exibir versões que antes desapareciam por indisponibilidade de utilitários opcionais. Complementos são atualizados quando existem versões correspondentes assinadas; a versão anterior dos componentes substituídos é removida pelo pacman, com download prévio assinado para possível restauração. Driver escolhido fica fixado para as atualizações gerais, sem impedir a troca manual deliberada.
+- Preservadas as regras PreTransaction e a validação final de boot. O resgate de uma instalação interrompida passa a reconhecer a série 595 sem remover compatibilidade de resgate com o 610 anterior. O Callas OS Update não muda o driver em máquinas existentes.
+- Verificações offline: sintaxe Bash do instalador e do resgate, compilação de fontes Python e testes simulados do catálogo com pacotes opcionais ausentes e versão 595 incompleta. **Ainda não houve instalação limpa real, troca efetiva em uma RTX, compilação DKMS no kernel Arch mais recente ou reinicialização física**. Uma falha de compatibilidade com kernel ou dependência deve ser registrada e bloquear a troca, nunca ignorada.
+- Backup integral do instalador original da versão **3.22.3** salvo e conferido no Google Drive em CallasOS/CallasOS 3.22.3/instalar-arch.sh, SHA-256 1de58d4fc6e851d4ff233478f5d11036c30c218ed7037e973d6f11f2dc2b44af.
+
 ## 3.22.3 — 2026-11-21
 
 - O **Callas OS Update** agora verifica o Codex opcional já instalado durante a atualização do sistema. Versões 1.3.x conhecidas são atualizadas automaticamente para o cliente 1.4.0, sem novo clique no botão Codex e sem reinstalar Whisper, Node ou dependências existentes.
