@@ -1,5 +1,13 @@
 # Histórico do Callas OS
 
+## 3.24.0 — 2026-11-21
+
+- **Central → Driver NVIDIA → Reparar versão instalada:** nova opção manual para divergências entre os pacotes já instalados e a versão fixada. A Central apresenta o estado dos módulos para ambos os kernels, pede confirmação explícita antes de adotar a versão instalada e não baixa/atualiza drivers nesse reparo.
+- O preparador DKMS compartilhado com a instalação limpa preserva os módulos corretos e recompila apenas kernels com módulos NVIDIA ausentes/incorretos. Se reconhecida, aplica a adaptação da API dmem do Linux 7.3 somente à fonte DKMS local; falhas interrompem o processo sem afirmar que o driver funciona.
+- **Callas OS Update:** na etapa boot, detecta a divergência antes de alterar temas/GRUB e orienta a usar a Central para o reparo. Se versão instalada e fixada coincidirem, pode reconstruir módulos faltantes sem trocar pacotes ou atualizar kernel/headers, verificando módulos, initramfs e boot antes de concluir. Sem autorização do usuário, não converte 610 em 595.
+- Diagnóstico persistido em `/var/lib/callas-os/nvidia-repair-last.log` (root). A versão fixada só é ajustada após verificação de quatro módulos NVIDIA para `linux` e `linux-lts`, reconstrução de initramfs e passagem no verificador de boot.
+- **Limite de validação:** testes de integração no hardware RTX 3060 e compilação real de NVIDIA 595.71.05 contra Linux 7.3.5 ainda são necessários. Se essa combinação não compilar, o reparo falha e preserva o estado para diagnóstico; o patch conhecido de dmem não comprova compatibilidade total com Linux 7.3.
+
 ## 3.23.0 — 2026-11-21
 
 - **Instalação limpa NVIDIA:** a série **595** passa a ser o padrão. Antes de qualquer formatação, o instalador consulta a versão mais nova da série com os três pacotes essenciais Open DKMS (nvidia-open-dkms, nvidia-utils, lib32-nvidia-utils) e respectivas assinaturas disponíveis no Arch Linux Archive. Se o conjunto 595 estiver indisponível, interrompe antes de apagar discos; não substitui silenciosamente por 610 ou 620.
