@@ -58,6 +58,43 @@ class InstallerTests(unittest.TestCase):
             self.assertTrue((home/'.local/bin/callas-chat').stat().st_mode & 0o100)
             self.assertTrue((target/'app/callas_chat/ui.py').exists())
 
+    def test_app_only_update_keeps_existing_python_and_user_files(self):
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp)
+            env = dict(os.environ, HOME=temp, XDG_DATA_HOME=str(home/'dados'),
+                       XDG_CONFIG_HOME=str(home/'config'))
+            app_root = home/'dados/callas-chat'
+            first = subprocess.run([sys.executable, str(ROOT/'installer.py'), '--sem-dependencias'],
+                                   env=env, capture_output=True, text=True)
+            self.assertEqual(first.returncode, 0, first.stderr)
+            venv_python = app_root/'venv/bin/python'
+            venv_python.parent.mkdir(parents=True)
+            venv_python.symlink_to(sys.executable)
+            keep = app_root/'attachments'/'preservar.txt'
+            keep.parent.mkdir()
+            keep.write_text('conversa mantida', encoding='utf-8')
+            changed = subprocess.run([sys.executable, str(ROOT/'installer.py'), '--somente-aplicativo'],
+                                     env=env, capture_output=True, text=True)
+            self.assertEqual(changed.returncode, 0, changed.stderr)
+            launcher = (home/'.local/bin/callas-chat').read_text()
+            self.assertIn(str(venv_python), launcher)
+            self.assertEqual(keep.read_text(encoding='utf-8'), 'conversa mantida')
+            self.assertTrue((app_root/'app.previous').is_dir())
+
+    def test_app_only_fails_safe_without_previous_virtualenv(self):
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp)
+            env = dict(os.environ, HOME=temp, XDG_DATA_HOME=str(home/'dados'))
+            first = subprocess.run([sys.executable, str(ROOT/'installer.py'), '--sem-dependencias'],
+                                   env=env, capture_output=True, text=True)
+            self.assertEqual(first.returncode, 0, first.stderr)
+            previous = home/'dados/callas-chat/app/callas_chat/__init__.py'
+            before = previous.read_bytes()
+            changed = subprocess.run([sys.executable, str(ROOT/'installer.py'), '--somente-aplicativo'],
+                                     env=env, capture_output=True, text=True)
+            self.assertNotEqual(changed.returncode, 0)
+            self.assertEqual(previous.read_bytes(), before)
+
     def test_system_dependencies_use_guard_and_abort_on_failure(self):
         import installer
         with patch.object(installer.Path, 'is_file', return_value=True), \
