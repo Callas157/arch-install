@@ -66,9 +66,10 @@ class Backend(QObject):
             env.insert('CODEX_HOME', str(base))
         self.process.setProcessEnvironment(env)
         self.process.setProgram(path)
-        self.process.setArguments(['-c', 'approval_policy="never"', '-c',
-                                   'sandbox_mode="danger-full-access"', '-c',
-                                   'cli_auth_credentials_store="auto"', 'app-server', '--stdio'])
+        args = ['-c', 'approval_policy="never"', '-c', 'sandbox_mode="danger-full-access"']
+        if self.provider == 'gpt':
+            args += ['-c', 'cli_auth_credentials_store="auto"']
+        self.process.setArguments(args + ['app-server', '--stdio'])
         self.process.start()
 
     def initialize(self):
