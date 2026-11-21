@@ -177,6 +177,27 @@ def stage_files(destination, ref, *, progress=True, cache=None):
                 future.cancel()
             raise
 
+def refresh_optional_codex(user):
+    """Rever atualização adiada mesmo se o sistema já está na versão atual."""
+    helper = Path('/usr/local/lib/callas-update/callas-update-gui.py')
+    if helper.is_symlink() or not helper.is_file():
+        return 0
+    file_info = helper.stat()
+    if file_info.st_uid != 0 or file_info.st_mode & 0o022:
+        print('Codex: helper sem integridade local; nenhuma ação executada.', file=sys.stderr)
+        return 1
+    account = pwd.getpwnam(user)
+    print('Callas OS Update: verificando atualização opcional do Codex instalado...', flush=True)
+    result = subprocess.run([
+        '/usr/bin/runuser', '-u', user, '--', '/usr/bin/env', '-i',
+        'PATH=/usr/bin:/bin', 'HOME=' + account.pw_dir, 'USER=' + user,
+        'LOGNAME=' + user, 'LANG=C.UTF-8',
+        '/usr/bin/python3', str(helper), '--update-installed-codex'])
+    if result.returncode:
+        print('Codex: atualização opcional incompleta; pode tentar novamente pelo Callas OS Update.', file=sys.stderr)
+    return result.returncode
+
+
 def main():
     if os.geteuid() != 0:
         raise SystemExit("Abra a opção 5 do Atualizador do sistema.")
@@ -197,8 +218,8 @@ def main():
             if installed.get('release')==ref and installed.get('status')=='complete' and not pending.exists() and Path('/usr/local/libexec/callas-update-state').is_file() and subprocess.run(
                     ['/usr/bin/python3', '/usr/local/libexec/callas-update-state', '--intact', user],
                     stdout=subprocess.DEVNULL).returncode == 0:
-                print('Callas OS Update: nenhuma nova atualização do projeto no GitHub.')
-                return 0
+                print('Callas OS Update: sistema já atualizado; verificando componentes opcionais instalados.')
+                return refresh_optional_codex(user)
         with tempfile.TemporaryDirectory(prefix="callas-release-", dir="/var/tmp") as stage:
             stage_files(stage, ref, cache=Path('/var/cache/callas-os/update-files'))
             env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "SUDO_USER": user,
