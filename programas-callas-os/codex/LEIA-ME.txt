@@ -1,4 +1,4 @@
-CODEX 1.3.3
+CODEX 1.4.0
 
 Abra “Codex” no menu KDE. Use sua conta ChatGPT já conectada ao Codex;
 em um computador novo, entre em Conta e configurações > Entrar com minha conta ChatGPT.
@@ -91,3 +91,12 @@ Correção 1.3.3: aceita pacotes .plasmoid, ZIP e outros binários (até 100 MB)
 Guarda uma cópia privada local e envia sua referência ao Codex para análise.
 Textos mantêm limite de 1 MB; anexos binários não são extraídos ou executados
 automaticamente e permanecem disponíveis para o histórico no computador.
+
+
+Atualização 1.4.0:
+- Na lateral do histórico, botão direito: Fixar/Desafixar ou Excluir; botão Limpar histórico remove as não fixadas somente do perfil ativo, após confirmação irreversível.
+- Ao lado de Enviar: Codex / GPT (API), modelo e nível de raciocínio. O modelo é selecionado conforme a conta; atalhos GPT-6.1 Sol, GPT-6 e GPT-5.5 exigem acesso na API.
+- GPT (API) utiliza a engine local Codex com acesso ao PC e perfil de autenticação/histórico separado do Codex da assinatura. Não traz a memória, plugins nem conversas do ChatGPT web.
+- Para ativar o GPT, crie uma chave em https://platform.openai.com/api-keys e cole em Configurar chave API. Não é possível criar a chave automaticamente do ChatGPT; a API tem cobrança separada.
+- A chave não é salva nas preferências do app; o Codex pode guardá-la no cofre do sistema ou em auth.json dentro de ~/.local/share/callas-chat/gpt-home (diretório de usuário 0700). Proteja sua sessão e sua chave.
+- Para instalar a versão corrigida pelo Callas OS, atualize a Central e clique Codex. Clientes antigos recebem opção para atualizar sem apagar seus dados.
