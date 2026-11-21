@@ -143,4 +143,60 @@ class OptionalCodexTests(unittest.TestCase):
         window.close(); window.deleteLater()
 
 
+    def test_update_skips_codex_not_installed_even_if_update_runs(self):
+        with tempfile.TemporaryDirectory() as folder:
+            with patch.object(gui, 'codex_launcher', return_value=Path(folder)/'missing'), \
+                 patch.object(gui, 'install_codex') as install, \
+                 patch.object(gui.urllib.request, 'urlopen') as download:
+                self.assertEqual(gui.auto_update_installed_codex(), 0)
+                install.assert_not_called()
+                download.assert_not_called()
+
+    def test_update_preserves_unknown_and_newer_versions(self):
+        with tempfile.TemporaryDirectory() as folder:
+            launcher = Path(folder)/'callas-chat'
+            launcher.write_text('#!/bin/sh\\nexit 0\\n')
+            launcher.chmod(0o755)
+            with patch.object(gui, 'codex_launcher', return_value=launcher), \
+                 patch.object(gui, 'install_codex') as install:
+                for version in (None, (1, 4, 0), (1, 5, 0)):
+                    with patch.object(gui, 'codex_installed_version', return_value=version):
+                        self.assertEqual(gui.auto_update_installed_codex(), 0)
+                install.assert_not_called()
+
+    def test_update_defers_running_codex_without_closing_or_modifying_it(self):
+        with tempfile.TemporaryDirectory() as folder:
+            launcher = Path(folder)/'callas-chat'
+            launcher.write_text('#!/bin/sh\\nexit 0\\n')
+            launcher.chmod(0o755)
+            with patch.object(gui, 'codex_launcher', return_value=launcher), \
+                 patch.object(gui, 'codex_installed_version', return_value=(1, 3, 3)), \
+                 patch.object(gui, 'codex_running_for_user', return_value=True), \
+                 patch.object(gui, 'install_codex') as install:
+                self.assertEqual(gui.auto_update_installed_codex(), 0)
+                install.assert_not_called()
+
+    def test_update_replaces_only_existing_older_app_files(self):
+        with tempfile.TemporaryDirectory() as folder:
+            launcher = Path(folder)/'callas-chat'
+            launcher.write_text('#!/bin/sh\\nexit 0\\n')
+            launcher.chmod(0o755)
+            with patch.object(gui, 'codex_launcher', return_value=launcher), \
+                 patch.object(gui, 'codex_installed_version', side_effect=[(1, 3, 3), (1, 4, 0)]), \
+                 patch.object(gui, 'codex_running_for_user', return_value=False), \
+                 patch.object(gui, 'install_codex') as install:
+                self.assertEqual(gui.auto_update_installed_codex(), 0)
+                install.assert_called_once_with(app_only=True)
+
+    def test_app_only_update_skips_whisper_and_package_reinstallation(self):
+        data = bundle()
+        with self.download_fixture(data), patch.object(gui, 'CODEX_SHA256', hashlib.sha256(data).hexdigest()), \
+             patch.object(gui, 'apply_codex_overlay') as overlay, \
+             patch.object(gui.subprocess, 'run') as run:
+            gui.install_codex(app_only=True)
+            overlay.assert_called_once()
+            self.assertEqual(run.call_count, 1)
+            self.assertEqual(run.call_args.args[0][-1], '--sem-dependencias')
+
+
 if __name__ == '__main__': unittest.main()
