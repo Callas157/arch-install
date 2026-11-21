@@ -1,5 +1,13 @@
 # Histórico do Callas OS
 
+## 3.21.1 — 2026-11-20
+
+- Instalação limpa: a etapa **Discos secundários** só aparece após filtrar discos internos elegíveis e somente quando existir ao menos um. Em instalação com um único disco (por exemplo, VM com 30 GB), o instalador segue diretamente para o usuário e senha sem exibir cabeçalho ou alerta sobre um secundário inexistente.
+- Havendo vários discos, numera cada um na sequência com o disco do sistema incluído na contagem: **Armazenamento 2 de 3**, **Armazenamento 3 de 3** etc., mostrando dispositivo, modelo, tamanho, sistema de arquivos e o aviso de exclusão antes da decisão de cada unidade.
+- A opção padrão segue sendo **não formatar**. A confirmação exata `APAGAR /dev/...`, a verificação de discos internos/USB e as proteções contra apagar volumes montados, o disco principal e a mídia ISO não foram alteradas. Nenhuma alteração funcional no Callas OS Update, kernels ou driver NVIDIA 610.57.04.
+- Validação: `bash -n` do instalador e **9 testes offline de regressão** executados em cópia com conteúdo idêntico ao publicado (SHA do blob Git `984b6fa637e62c555a0d343da38bbae7ab898b83`). Cenários com zero, um e dois secundários, confirmação incorreta/correta e preservação por padrão. Não houve instalação completa ou teste físico de formatação.
+- Backup anterior, da **3.21.0**, verificado por SHA-256 após leitura do Google Drive antes de alterar o instalador. Para respeitar o limite de 10 cópias utilizáveis, os arquivos dos dois backups mais antigos (3.3.2 e 3.3.3) foram enviados à lixeira de forma recuperável; as pastas vazias permanecem porque o conector não permite excluí-las.
+
 ## 3.21.0 — 2026-11-20
 
 - A instalação limpa exibe no próprio terminal da ISO um banner grande **WELCOME / CALLAS OS**, em caracteres `#`, colorido em terminais compatíveis e monocromático nos demais, antes da seleção dos discos. Não exige figlet e não altera o boot ou os wallpapers.
