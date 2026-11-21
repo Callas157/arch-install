@@ -97,3 +97,13 @@ contas, conversas, anexos ou modelos locais.
   após falha. Não extrai nem executa o pacote ao anexar.
 - Validação: 61 testes do cliente; pacote real do widget copiado e aberto como
   ZIP com 16 entradas, sem executar seu conteúdo.
+
+## Cliente 1.4.0 — 2026-11-21
+
+- Gestão de conversas no botão direito: fixar/desafixar e excluir. O botão Limpar histórico exclui apenas as conversas não fixadas do perfil em uso, após confirmação; solicita todas as páginas de histórico e envia uma exclusão por vez.
+- Seletor Codex / GPT (API) ao lado de Enviar. GPT usa o mesmo mecanismo local Codex app-server para execução de comandos e análise de arquivos, porém em CODEX_HOME separado: ~/.local/share/callas-chat/gpt-home. Não compartilha login, conversas ou cotas de assinatura ChatGPT.
+- Seletor de modelos via model/list e nível de raciocínio enviado em turn/start.effort. Opções GPT-6.1 Sol, GPT-6 e GPT-5.5 aparecem como atalhos quando não vierem na lista, com indicação de que disponibilidade depende do projeto API.
+- Uma chave API precisa ser criada pelo usuário no painel OpenAI e colada uma vez no campo protegido. O cliente envia account/login/start ao servidor local; nunca publica ou grava a chave no QSettings, GitHub ou logs. O Codex armazena as credenciais em keyring quando disponível, podendo usar auth.json em perfil isolado com permissões restritas como fallback.
+- Mantidos o Whisper, anexos, ajustes visuais, aprovação atual e o perfil original ~/.codex. O launcher antigo não é removido e os dados do Codex não são apagados.
+- O pacote tar.gz 1.3.3 permanece como base assinada; a Central 3.22.2 aplica o overlay 1.4.0 de fontes pinadas por commit e hash antes de executar o instalador. É necessário atualizar a Central antes de obter 1.4.0.
+- Verificações estáticas de fonte e protocolo realizadas; ainda sem teste de login real, projeto API, ambiente gráfico KDE ou hardware.
