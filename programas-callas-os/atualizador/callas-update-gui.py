@@ -134,7 +134,7 @@ def codex_running_for_user():
         try:
             if process.stat().st_uid != uid:
                 continue
-            arguments = (process/'cmdline').read_bytes().split(b'\\0')
+            arguments = (process/'cmdline').read_bytes().split(bytes([0]))
             if b'-m' in arguments:
                 index = arguments.index(b'-m')
                 if index + 1 < len(arguments) and arguments[index + 1] == b'callas_chat':
