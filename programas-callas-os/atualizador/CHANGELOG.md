@@ -1,5 +1,13 @@
 # Histórico do Callas OS
 
+## 3.24.1 — 2026-11-21
+
+- **Compatibilidade NVIDIA 595.71.05 ↔ Linux 7.3:** adaptação da fonte Open DKMS baseada no relato Deepin 25 com RTX 3060 (https://bbs.deepin.org.cn/en/post/302605), conferida contra os arquivos da tag 595.71.05 do repositório NVIDIA/open-gpu-kernel-modules. Corrige o nome `struct drm_atomic_state` → `struct drm_atomic_commit`, a família de funções `drm_atomic_state_*`, e os dois testes `conftest.sh` de callbacks CRTC/plano. Trata também as chamadas `strncpy` NVSwitch com cópia/zero-padding equivalente.
+- Ao contrário de uma substituição global, as adaptações DRM são condicionadas a Linux 7.2+, preservando os caminhos antigos quando o DKMS compilar para o kernel LTS 6.x. A alteração é idempotente e limitada à versão 595.71.05 e às assinaturas de código reconhecidas; recusa fontes inesperadas em vez de aplicar mudanças genéricas.
+- **Reparação da Central e instalação limpa:** o preparador detecta o kernel instalado e aplica o patch antes de executar o DKMS. Também verifica cópias reconhecidas da fonte em diretórios DKMS sem remover módulos existentes do LTS; falha permanece bloqueada com logs. O instalador compartilha esse mesmo preparador verificado, sem alterar nome/link do instalador.
+- **Troca manual de versão:** a validação prévia de 595.71.05 altera somente a cópia temporária do código; quando o pacman instala a versão selecionada, um hook PostTransaction aplica a compatibilidade à fonte recém-instalada antes do hook de compilação DKMS. Nenhum kernel, headers ou driver é instalado pelo Callas OS Update sem escolha explícita.
+- Verificações estáticas das assinaturas dos três arquivos de origem NVIDIA 595.71.05 e testes simulados adicionados para idempotência e interrupção segura. **Pendente:** teste real do DKMS em Arch Linux 7.3.5, boot KDE/Wayland e RTX 3060. Resultado de compilação não foi presumido; reinicialização só deve ser liberada após o verificador passar.
+
 ## 3.24.0 — 2026-11-21
 
 - **Central → Driver NVIDIA → Reparar versão instalada:** nova opção manual para divergências entre os pacotes já instalados e a versão fixada. A Central apresenta o estado dos módulos para ambos os kernels, pede confirmação explícita antes de adotar a versão instalada e não baixa/atualiza drivers nesse reparo.
