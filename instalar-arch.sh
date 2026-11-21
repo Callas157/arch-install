@@ -255,28 +255,41 @@ callas_disco_secundario_seguro() {
   done < <(lsblk -nrpo NAME,TYPE "$alvo")
 }
 
-printf '\n>>> Discos secundários — converter para ext4 (opcional)\n'
-printf 'PADRÃO: preservar. Formatar APAGA TODOS os arquivos e partições do disco.\n'
+# Primeiro identifica os discos internos realmente elegíveis; se não houver
+# secundários, não mostra mensagens nem faz perguntas desnecessárias.
 mapfile -t CALLAS_DISCOS_DISPONIVEIS < <(lsblk -dnpo NAME,TYPE,RM,RO | awk '$2=="disk" && $3==0 && $4==0 {print $1}')
+CALLAS_DISCOS_ELEGIVEIS=()
 for CALLAS_OUTRO_DISCO in "${CALLAS_DISCOS_DISPONIVEIS[@]}"; do
-  callas_disco_secundario_seguro "$CALLAS_OUTRO_DISCO" || continue
-  printf '\nDisco secundário detectado:\n'
-  lsblk -o NAME,SIZE,MODEL,FSTYPE,MOUNTPOINTS "$CALLAS_OUTRO_DISCO"
-  read -rp "Apagar todo o disco $CALLAS_OUTRO_DISCO e criar ext4? [s/N]: " CALLAS_FORMATAR_RESPOSTA
-  case ${CALLAS_FORMATAR_RESPOSTA,,} in
-    s|sim)
-      read -rp "CONFIRMAÇÃO FINAL — digite APAGAR $CALLAS_OUTRO_DISCO: " CALLAS_FORMATAR_CONFIRMA
-      if [[ $CALLAS_FORMATAR_CONFIRMA == "APAGAR $CALLAS_OUTRO_DISCO" ]]; then
-        FORMATAR_SECUNDARIOS+=("$CALLAS_OUTRO_DISCO")
-        FORMATAR_SECUNDARIOS_IDS+=("$(lsblk -dnro MAJ:MIN "$CALLAS_OUTRO_DISCO")")
-        printf 'Formatação autorizada (após validação): %s\n' "$CALLAS_OUTRO_DISCO"
-      else
-        printf 'Confirmação inválida: %s será preservado.\n' "$CALLAS_OUTRO_DISCO"
-      fi
-      ;;
-    *) printf 'Dados preservados em %s.\n' "$CALLAS_OUTRO_DISCO" ;;
-  esac
+  if callas_disco_secundario_seguro "$CALLAS_OUTRO_DISCO"; then
+    CALLAS_DISCOS_ELEGIVEIS+=("$CALLAS_OUTRO_DISCO")
+  fi
 done
+
+if (( ${#CALLAS_DISCOS_ELEGIVEIS[@]} > 0 )); then
+  CALLAS_TOTAL_DISCOS=$(( ${#CALLAS_DISCOS_ELEGIVEIS[@]} + 1 ))
+  CALLAS_INDICE_DISCO=1
+  printf '\n>>> Discos secundários — converter para ext4 (opcional)\n'
+  printf 'PADRÃO: preservar. Formatar APAGA TODOS os arquivos e partições do disco.\n'
+  for CALLAS_OUTRO_DISCO in "${CALLAS_DISCOS_ELEGIVEIS[@]}"; do
+    CALLAS_INDICE_DISCO=$(( CALLAS_INDICE_DISCO + 1 ))
+    printf '\n>>> Armazenamento %s de %s — disco secundário\n' "$CALLAS_INDICE_DISCO" "$CALLAS_TOTAL_DISCOS"
+    lsblk -o NAME,SIZE,MODEL,FSTYPE,MOUNTPOINTS "$CALLAS_OUTRO_DISCO"
+    read -rp "Apagar TODO o disco $CALLAS_OUTRO_DISCO e criar ext4? [s/N]: " CALLAS_FORMATAR_RESPOSTA
+    case ${CALLAS_FORMATAR_RESPOSTA,,} in
+      s|sim)
+        read -rp "CONFIRMAÇÃO FINAL — digite APAGAR $CALLAS_OUTRO_DISCO: " CALLAS_FORMATAR_CONFIRMA
+        if [[ $CALLAS_FORMATAR_CONFIRMA == "APAGAR $CALLAS_OUTRO_DISCO" ]]; then
+          FORMATAR_SECUNDARIOS+=("$CALLAS_OUTRO_DISCO")
+          FORMATAR_SECUNDARIOS_IDS+=("$(lsblk -dnro MAJ:MIN "$CALLAS_OUTRO_DISCO")")
+          printf 'Formatação autorizada (após validação): %s\n' "$CALLAS_OUTRO_DISCO"
+        else
+          printf 'Confirmação inválida: %s será preservado.\n' "$CALLAS_OUTRO_DISCO"
+        fi
+        ;;
+      *) printf 'Dados preservados em %s.\n' "$CALLAS_OUTRO_DISCO" ;;
+    esac
+  done
+fi
 
 read -rp "Nome do usuário (minúsculas, sem espaços): " USUARIO
 [[ "$USUARIO" =~ ^[a-z_][a-z0-9_-]{0,31}$ && "$USUARIO" != root && "$USUARIO" != put-aur ]] || { echo "Nome de usuário inválido."; exit 1; }
