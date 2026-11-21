@@ -115,6 +115,9 @@ def install_codex(*, app_only=False):
                 raise ValueError('Conteúdo inválido no pacote Codex.')
             archive.extractall(folder, members=members, filter='data')
         apply_codex_overlay(folder)
+        if app_only and codex_running_for_user():
+            print('Codex aberto durante o download: aplicação adiada sem tocar no cliente atual.', flush=True)
+            return False
         env = os.environ.copy()
         env.pop('CALLAS_KERNEL_UPDATE_CONTEXT', None)
         command = ['/usr/bin/python3', '-u', str(Path(folder)/'installer.py')]
@@ -123,6 +126,7 @@ def install_codex(*, app_only=False):
             command.append('--sem-dependencias')
         subprocess.run(command, check=True, env=env)
     print('==> Codex instalado! Abra pelo menu KDE ou pelo botão Codex da Central.', flush=True)
+    return True
 
 
 def codex_running_for_user():
@@ -164,7 +168,8 @@ def auto_update_installed_codex():
         print('Codex aberto: atualização adiada para o próximo Callas OS Update, sem interromper a conversa.', flush=True)
         return 0
     print('Codex instalado e desatualizado: aplicando atualização segura para ' + CODEX_TARGET_VERSION, flush=True)
-    install_codex(app_only=True)
+    if not install_codex(app_only=True):
+        return 0  # A conversa foi aberta enquanto a atualização era baixada.
     final = codex_installed_version()
     if final != target:
         raise ValueError('Versão final do Codex não corresponde à atualização esperada.')
