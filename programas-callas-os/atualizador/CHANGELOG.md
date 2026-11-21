@@ -1,5 +1,14 @@
 # Histórico do Callas OS
 
+## 3.21.2 — 2026-11-20
+
+- A instalação limpa preserva a seleção inicial do disco do sistema, que continuará sendo apagado conforme aviso existente. Cada armazenamento **secundário** elegível agora recebe um menu numérico: `1 — SIM, formatar em ext4` e `2 — NÃO, preservar arquivos`. Somente a opção literal `1` permite prosseguir à confirmação final obrigatória `APAGAR /dev/...`. Resposta inválida, vazia ou `2` preserva o disco; mídia USB, disco da ISO e disco principal continuam excluídos da escolha secundária.
+- Sem discos secundários elegíveis, a pergunta é inteiramente omitida. Com vários discos, cada pergunta permanece individual e numerada; formatação destrutiva nunca é acionada apenas pela detecção de um disco ou por escolher o sistema no disco principal.
+- Os discos de dados internos suportados continuam configurados automaticamente pelo **UUID** em `/etc/fstab`, sem pedir senha no Dolphin ou em cada boot. O componente **exclusivo da instalação limpa** reforça `x-systemd.before=local-fs.target` nos registros próprios `/mnt/callas-UUID` de ext4, NTFS3 e demais formatos admitidos, para aguardar a tentativa de montagem antes de abrir a sessão e reduzir a corrida com a Steam. `nofail` continua permitindo boot quando o disco está ausente/falha; os timeouts de descoberta/montagem existentes permanecem. No ext4 preserva `passno=2` e `errors=remount-ro` para checagens de consistência e proteção contra erros.
+- O caminho de montagem permanece estável por UUID, inclusive depois de reiniciar. A biblioteca Steam ainda exige que a pessoa a escolha uma vez; o projeto já possui mecanismo separado de reconciliação de bibliotecas Steam. Nenhuma automação pode garantir recuperação após corrupção grave, falha física, perda de dados ou interrupção de energia durante gravação.
+- **Callas OS Update, kernel e NVIDIA 610.57.04 preservados**. Os dois conjuntos existentes de testes atualizados passaram em simulação (15 testes), juntamente com 13 verificações complementares de menu e fstab. `bash -n` e compilação Python passaram; não houve teste físico de queda de energia, boot de VM, Steam com biblioteca montada ou instalação limpa completa.
+- Backup íntegro do instalador **3.21.1** no Google Drive `CallasOS/CallasOS 3.21.1`, feito antes do commit e comparado byte a byte com o GitHub (SHA-256 `e6323d13eaee0cbd1b89c735368046a7f4c6acf9cd818343a57481a12c4abc7e`).
+
 ## 3.21.1 — 2026-11-20
 
 - Instalação limpa: a etapa **Discos secundários** só aparece após filtrar discos internos elegíveis e somente quando existir ao menos um. Em instalação com um único disco (por exemplo, VM com 30 GB), o instalador segue diretamente para o usuário e senha sem exibir cabeçalho ou alerta sobre um secundário inexistente.
