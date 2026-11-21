@@ -345,11 +345,11 @@ def select_driver(version):
             # otherwise the candidate preflight would succeed but the real
             # installed module would still fail to build on Linux 7.3.
             (work / 'hooks/30-callas-nvidia-compat.hook').write_text(
-                '[Trigger]\\nOperation = Install\\nOperation = Upgrade\\n'
-                'Type = Package\\nTarget = nvidia-open-dkms\\n\\n'
-                '[Action]\\nDescription = Adaptar NVIDIA 595 para a API DRM do kernel\\n'
-                'When = PostTransaction\\n'
-                'Exec = /usr/local/libexec/callas-nvidia-prepare --compat-installed\\n')
+                '[Trigger]\nOperation = Install\nOperation = Upgrade\n'
+                'Type = Package\nTarget = nvidia-open-dkms\n\n'
+                '[Action]\nDescription = Adaptar NVIDIA 595 para a API DRM do kernel\n'
+                'When = PostTransaction\n'
+                'Exec = /usr/local/libexec/callas-nvidia-prepare --compat-installed\n')
             old_urls = []
             if all(packages[p].rsplit('-', 1)[0] == current for p in DRIVER):
                 for package in selected_urls:
