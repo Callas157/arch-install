@@ -256,6 +256,36 @@ module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
 module.stage_files(sys.argv[1], sys.argv[2], progress=False)
 CALLAS_STAGE
 
+# Instalador apenas: o complemento de discos é baixado do mesmo commit
+# imutável da instalação e validado pelo blob publicado antes de apagar o
+# disco de destino. Não altera nem executa o Callas OS Update.
+curl --proto '=https' --proto-redir '=https' -fsSL --retry 2 \
+  "$CALLAS_PROGRAMAS_BASE/instalador/callas-storage-setup.py" \
+  -o "$CALLAS_SECURITY_TMP/callas-storage-setup.py"
+python - "$CALLAS_SECURITY_TMP/callas-storage-setup.py" "$CALLAS_ASSET_REF" <<'CALLAS_STORAGE_STAGE'
+import hashlib, json, pathlib, sys, urllib.request
+source = pathlib.Path(sys.argv[1])
+ref = sys.argv[2]
+name = 'programas-callas-os/instalador/callas-storage-setup.py'
+req = urllib.request.Request(
+    'https://api.github.com/repos/Callas157/arch-install/git/trees/' + ref + '?recursive=1',
+    headers={'User-Agent': 'CallasOS-Installer'})
+with urllib.request.urlopen(req, timeout=60) as response:
+    tree = json.load(response)
+if tree.get('truncated'):
+    raise RuntimeError('Árvore de arquivos incompleta; instalação interrompida.')
+matches = [item for item in tree['tree'] if item.get('path') == name
+           and item.get('type') == 'blob' and item.get('mode') in ('100644', '100755')]
+if len(matches) != 1:
+    raise RuntimeError('Complemento de discos não identificado no commit.')
+payload = source.read_bytes()
+digest = hashlib.sha1(b'blob ' + str(len(payload)).encode() + b'\0' + payload).hexdigest()
+if digest != matches[0]['sha']:
+    raise RuntimeError('Complemento de discos diferente do GitHub; instalação interrompida.')
+compile(payload, str(source), 'exec')
+print('Complemento de armazenamento validado, sem alteração dos outros discos.')
+CALLAS_STORAGE_STAGE
+
 # ---------------- Particionamento ----------------
 echo ">>> Particionando $DISCO"
 umount -R /mnt 2>/dev/null || true
@@ -310,6 +340,10 @@ install -m 0755 "$CALLAS_SECURITY_TMP/callas-native.py" /mnt/usr/local/libexec/c
 install -m 0755 "$CALLAS_SECURITY_TMP/callas-browser.py" /mnt/usr/local/libexec/callas-browser
 install -m 0755 "$CALLAS_SECURITY_TMP/callas-logs.py" /mnt/usr/local/libexec/callas-logs
 install -m 0755 "$CALLAS_SECURITY_TMP/callas-version.py" /mnt/usr/local/libexec/callas-version
+# Auxiliares exclusivos da instalação limpa: detectam discos internos, excluem
+# USB/removíveis e não formatam, apagam ou reparticionam volumes secundários.
+install -m 0755 "$CALLAS_SECURITY_TMP/callas-automount.py" /mnt/usr/local/libexec/callas-automount
+install -m 0755 "$CALLAS_SECURITY_TMP/callas-storage-setup.py" /mnt/usr/local/libexec/callas-storage-setup
 install -d -m 0700 /mnt/usr/local/share/callas-os/security-stage
 for security_file in "$CALLAS_SECURITY_TMP/"*; do
   [[ -f $security_file ]] || continue
@@ -2509,6 +2543,10 @@ export CALLAS_RELEASE_DIR=/usr/local/share/callas-os/security-stage
 export CALLAS_RELEASE_REF=$(< "$CALLAS_RELEASE_DIR/commit")
 python "$CALLAS_RELEASE_DIR/callas-version.py" --begin "$CALLAS_RELEASE_DIR/VERSION" "$CALLAS_RELEASE_REF"
 SUDO_USER="$usuario" bash "$CALLAS_RELEASE_DIR/callas-security.sh" "$usuario" --installation
+# Monta dados internos por UUID no boot, sem senha no Dolphin. Em ext4,
+# systemd-fsck faz a checagem segura após queda de energia; falhas graves
+# são registradas, nunca levam a uma formatação ou reparação destrutiva.
+"$libexec/callas-storage-setup" "$usuario"
 como_usuario "$libexec/callas-nekofetch"
 "$libexec/callas-version" --complete "$CALLAS_RELEASE_DIR/VERSION" "$CALLAS_RELEASE_REF"
 rm -rf -- "$CALLAS_RELEASE_DIR"
