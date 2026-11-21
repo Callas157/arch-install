@@ -236,6 +236,25 @@ pacman() { [[ $1 != -Syu ]] || exit 88; return 0; }
    download.assert_called_once()
    self.assertIn('--intact',run.call_args_list[0].args[0])
 
+ def test_optional_codex_stays_separate_from_clean_install_and_retries_when_current(self):
+  script=(UP/'callas-config-update.sh').read_text()
+  self.assertIn('como_usuario /usr/bin/python3 "$codex_updater" --update-installed-codex',script)
+  self.assertIn('return refresh_optional_codex(user)',(UP/'callas-release.py').read_text())
+  self.assertNotIn('codex.tar.gz',(UP/'callas-release.py').read_text().split('FILES = (',1)[1].split(')',1)[0])
+
+ def test_optional_codex_retry_uses_unprivileged_owner_with_clean_environment(self):
+  user=pwd.getpwuid(os.getuid()).pw_name
+  with patch.object(release.Path,'is_symlink',return_value=False), \
+       patch.object(release.Path,'is_file',return_value=True), \
+       patch.object(release.Path,'stat',return_value=types.SimpleNamespace(st_uid=0,st_mode=0o755)), \
+       patch.object(release.subprocess,'run',return_value=types.SimpleNamespace(returncode=0)) as run:
+   self.assertEqual(release.refresh_optional_codex(user),0)
+   command=run.call_args.args[0]
+   self.assertEqual(command[:4],['/usr/bin/runuser','-u',user,'--'])
+   self.assertIn('--update-installed-codex',command)
+   self.assertIn('HOME='+pwd.getpwnam(user).pw_dir,command)
+   self.assertIn('-i',command)
+
  def test_download_cache_reuses_only_blobs_matching_github(self):
   with tempfile.TemporaryDirectory() as temp:
    root=Path(temp);cache=root/'cache';name='programas-callas-os/atualizador/VERSION'
