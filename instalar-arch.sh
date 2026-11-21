@@ -2318,7 +2318,7 @@ if (( nvidia )); then
   done
   # Fixação inicial antes do pacman: o hook DKMS precisa conhecer a versão
   # durante PostTransaction. Em instalação nova não existe escolha anterior.
-  printf '%s\\n' "$nvidia_version" > /etc/callas-nvidia-version
+  printf '%s\n' "$nvidia_version" > /etc/callas-nvidia-version
   # A NVIDIA 595.71.05 precisa da adaptação DRM antes do hook 70-dkms-install.
   # Hook temporário apenas para o pacote inicial, instalado na ordem correta.
   if [[ $nvidia_version == 595.71.05 ]]; then
