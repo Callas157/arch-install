@@ -2134,7 +2134,7 @@ install -d /mnt/etc/xdg
 cat > /mnt/etc/xdg/kicker-extra-favoritesrc <<'KICKER_FAVORITES'
 [General]
 IgnoreDefaults=true
-Prepend=io.github.Callas157.Monitores.desktop;systemsettings.desktop;io.github.Callas157.AtualizadorDoSistema.desktop;steam.desktop;org.kde.konsole.desktop;io.github.kolunmi.Bazaar.desktop;com.vysp3r.ProtonPlus.desktop;io.missioncenter.MissionCenter.desktop;org.qbittorrent.qBittorrent.desktop;spotify.desktop;solaar.desktop;
+Prepend=io.github.Callas157.AtualizadorDoSistema.desktop;steam.desktop;discord.desktop;systemsettings.desktop;
 KICKER_FAVORITES
 
 # O Plasma executa esta configuração uma vez, depois de criar o painel.
