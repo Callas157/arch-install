@@ -88,5 +88,31 @@ udevadm() { printf '%s\\n' "$*" >> "$TEST_ROOT/reloads"; }
         self.assertIn('/etc/udev/rules.d/70-callas-g920.rules', state)
 
 
+    def test_shifter_diagnostic_and_shared_installation(self):
+        import ast
+        import json
+        gui = (UP / 'callas-update-gui.py').read_text()
+        tree = ast.parse(gui)
+        dialog = next(node for node in tree.body
+                      if isinstance(node, ast.ClassDef) and node.name == 'G920Dialog')
+        methods = {node.name for node in dialog.body if isinstance(node, ast.FunctionDef)}
+        self.assertTrue({'discover', 'arm', 'read_device', 'close_devices'} <= methods)
+        self.assertIn('self.open_page(G920Dialog)', gui)
+        self.assertIn("('Volante G920 e câmbio', 'input-gaming', self.g920)", gui)
+        self.assertIn('device.info.vendor, device.info.product', gui)
+        self.assertIn('(0x046d, 0xc262)', gui)
+        self.assertIn('ecodes.EV_KEY and event.value == 1', gui)
+        self.assertIn('ecodes.EV_ABS', gui)
+        items = json.loads((UP / 'callas-apps.json').read_text())['applications']
+        self.assertIn({'name': 'python-evdev', 'source': 'repo',
+                       'state': 'present', 'phase': 'security'}, items)
+        release = (UP / 'callas-release.py').read_text()
+        for filename in ('callas-apps.json', 'callas-update-gui.py'):
+            self.assertIn('"programas-callas-os/atualizador/' + filename + '"', release)
+        installer = (ROOT / 'instalar-arch.sh').read_text()
+        self.assertIn('callas-security.sh" "$usuario" --installation', installer)
+        self.assertIn('python "$stage/callas-apps.py" --apply security', SECURITY)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -2,6 +2,12 @@
   "schema": 1,
   "applications": [
     {
+      "name": "python-evdev",
+      "source": "repo",
+      "state": "present",
+      "phase": "security"
+    },
+    {
       "name": "gpu-screen-recorder-ui",
       "source": "repo",
       "state": "present",

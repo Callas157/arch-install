@@ -873,6 +873,143 @@ class NvidiaDialog(QDialog):
             super().reject()
 
 
+class G920Dialog(QDialog):
+    """Monitor evdev: entradas do volante, pedais e câmbio, sem mudar drivers."""
+
+    GEARS = ('1ª', '2ª', '3ª', '4ª', '5ª', '6ª', 'Ré')
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.devices = []
+        self.notifiers = []
+        self.waiting = None
+        self.seen = {}
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(28, 25, 28, 24)
+        layout.setSpacing(12)
+        layout.addWidget(QLabel('Logitech G920 — volante, pedais e câmbio', objectName='title'))
+        self.status = QLabel('Procurando volante USB...')
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
+        guide = QLabel(
+            'O Driving Force Shifter liga na base do G920; não aparece como USB separado. '
+            'Deixe o câmbio em neutro, clique em uma marcha e então engate-a. '
+            'Volte ao neutro antes da próxima. O teste apenas lê sinais; '
+            'não altera drivers, Steam ou configurações do volante.')
+        guide.setWordWrap(True)
+        layout.addWidget(guide)
+        grid = QGridLayout()
+        self.gear_buttons = {}
+        for index, gear in enumerate(self.GEARS):
+            button = QPushButton('Testar ' + gear)
+            button.clicked.connect(lambda _=False, g=gear: self.arm(g))
+            grid.addWidget(button, index // 4, index % 4)
+            self.gear_buttons[gear] = button
+        layout.addLayout(grid)
+        self.result = QLabel('Selecione uma marcha para começar.')
+        self.result.setWordWrap(True)
+        layout.addWidget(self.result)
+        self.axis_status = QLabel('Volante e pedais: aguardando movimento...')
+        self.axis_status.setWordWrap(True)
+        layout.addWidget(self.axis_status)
+        self.readout = QPlainTextEdit()
+        self.readout.setReadOnly(True)
+        self.readout.setMaximumBlockCount(80)
+        self.readout.setPlaceholderText('Entradas dos botões do G920 aparecem aqui.')
+        layout.addWidget(self.readout)
+        footer = QHBoxLayout()
+        retry = QPushButton('Procurar novamente')
+        retry.clicked.connect(self.discover)
+        footer.addWidget(retry)
+        footer.addStretch()
+        back = QPushButton('Voltar à Central')
+        back.clicked.connect(self.reject)
+        footer.addWidget(back)
+        layout.addLayout(footer)
+        self.finished.connect(lambda *_: self.close_devices())
+        self.discover()
+
+    def close_devices(self):
+        for notifier in self.notifiers:
+            notifier.setEnabled(False)
+            notifier.deleteLater()
+        self.notifiers.clear()
+        for device in self.devices:
+            device.close()
+        self.devices.clear()
+
+    def discover(self):
+        self.close_devices()
+        try:
+            from evdev import InputDevice, list_devices, ecodes
+        except ImportError:
+            self.status.setText(
+                'Falta python-evdev. Execute Callas OS Update para preparar o diagnóstico.')
+            return
+        blocked = False
+        for path in list_devices():
+            try:
+                device = InputDevice(path)
+            except PermissionError:
+                blocked = True
+                continue
+            except OSError:
+                continue
+            if (device.info.vendor, device.info.product) != (0x046d, 0xc262):
+                device.close()
+                continue
+            try:
+                capabilities = device.capabilities()
+                if ecodes.EV_KEY not in capabilities and ecodes.EV_ABS not in capabilities:
+                    device.close()
+                    continue
+                notifier = QSocketNotifier(device.fd, QSocketNotifier.Read, self)
+                notifier.activated.connect(lambda *_args, d=device: self.read_device(d))
+                self.devices.append(device)
+                self.notifiers.append(notifier)
+            except OSError:
+                device.close()
+        if self.devices:
+            self.status.setText(
+                'G920 detectado em modo HID (046d:c262). Teste as marchas e mova os pedais.')
+        elif blocked:
+            self.status.setText(
+                'Sem acesso a algum dispositivo de entrada. Execute Callas OS Update '
+                'na sessão KDE e reconecte o USB para aplicar as permissões.')
+        else:
+            self.status.setText(
+                'G920 não encontrado em modo HID (046d:c262). Confira fonte e USB '
+                'e reconecte o volante. O câmbio não tem USB independente.')
+
+    def arm(self, gear):
+        self.waiting = gear
+        self.result.setText(
+            f'{gear}: esperando botão do G920. Coloque em neutro e engate {gear}.')
+
+    def read_device(self, device):
+        try:
+            events = list(device.read())
+        except (OSError, ValueError):
+            self.discover()
+            return
+        from evdev import ecodes
+        for event in events:
+            if event.type == ecodes.EV_KEY and event.value == 1:
+                self.readout.appendPlainText(f'Botão G920: {event.code} pressionado')
+                if self.waiting:
+                    gear = self.waiting
+                    self.waiting = None
+                    self.seen[gear] = event.code
+                    self.gear_buttons[gear].setText(f'{gear} ✓ (botão {event.code})')
+                    self.result.setText(
+                        f'{gear}: Linux recebeu botão {event.code}. '
+                        f'{len(self.seen)}/7 posições registradas. '
+                        'Confirme que o sinal veio do câmbio, não de botão do volante.')
+            elif event.type == ecodes.EV_ABS:
+                self.axis_status.setText(
+                    f'Volante/pedais: eixo {event.code} = {event.value}')
+
+
 class MaintenanceDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -986,6 +1123,7 @@ class Window(QWidget):
             ('Limpeza e manutenção', 'edit-clear', self.maintenance),
             ('Desinstalar aplicativos', 'edit-delete', self.uninstall_apps),
             ('Monitores', 'video-display', self.monitors),
+            ('Volante G920 e câmbio', 'input-gaming', self.g920),
             ('Codex', 'codex', self.codex),
             ('Driver NVIDIA', 'video-display', self.nvidia),
             ('Callas OS Update', 'system-upgrade', lambda: self.start('callas')),
@@ -1119,6 +1257,8 @@ class Window(QWidget):
         if page is not None: self.monitor_dialog = page
 
     def native_apps(self): self.open_page(NativeAppsDialog)
+
+    def g920(self): self.open_page(G920Dialog)
 
     def uninstall_apps(self): self.open_page(UninstallDialog)
 

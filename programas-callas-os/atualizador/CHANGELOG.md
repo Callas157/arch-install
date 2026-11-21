@@ -1,5 +1,11 @@
 # Histórico do Callas OS
 
+## 3.22.0 — 2026-11-21
+
+- **G920 e câmbio Driving Force Shifter opcional:** adicionada tela **Central Callas OS → Volante G920 e câmbio** para reconhecer a base HID `046d:c262`, exibir sinais do volante/pedais e testar individualmente as seis marchas e a ré. O shifter é conectado à base e envia entradas como botões, sem dispositivo USB separado. O resultado diferencia sinal recebido pelo Linux de configuração do ETS2/Steam; falta de sinal não comprova defeito físico.
+- O pacote oficial `python-evdev` é instalado por transação nativa protegida do Callas OS Update, via catálogo de aplicativos na fase `security`. A instalação limpa reaproveita o mesmo estágio e catálogo verificados. Permanecem o driver nativo `hid_logitech_hidpp`, `usb_modeswitch` e as regras udev; não foi adicionado módulo de terceiros.
+- Não altera kernel, headers, NVIDIA fixada 610.57.04, Steam Input, nem outros periféricos. Teste offline de integração adicionado; reconhecimento físico do G920/câmbio em KDE e uso no ETS2 ainda precisam de verificação na máquina.
+
 ## 3.21.6 — 2026-11-21
 
 - **Correção de falha na instalação limpa NVIDIA:** a série **610.57.04 permanece fixada**, e os kernels oficiais `linux` e `linux-lts` continuam vindos do Arch, com os respectivos headers. Antes de executar `mkinitcpio -P`, o instalador verifica explicitamente o pacote NVIDIA, aplica uma compatibilidade de código-fonte para a mudança da API `dmem_cgroup_register_region` do Linux **7.3** apenas quando o fonte NVIDIA corresponde ao trecho reconhecido, executa DKMS para cada kernel e exige os quatro módulos `nvidia`, `nvidia_modeset`, `nvidia_uvm`, `nvidia_drm` com versão **610.57.04** e vermagic do kernel. Não troca driver nem kernel para mascarar a falha.
