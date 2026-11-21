@@ -18,6 +18,19 @@ def load(path, name):
     return module
 
 
+
+def add_595_sources(tree):
+    """Minimal stable upstream signatures used by the compatibility patch."""
+    (tree / 'nvidia-modeset').mkdir(exist_ok=True)
+    (tree / 'nvidia-uvm').mkdir(exist_ok=True)
+    (tree / 'nvidia').mkdir(exist_ok=True)
+    (tree / 'nvidia-modeset/nvidia-modeset-linux.c').write_text(
+        'return strncpy(dest, src, n);\n')
+    (tree / 'nvidia-uvm/uvm_pmm_gpu.c').write_text(
+        'strncpy(chunk_split_cache[level].name, "uvm_gpu_chunk_t", sizeof(chunk_split_cache[level].name) - 1);\n')
+    (tree / 'nvidia/os-interface.c').write_text(
+        'strncpy(buf, current->comm, len - 1);\n')
+
 class PolicyTests(unittest.TestCase):
     def setUp(self):
         self.policy = load(POLICY, "repair_policy")
@@ -110,6 +123,7 @@ class PrepareTests(unittest.TestCase):
                 "#define CREATE_TRACE_POINTS\n"
                 "strncpy(regkey_val, regkey_val_start, regkey_val_len);\n"
                 "return strncpy(dest, src, length);\n")
+            add_595_sources(source)
             self.assertTrue(mod.patch_595_atomic_tree(source))
             header = (drm / "nvidia-drm-conftest.h").read_text()
             conftest = (source / "conftest.sh").read_text()
@@ -118,6 +132,10 @@ class PrepareTests(unittest.TestCase):
             self.assertIn('#define drm_atomic_state drm_atomic_commit', header)
             self.assertEqual(conftest.count('#define drm_atomic_state drm_atomic_commit'), 2)
             self.assertIn('callas_595_strncpy', nvswitch)
+            self.assertIn('strscpy', (nv / 'os-interface.c').read_text())
+            self.assertIn('strscpy', (source / 'nvidia-uvm/uvm_pmm_gpu.c').read_text())
+            self.assertIn('Callas OS strncpy compatibility', (source / 'nvidia-modeset/nvidia-modeset-linux.c').read_text())
+            self.assertIn('NV_DRM_CRTC_ATOMIC_CHECK_HAS_ATOMIC_STATE_ARG', header)
             self.assertFalse(mod.patch_595_atomic_tree(source))
             self.assertEqual(header, (drm / "nvidia-drm-conftest.h").read_text())
 
@@ -139,6 +157,7 @@ class PrepareTests(unittest.TestCase):
                 "#define CREATE_TRACE_POINTS\n"
                 "strncpy(regkey_val, regkey_val_start, regkey_val_len);\n"
                 "return strncpy(dest, src, length);\n")
+            add_595_sources(tree)
             self.assertTrue(mod.patch_595_atomic_tree(root))
             self.assertIn("drm_atomic_commit",
                           (drm / "nvidia-drm-conftest.h").read_text())
