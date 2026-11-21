@@ -126,7 +126,7 @@ GPU_PACOTES=(mesa)
 if grep -q '^10de:' <<<"$GPU_PCI"; then
   NVIDIA=1
   GPU_PACOTES+=(egl-wayland)
-  echo "GPU NVIDIA detectada: usando NVIDIA 610.57.04 fixado pelo Callas OS."
+  echo "GPU NVIDIA detectada: a instalação buscará a série NVIDIA 595 completa e assinada."
 fi
 if grep -q '^1002:' <<<"$GPU_PCI"; then
   AMD_GPU=1
@@ -165,26 +165,8 @@ else
   echo "Water cooler Rise Mode aa88:8666 não detectado: integração será ignorada."
 fi
 
-# ---------------- Pré-verificação NVIDIA ----------------
-# Em máquinas NVIDIA, confirma a disponibilidade da pilha 610 antes de qualquer
-# operação destrutiva no disco.
-if (( NVIDIA )); then
-  NVIDIA_610_URLS=(
-    "https://archive.archlinux.org/packages/n/nvidia-utils/nvidia-utils-610.57.04-1-x86_64.pkg.tar.zst"
-    "https://archive.archlinux.org/packages/n/nvidia-open-dkms/nvidia-open-dkms-610.57.04-1-x86_64.pkg.tar.zst"
-    "https://archive.archlinux.org/packages/l/lib32-nvidia-utils/lib32-nvidia-utils-610.57.04-1-x86_64.pkg.tar.zst"
-    "https://archive.archlinux.org/packages/l/libxnvctrl/libxnvctrl-610.57.04-1-x86_64.pkg.tar.zst"
-    "https://archive.archlinux.org/packages/n/nvidia-settings/nvidia-settings-610.57.04-1-x86_64.pkg.tar.zst"
-  )
-  echo ">>> Verificando NVIDIA 610.57.04 no Arch Linux Archive"
-  for url in "${NVIDIA_610_URLS[@]}"; do
-    curl -fIsSL --retry 2 --connect-timeout 10 --max-time 30 "$url" >/dev/null ||
-      { echo "ERRO: pacote NVIDIA indisponível: ${url##*/}" >&2; exit 1; }
-    curl -fIsSL --retry 2 --connect-timeout 10 --max-time 30 "$url.sig" >/dev/null ||
-      { echo "ERRO: assinatura NVIDIA indisponível: ${url##*/}.sig" >&2; exit 1; }
-  done
-  echo "NVIDIA 610.57.04 disponível e pronta para a instalação."
-fi
+# A seleção da pilha NVIDIA 595 ocorre após o estágio de auxiliares
+# verificado e ANTES de qualquer operação destrutiva nos discos.
 
 # ---------------- Escolha do disco ----------------
 BOOTPART="$(findmnt -no SOURCE /run/archiso/bootmnt 2>/dev/null || true)"
@@ -384,13 +366,13 @@ CALLAS_STORAGE_STAGE
 # imutável, e confere o blob antes de qualquer formatação de disco.
 if (( NVIDIA )); then
   curl --proto '=https' --proto-redir '=https' -fsSL --retry 2 \
-    "$CALLAS_PROGRAMAS_BASE/instalador/callas-nvidia-610-prepare.py" \
-    -o "$CALLAS_SECURITY_TMP/callas-nvidia-610-prepare.py"
-  python - "$CALLAS_SECURITY_TMP/callas-nvidia-610-prepare.py" "$CALLAS_ASSET_REF" <<'CALLAS_NVIDIA_STAGE'
+    "$CALLAS_PROGRAMAS_BASE/instalador/callas-nvidia-prepare.py" \
+    -o "$CALLAS_SECURITY_TMP/callas-nvidia-prepare.py"
+  python - "$CALLAS_SECURITY_TMP/callas-nvidia-prepare.py" "$CALLAS_ASSET_REF" <<'CALLAS_NVIDIA_STAGE'
 import hashlib, json, pathlib, sys, urllib.request
 source = pathlib.Path(sys.argv[1])
 ref = sys.argv[2]
-path = 'programas-callas-os/instalador/callas-nvidia-610-prepare.py'
+path = 'programas-callas-os/instalador/callas-nvidia-prepare.py'
 request = urllib.request.Request(
     'https://api.github.com/repos/Callas157/arch-install/git/trees/' + ref + '?recursive=1',
     headers={'User-Agent': 'CallasOS-Installer'})
@@ -401,14 +383,50 @@ if tree.get('truncated'):
 matches = [item for item in tree['tree'] if item.get('path') == path
            and item.get('type') == 'blob' and item.get('mode') in ('100644', '100755')]
 if len(matches) != 1:
-    raise RuntimeError('Auxiliar NVIDIA 610 não identificado no commit.')
+    raise RuntimeError('Auxiliar NVIDIA selecionado não identificado no commit.')
 payload = source.read_bytes()
 digest = hashlib.sha1(b'blob ' + str(len(payload)).encode() + b'\0' + payload).hexdigest()
 if digest != matches[0]['sha']:
     raise RuntimeError('Auxiliar NVIDIA diferente do GitHub; instalação interrompida.')
 compile(payload, str(source), 'exec')
-print('Auxiliar NVIDIA 610 verificado antes de alterar os discos.')
+print('Auxiliar NVIDIA verificado antes de alterar os discos.')
 CALLAS_NVIDIA_STAGE
+  # O catálogo usa apenas os três pacotes obrigatórios para não ocultar 595
+  # devido a utilitários opcionais. O estágio foi validado pelo blob do Git.
+  echo '>>> Selecionando a NVIDIA 595 antes de formatar qualquer disco'
+  python "$CALLAS_SECURITY_TMP/callas-kernel-policy.py" --nvidia-default \
+    > "$CALLAS_SECURITY_TMP/callas-nvidia-default.json" || {
+      echo 'ERRO: não encontrei NVIDIA 595 completa no arquivo do Arch. Discos preservados.' >&2
+      exit 1
+    }
+  python - "$CALLAS_SECURITY_TMP/callas-nvidia-default.json" <<'CALLAS_NVIDIA_MANIFEST'
+import json, sys
+from urllib.parse import urlparse
+with open(sys.argv[1], encoding='utf-8') as stream:
+    manifest = json.load(stream)
+required = {'nvidia-open-dkms', 'nvidia-utils', 'lib32-nvidia-utils'}
+packages = manifest.get('packages', {})
+if not manifest.get('version', '').startswith('595.') or not required <= set(packages):
+    raise SystemExit('Manifesto NVIDIA 595 inválido; discos preservados.')
+if not all(urlparse(url).scheme == 'https' and
+           urlparse(url).hostname == 'archive.archlinux.org' for url in packages.values()):
+    raise SystemExit('Origem NVIDIA inválida; discos preservados.')
+print('NVIDIA selecionada: ' + manifest['version'])
+CALLAS_NVIDIA_MANIFEST
+  mapfile -t NVIDIA_URLS < <(python - "$CALLAS_SECURITY_TMP/callas-nvidia-default.json" <<'CALLAS_NVIDIA_URLS'
+import json, sys
+print(*json.load(open(sys.argv[1]))['packages'].values(), sep='\n')
+CALLAS_NVIDIA_URLS
+  )
+  for url in "${NVIDIA_URLS[@]}"; do
+    curl -fIsSL --retry 2 --connect-timeout 10 --max-time 30 "$url" >/dev/null || {
+      echo "ERRO: pacote NVIDIA ausente: ${url##*/}; discos preservados." >&2; exit 1;
+    }
+    curl -fIsSL --retry 2 --connect-timeout 10 --max-time 30 "$url.sig" >/dev/null || {
+      echo "ERRO: assinatura NVIDIA ausente: ${url##*/}.sig; discos preservados." >&2; exit 1;
+    }
+  done
+  echo 'NVIDIA 595 pronta para baixar e instalar após preparar o sistema.'
 fi
 
 # Revalida TODOS os dispositivos selecionados antes de qualquer gravação.
@@ -501,7 +519,7 @@ install -m 0755 "$CALLAS_SECURITY_TMP/callas-version.py" /mnt/usr/local/libexec/
 install -m 0755 "$CALLAS_SECURITY_TMP/callas-automount.py" /mnt/usr/local/libexec/callas-automount
 install -m 0755 "$CALLAS_SECURITY_TMP/callas-storage-setup.py" /mnt/usr/local/libexec/callas-storage-setup
 if (( NVIDIA )); then
-  install -m 0755 "$CALLAS_SECURITY_TMP/callas-nvidia-610-prepare.py" /mnt/usr/local/libexec/callas-nvidia-610-prepare
+  install -m 0755 "$CALLAS_SECURITY_TMP/callas-nvidia-prepare.py" /mnt/usr/local/libexec/callas-nvidia-prepare
 fi
 install -d -m 0700 /mnt/usr/local/share/callas-os/security-stage
 for security_file in "$CALLAS_SECURITY_TMP/"*; do
@@ -2270,42 +2288,41 @@ printf '127.0.0.1 localhost\n::1 localhost\n127.0.1.1 %s.localdomain %s\n' "$hos
 sed -i 's/^#ParallelDownloads.*/ParallelDownloads = 10/; s/^#Color/Color/' /etc/pacman.conf
 sed -i '/^#\[multilib\]/,/^#Include/ s/^#//' /etc/pacman.conf
 
-# NVIDIA: o Callas OS fixa a série 610.57.04 por estabilidade em jogos/Vulkan.
-# Usa nvidia-open-dkms para atender os kernels linux e linux-lts com a mesma
-# versão de módulo. A pilha inteira é mantida alinhada.
+# NVIDIA: a série 595 é o padrão de instalações novas. A versão exata
+# foi resolvida antes da formatação, num manifesto validado do Arch Archive.
+# Atualizações gerais preservam a escolha; a Central permite troca manual.
 if (( nvidia )); then
   pacman -Syu --needed --noconfirm lib32-libglvnd egl-wayland
 
+  nvidia_manifest=/usr/local/share/callas-os/security-stage/callas-nvidia-default.json
+  [[ -s $nvidia_manifest ]] || { echo 'ERRO: manifesto NVIDIA 595 ausente.' >&2; exit 1; }
+  nvidia_version=$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$nvidia_manifest")
+  [[ $nvidia_version == 595.* ]] || { echo 'ERRO: versão inicial NVIDIA não pertence à série 595.' >&2; exit 1; }
+  mapfile -t nvidia_urls < <(python -c 'import json,sys; print(*json.load(open(sys.argv[1]))["packages"].values(),sep="\\n")' "$nvidia_manifest")
+  (( ${#nvidia_urls[@]} >= 3 )) || { echo 'ERRO: pilha NVIDIA inicial incompleta.' >&2; exit 1; }
+
   nvidia_dir=$(mktemp -d /var/tmp/callas-nvidia.XXXXXXXX)
-
-  nvidia_urls=(
-    "https://archive.archlinux.org/packages/n/nvidia-utils/nvidia-utils-610.57.04-1-x86_64.pkg.tar.zst"
-    "https://archive.archlinux.org/packages/n/nvidia-open-dkms/nvidia-open-dkms-610.57.04-1-x86_64.pkg.tar.zst"
-    "https://archive.archlinux.org/packages/l/lib32-nvidia-utils/lib32-nvidia-utils-610.57.04-1-x86_64.pkg.tar.zst"
-    "https://archive.archlinux.org/packages/l/libxnvctrl/libxnvctrl-610.57.04-1-x86_64.pkg.tar.zst"
-    "https://archive.archlinux.org/packages/n/nvidia-settings/nvidia-settings-610.57.04-1-x86_64.pkg.tar.zst"
-  )
-
   nvidia_pkgs=()
   for url in "${nvidia_urls[@]}"; do
     arquivo="$nvidia_dir/${url##*/}"
-    curl -fL --retry 3 --connect-timeout 15 --max-time 300 "$url" -o "$arquivo" ||
-      { echo "ERRO: não foi possível baixar ${url##*/} do Arch Linux Archive." >&2; exit 1; }
-    curl -fL --retry 3 --connect-timeout 15 --max-time 60 "$url.sig" -o "$arquivo.sig" ||
-      { echo "ERRO: assinatura ausente para ${url##*/}." >&2; exit 1; }
+    curl -fL --retry 3 --connect-timeout 15 --max-time 300 "$url" -o "$arquivo" || {
+      echo "ERRO: não foi possível baixar ${url##*/} do Arch Linux Archive." >&2; exit 1;
+    }
+    curl -fL --retry 3 --connect-timeout 15 --max-time 60 "$url.sig" -o "$arquivo.sig" || {
+      echo "ERRO: assinatura ausente para ${url##*/}." >&2; exit 1;
+    }
     pacman-key --verify "$arquivo.sig" "$arquivo" || {
       echo 'ERRO: assinatura NVIDIA inválida.' >&2; exit 1;
     }
     nvidia_pkgs+=("$arquivo")
   done
-
   pacman -U --noconfirm "${nvidia_pkgs[@]}"
-
-  # Evita que pacman/Paru troquem apenas parte da pilha NVIDIA em um update.
+  # Só o gerenciador NVIDIA pode mudar a versão selecionada. O IgnorePkg
+  # continua protegendo a pilha das atualizações gerais e do Paru.
   sed -i '/^# CALLAS_NVIDIA_610_BEGIN$/,/^# CALLAS_NVIDIA_610_END$/d' /etc/pacman.conf
-  sed -i '/^\[options\]$/a # CALLAS_NVIDIA_610_BEGIN\nIgnorePkg = nvidia-utils nvidia-open-dkms nvidia-open nvidia-open-lts lib32-nvidia-utils nvidia-settings libxnvctrl opencl-nvidia lib32-opencl-nvidia\n# CALLAS_NVIDIA_610_END' /etc/pacman.conf
-
-  printf '%s\n' '610.57.04' > /etc/callas-nvidia-version
+  sed -i '/^# CALLAS_NVIDIA_PIN_BEGIN$/,/^# CALLAS_NVIDIA_PIN_END$/d' /etc/pacman.conf
+  sed -i '/^\[options\]$/a # CALLAS_NVIDIA_PIN_BEGIN\nIgnorePkg = nvidia-utils nvidia-open-dkms nvidia-open nvidia-open-lts lib32-nvidia-utils nvidia-settings libxnvctrl opencl-nvidia lib32-opencl-nvidia\n# CALLAS_NVIDIA_PIN_END' /etc/pacman.conf
+  printf '%s\n' "$nvidia_version" > /etc/callas-nvidia-version
   rm -rf "$nvidia_dir"
 fi
 
@@ -2373,7 +2390,7 @@ ZRAM
 # Dependências gráficas do Steam. O driver virtual ou de software evita
 # puxar NVIDIA em uma VM que apresenta apenas VMSVGA, Virtio ou VGA.
 gpu_multilib=(lib32-mesa)
-# Em NVIDIA, lib32-nvidia-utils 610.57.04 já foi instalado e fixado acima.
+# Em NVIDIA, lib32-nvidia-utils da série 595 já foi instalado e fixado acima.
 if (( amd_gpu )); then
   gpu_multilib+=(vulkan-radeon lib32-vulkan-radeon)
 fi
@@ -2389,10 +2406,10 @@ fi
 pacman -Syu --needed --noconfirm "${gpu_multilib[@]}" vulkan-icd-loader lib32-vulkan-icd-loader steam discord shotcut
 
 # Arch recebe kernels atuais. Somente prossegue ao mkinitcpio depois que o
-# DKMS 610 foi compilado e seus quatro módulos conferidos em Linux e Linux LTS.
-# Inclui adaptação local da API dmem para Linux 7.3, sem trocar o driver.
+# DKMS selecionado foi compilado e seus quatro módulos conferidos em Linux e Linux LTS.
+# Adapta a API dmem quando reconhecida; nunca troca o driver automaticamente.
 if (( nvidia )); then
-  "$libexec/callas-nvidia-610-prepare"
+  "$libexec/callas-nvidia-prepare"
 fi
 
 # O KMS padrão cobre Mesa e GPUs virtuais. Só antecipa os módulos da NVIDIA
