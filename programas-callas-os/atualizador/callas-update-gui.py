@@ -1279,6 +1279,7 @@ class Window(QWidget):
         self.details_button = self.button('Mostrar detalhes', 'view-list-details', self.toggle_details)
         actions = QHBoxLayout()
         actions.addWidget(self.details_button)
+        actions.addWidget(self.button('Copiar detalhes', 'copy', self.copy_details))
         actions.addWidget(self.button('Abrir logs', 'folder-open', self.open_logs))
         actions.addStretch()
         card_layout.addLayout(actions)
@@ -1319,6 +1320,14 @@ class Window(QWidget):
         button = QPushButton(option_icon(icon), text)
         button.setIconSize(QSize(25, 25)); button.clicked.connect(slot)
         return button
+
+    def copy_details(self):
+        output = self.details.toPlainText().strip()
+        if output:
+            QApplication.clipboard().setText(output)
+            self.status.setText('Detalhes copiados. Cole no chat para diagnóstico.')
+        else:
+            self.status.setText('Ainda não há detalhes para copiar.')
 
     def toggle_details(self):
         self.set_details_visible(self.details.isHidden())
