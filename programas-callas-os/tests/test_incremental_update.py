@@ -322,7 +322,7 @@ asset() { asset_changed=0; [[ $1 != "$CHANGE_ASSET" ]] || asset_changed=1; }
 
  def test_session_update_does_not_interrupt_discord_or_kwin(self):
   source=(UP/'callas-config-update.sh').read_text()
-  phase=source.split('# CALLAS_PHASE_BEGIN session\\n',1)[1].split('# CALLAS_PHASE_END session\\n',1)[0]
+  phase=source.split('# CALLAS_PHASE_BEGIN session\n',1)[1].split('# CALLAS_PHASE_END session\n',1)[0]
   for forbidden in ('start callas-janelas.service','restart callas-discord-memory.service',
       'restart callas-game-logs.service','callas-inicio-kde','kwriteconfig6','kwinrulesrc'):
    self.assertNotIn(forbidden,phase)
