@@ -380,6 +380,37 @@ compile(payload, str(source), 'exec')
 print('Complemento de armazenamento validado, sem alteração dos outros discos.')
 CALLAS_STORAGE_STAGE
 
+# NVIDIA: baixa auxiliar exclusivamente da instalação limpa, do mesmo commit
+# imutável, e confere o blob antes de qualquer formatação de disco.
+if (( NVIDIA )); then
+  curl --proto '=https' --proto-redir '=https' -fsSL --retry 2 \
+    "$CALLAS_PROGRAMAS_BASE/instalador/callas-nvidia-610-prepare.py" \
+    -o "$CALLAS_SECURITY_TMP/callas-nvidia-610-prepare.py"
+  python - "$CALLAS_SECURITY_TMP/callas-nvidia-610-prepare.py" "$CALLAS_ASSET_REF" <<'CALLAS_NVIDIA_STAGE'
+import hashlib, json, pathlib, sys, urllib.request
+source = pathlib.Path(sys.argv[1])
+ref = sys.argv[2]
+path = 'programas-callas-os/instalador/callas-nvidia-610-prepare.py'
+request = urllib.request.Request(
+    'https://api.github.com/repos/Callas157/arch-install/git/trees/' + ref + '?recursive=1',
+    headers={'User-Agent': 'CallasOS-Installer'})
+with urllib.request.urlopen(request, timeout=60) as response:
+    tree = json.load(response)
+if tree.get('truncated'):
+    raise RuntimeError('Árvore de arquivos incompleta; instalação interrompida.')
+matches = [item for item in tree['tree'] if item.get('path') == path
+           and item.get('type') == 'blob' and item.get('mode') in ('100644', '100755')]
+if len(matches) != 1:
+    raise RuntimeError('Auxiliar NVIDIA 610 não identificado no commit.')
+payload = source.read_bytes()
+digest = hashlib.sha1(b'blob ' + str(len(payload)).encode() + b'\0' + payload).hexdigest()
+if digest != matches[0]['sha']:
+    raise RuntimeError('Auxiliar NVIDIA diferente do GitHub; instalação interrompida.')
+compile(payload, str(source), 'exec')
+print('Auxiliar NVIDIA 610 verificado antes de alterar os discos.')
+CALLAS_NVIDIA_STAGE
+fi
+
 # Revalida TODOS os dispositivos selecionados antes de qualquer gravação.
 for CALLAS_I in "${!FORMATAR_SECUNDARIOS[@]}"; do
   callas_disco_secundario_seguro "${FORMATAR_SECUNDARIOS[$CALLAS_I]}" "${FORMATAR_SECUNDARIOS_IDS[$CALLAS_I]}" || {
@@ -469,6 +500,9 @@ install -m 0755 "$CALLAS_SECURITY_TMP/callas-version.py" /mnt/usr/local/libexec/
 # USB/removíveis e não formatam, apagam ou reparticionam volumes secundários.
 install -m 0755 "$CALLAS_SECURITY_TMP/callas-automount.py" /mnt/usr/local/libexec/callas-automount
 install -m 0755 "$CALLAS_SECURITY_TMP/callas-storage-setup.py" /mnt/usr/local/libexec/callas-storage-setup
+if (( NVIDIA )); then
+  install -m 0755 "$CALLAS_SECURITY_TMP/callas-nvidia-610-prepare.py" /mnt/usr/local/libexec/callas-nvidia-610-prepare
+fi
 install -d -m 0700 /mnt/usr/local/share/callas-os/security-stage
 for security_file in "$CALLAS_SECURITY_TMP/"*; do
   [[ -f $security_file ]] || continue
@@ -2353,6 +2387,13 @@ if (( ! nvidia && ! amd_gpu && ! intel_gpu )); then
   gpu_multilib+=(vulkan-swrast lib32-vulkan-swrast)
 fi
 pacman -Syu --needed --noconfirm "${gpu_multilib[@]}" vulkan-icd-loader lib32-vulkan-icd-loader steam discord shotcut
+
+# Arch recebe kernels atuais. Somente prossegue ao mkinitcpio depois que o
+# DKMS 610 foi compilado e seus quatro módulos conferidos em Linux e Linux LTS.
+# Inclui adaptação local da API dmem para Linux 7.3, sem trocar o driver.
+if (( nvidia )); then
+  "$libexec/callas-nvidia-610-prepare"
+fi
 
 # O KMS padrão cobre Mesa e GPUs virtuais. Só antecipa os módulos da NVIDIA
 # quando ela foi detectada e o pacote correspondente está instalado.
