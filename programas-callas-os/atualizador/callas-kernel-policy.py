@@ -467,6 +467,19 @@ def repair_driver(*, adopt_installed=False, expected=None):
         finally:
             logfile.write_text('\n'.join(lines) + '\n')
             logfile.chmod(0o600)
+            logger = Path('/usr/local/libexec/callas-logs')
+            if logger.is_file() and not logger.is_symlink():
+                with logfile.open('rb') as stream:
+                    subprocess.run([str(logger), '--record', 'Driver NVIDIA'], stdin=stream,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                   check=False, timeout=30)
+                log_user_file = Path('/etc/callas-os/log-user')
+                if log_user_file.is_file():
+                    log_user = log_user_file.read_text().strip()
+                    if re.fullmatch(r'[a-z_][a-z0-9_-]{0,31}', log_user):
+                        subprocess.run([str(logger), '--export', log_user], check=False,
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                       timeout=45)
 
 
 
