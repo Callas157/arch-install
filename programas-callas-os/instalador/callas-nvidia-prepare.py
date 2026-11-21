@@ -79,14 +79,14 @@ def patch_595_atomic_tree(source):
     """
     if PINNED != '595.71.05':
         return False
-    if source.is_symlink() or not source.is_dir() or source.stat().st_uid != 0:
+    if source.is_symlink() or not source.is_dir() or source.stat().st_uid != os.geteuid():
         raise RuntimeError('Fonte NVIDIA insegura/ausente: ' + str(source))
     header = source / 'nvidia-drm/nvidia-drm-conftest.h'
     probe = source / 'conftest.sh'
     nvswitch = source / 'nvidia/linux_nvswitch.c'
     planned = {}
     for path in (header, probe, nvswitch):
-        if path.is_symlink() or not path.is_file() or path.stat().st_uid != 0:
+        if path.is_symlink() or not path.is_file() or path.stat().st_uid != os.geteuid():
             raise RuntimeError('Arquivo NVIDIA 595 esperado não existe ou é inseguro: ' + str(path))
         content = path.read_text(encoding='utf-8')
         result = content
@@ -286,13 +286,13 @@ def main():
                 dkms_dir = Path('/var/lib/dkms/nvidia') / PINNED
                 for name_copy in ('source', 'build'):
                     copy = dkms_dir / name_copy
-                    if copy.is_symlink():
-                        if copy.resolve() != main_source.resolve():
-                            raise RuntimeError('Link DKMS NVIDIA inesperado: ' + str(copy))
+                    resolved = copy.resolve() if copy.is_symlink() else copy
+                    if resolved == main_source.resolve():
                         continue
-                    if copy.is_dir() and copy != main_source:
-                        if (copy / 'nvidia-drm/nvidia-drm-conftest.h').is_file():
-                            prepare_compat_tree(copy, release)
+                    if copy.is_symlink() and not resolved.is_relative_to(dkms_dir.resolve()):
+                        raise RuntimeError('Link DKMS NVIDIA fora do diretório esperado: ' + str(copy))
+                    if resolved.is_dir() and (resolved / 'nvidia-drm/nvidia-drm-conftest.h').is_file():
+                        prepare_compat_tree(resolved, release)
                 patched = True
             print(f'>>> Reparando NVIDIA {PINNED} para {name} ({release})', flush=True)
             run('dkms', 'build', '--force', '-m', 'nvidia', '-v', PINNED, '-k', release)
