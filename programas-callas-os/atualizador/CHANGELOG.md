@@ -1,5 +1,12 @@
 # Histórico do Callas OS
 
+## 3.22.2 — 2026-11-21
+
+- Cliente Codex opcional 1.4.0: menu contextual para fixar e excluir conversas, limpeza paginada de histórico que não seleciona fixadas, seletor de modelo e nível de raciocínio na barra de envio.
+- Integração GPT via API OpenAI com perfil isolado de autenticação e histórico. Modelo GPT-6.1 Sol, GPT-6 ou GPT-5.5 quando autorizado pelo projeto API. O motor de execução continua o Codex app-server local com acesso ao PC, sem modificar a conta ChatGPT do Codex. A chave é cadastrada pelo próprio usuário, sem ser escrita no repositório ou nas preferências Qt; o Codex pode armazená-la no keyring ou em auth.json local restrito.
+- A Central preserva o pacote 1.3.3 com checksum SHA-256 e aplica as fontes 1.4.0 de um commit fixo com verificação de blob Git antes da instalação. O botão Codex oferece atualização quando encontra 1.3.x, e não reinstala versões locais mais novas ou desconhecidas, para evitar regressões e perda de personalizações. Reutiliza os dados, login e Whisper existentes.
+- Testes de regressão adicionados; não foi executada instalação física KDE, autenticação real na API ou teste de modelo nesta conversa. Sem mudanças em kernel, NVIDIA, GRUB, discos ou políticas de update geral.
+
 ## 3.22.1 — 2026-11-21
 
 - Corrigido o Callas OS Update para preservar janelas, regras do KWin e autostart da sessão durante atualizações de periféricos e aplicativos. A etapa session não reaplica callas-inicio-kde nem inicia callas-janelas.service, que reiniciava a memória persistente do Discord e podia bloquear a migração do G920. Também não reinicia callas-game-logs.service. Serviços em execução e preferências do usuário ficam intactos; arquivos já provisionados serão usados normalmente no próximo login KDE. A instalação limpa não muda.
