@@ -1,5 +1,13 @@
 # Histórico do Callas OS
 
+## 3.21.5 — 2026-11-20
+
+- Corrigido o diálogo de formatação opcional dos discos secundários na instalação limpa para cumprir a escolha numérica **sem confirmação adicional**. Após o aviso explícito de que TODOS os dados e partições daquele disco serão apagados, **`1` é a autorização definitiva para formatar ext4**; **`2` preserva o disco**. Enter, texto e outras opções não autorizam formatação. A antiga pergunta para digitar a palavra `APAGAR` foi removida por solicitação expressa do usuário.
+- A remoção é restrita à confirmação do armazenamento secundário. Mantidos: identificação individual do disco, filtragem de mídia da ISO/USB e do disco principal, revalidação do disco e ID antes de gravar, formatação ext4 somente das unidades selecionadas; o disco do sistema continua sujeito ao fluxo normal de seleção do instalador.
+- Sem alterações no Callas OS Update, favoritos do KDE, dock, kernel, NVIDIA 610.57.04, Steam ou montagem automática.
+- Sintaxe Bash verificada; nove testes locais simulados passaram para nenhuma unidade, uma e várias unidades, opção `1`, `2`, Enter, textos inválidos e proteções de escrita. Os testes de regressão no repositório foram atualizados para o novo diálogo. Não houve teste físico de formatação ou instalação completa em VM nesta entrega.
+- Backup íntegro do instalador original da **3.21.4** salvo antes da alteração em `Google Drive/CallasOS/CallasOS 3.21.4` e verificado após leitura, SHA-256 `312586aa1d4cdce722599c8af98ed45f3cc56b3631fb7d1094699af83b8b14be`.
+
 ## 3.21.4 — 2026-11-20
 
 - Corrigido o diálogo de formatação opcional de discos secundários na instalação limpa. O menu permanece **1 = SIM, formatar ext4** e **2 = NÃO, preservar arquivos**. Após a opção 1, o instalador agora exige **somente a palavra `APAGAR` em maiúsculas**, sem nome nem caminho do dispositivo. A unidade continua identificada por dispositivo, tamanho, modelo e sistema de arquivos no próprio diálogo.
