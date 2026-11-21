@@ -253,6 +253,12 @@ def driver_preflight(targets, version, directory):
             if len(releases) != 1 or not (releases[0] / 'build/Makefile').is_file():
                 raise RuntimeError('Kernel/headers indisponíveis: ' + kernel)
             release = releases[0].name
+            # Patch only the extracted candidate 595 source, never the active
+            # installed driver. Linux 6.x remains on the original API.
+            if version == '595.71.05' and tuple(map(int, release.split('-', 1)[0].split('.')[:2])) >= (7, 2):
+                command(['/usr/bin/env', 'CALLAS_NVIDIA_REPAIR_TARGET=' + version,
+                         '/usr/bin/python3', '/usr/local/libexec/callas-nvidia-prepare',
+                         '--compat-tree', root / source, release])
             tree = root / kernel
             tree.mkdir()
             script = """set -euo pipefail
