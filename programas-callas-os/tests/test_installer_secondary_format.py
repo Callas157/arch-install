@@ -66,7 +66,7 @@ lsblk() {
         self.assertNotIn('Armazenamento 3', process.stdout)
 
     def test_multiple_secondary_disks_numbered(self):
-        process = self.run_selection('2\n1\nAPAGAR /dev/sdc\n', eligible='/dev/sdb /dev/sdc')
+        process = self.run_selection('2\n1\n', eligible='/dev/sdb /dev/sdc')
         self.assertEqual(process.returncode, 0, process.stderr)
         self.assertIn('Armazenamento 2 de 3', process.stdout)
         self.assertIn('Armazenamento 3 de 3', process.stdout)
@@ -81,27 +81,23 @@ lsblk() {
                 self.assertEqual(process.returncode, 0, process.stderr)
                 self.assertIn('SELECTED=\n', process.stdout)
 
-    def test_mistyped_confirmation_preserves_files(self):
-        process = self.run_selection('1\napagar\n')
-        self.assertEqual(process.returncode, 0, process.stderr)
-        self.assertIn('SELECTED=\n', process.stdout)
-        self.assertIn('será preservado', process.stdout)
-
-    def test_previous_confirmation_with_device_is_no_longer_accepted(self):
-        process = self.run_selection('1\\nAPAGAR /dev/sdb\\n')
-        self.assertEqual(process.returncode, 0, process.stderr)
-        self.assertIn('SELECTED=\\n', process.stdout)
-
-    def test_number_two_does_not_request_confirmation(self):
-        process = self.run_selection('2\\n')
-        self.assertEqual(process.returncode, 0, process.stderr)
-        self.assertIn('SELECTED=\\n', process.stdout)
-        self.assertNotIn('CONFIRMAÇÃO FINAL', process.stdout)
-
-    def test_exact_double_confirmation(self):
-        process = self.run_selection('1\nAPAGAR\n')
+    def test_choice_one_is_final_authorization_without_another_prompt(self):
+        process = self.run_selection('1\n')
         self.assertEqual(process.returncode, 0, process.stderr)
         self.assertIn('SELECTED=/dev/sdb\n', process.stdout)
+        self.assertNotIn('CONFIRMAÇÃO FINAL', process.stdout)
+        self.assertNotIn('digite APAGAR', process.stdout)
+
+    def test_choice_two_preserves_without_another_prompt(self):
+        process = self.run_selection('2\n')
+        self.assertEqual(process.returncode, 0, process.stderr)
+        self.assertIn('SELECTED=\n', process.stdout)
+        self.assertNotIn('CONFIRMAÇÃO FINAL', process.stdout)
+
+    def test_apagar_word_is_not_valid_numeric_choice(self):
+        process = self.run_selection('APAGAR\n')
+        self.assertEqual(process.returncode, 0, process.stderr)
+        self.assertIn('SELECTED=\n', process.stdout)
 
     def test_destructive_loop_only_for_authorized_disks(self):
         src = source()
@@ -112,8 +108,8 @@ lsblk() {
         self.assertIn('FORMATAR_SECUNDARIOS_IDS=()', src)
         self.assertIn('Digite 1 ou 2:', src)
         self.assertIn('case $CALLAS_FORMATAR_RESPOSTA in', src)
-        self.assertIn('if [[ $CALLAS_FORMATAR_CONFIRMA == "APAGAR" ]]; then', src)
-        self.assertNotIn('"APAGAR $CALLAS_OUTRO_DISCO"', src)
+        self.assertNotIn('CALLAS_FORMATAR_CONFIRMA', selection_body())
+        self.assertNotIn('CONFIRMAÇÃO FINAL', selection_body())
         self.assertIn('callas_disco_secundario_seguro "$CALLAS_OUTRO_DISCO"', formatting)
         self.assertIn('wipefs -af "$CALLAS_OUTRO_DISCO"', formatting)
         self.assertIn('mkfs.ext4 -F -L CALLAS_DADOS "$CALLAS_PARTICAO_DADOS"', formatting)
