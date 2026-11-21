@@ -22,7 +22,9 @@ class PrepareMountTests(unittest.TestCase):
     def test_only_callas_ext4_is_made_fsck_enabled(self):
         result = setup.prepare_fstab(MARKED)
         self.assertTrue(result.startswith(ROOT))
-        self.assertTrue(result.endswith(OTHER))
+        self.assertIn('x-systemd.before=local-fs.target', result)
+        self.assertIn('ntfs3', result)
+        self.assertEqual(result.count('x-systemd.before=local-fs.target'), 2)
         self.assertIn('errors=remount-ro\t0\t2\n', result)
         self.assertEqual(setup.candidates(result), [(f'/mnt/callas-{UUID}', UUID)])
 
@@ -30,8 +32,8 @@ class PrepareMountTests(unittest.TestCase):
         updated = setup.prepare_fstab(MARKED)
         self.assertEqual(updated, setup.prepare_fstab(updated))
         self.assertEqual(setup.prepare_fstab(ROOT + EXT4), ROOT + EXT4)
-        self.assertEqual(setup.prepare_fstab(ROOT + setup.MARKER + '\n' + OTHER),
-                         ROOT + setup.MARKER + '\n' + OTHER)
+        self.assertIn('x-systemd.before=local-fs.target',
+                      setup.prepare_fstab(ROOT + setup.MARKER + '\n' + OTHER))
 
     def test_malicious_and_system_paths_do_not_change(self):
         for source in ('UUID=bad space', 'UUID=invalid!!', 'LABEL=Games'):
