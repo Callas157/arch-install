@@ -1,5 +1,14 @@
 # Histórico do Callas OS
 
+## 3.20.0 — 2026-11-20
+
+- Instalação limpa: integra o `callas-automount` já validado ao fluxo do instalador, após criar a conta. Detecta volumes de dados internos SATA/NVMe elegíveis, exclui USB/removíveis e o disco do sistema e configura montagem por UUID, sem pedir senha no Dolphin a cada boot. Não particiona, formata ou altera UUID de discos secundários; formatos não suportados permanecem intactos.
+- Nos volumes ext4 internos reconhecidos, configura a checagem segura de sistema de arquivos pelo systemd (`passno=2`) e `errors=remount-ro`. Após a instalação, ajusta **somente** a propriedade da raiz do volume quando ela pertence ao root e não parece ser outra instalação Linux; arquivos existentes e proprietários diferentes são preservados. A seleção da biblioteca na Steam continua manual.
+- O complemento exclusivo do instalador fica em `programas-callas-os/instalador/callas-storage-setup.py`, baixado e verificado contra o SHA Git do mesmo commit antes de qualquer operação destrutiva no disco de instalação. A opção 5 — Callas OS Update não foi modificada.
+- Preserva o kernel mais recente oferecido pelo Arch na instalação limpa, junto dos headers e do LTS de recuperação. Continua fixada a NVIDIA 610.57.04; a validação de DKMS/boot já existente deve bloquear a conclusão se o kernel não for compatível. Não existe garantia de compatibilidade com todos os kernels futuros nem recuperação automática de corrupção grave.
+
+Validação: verificações offline de sintaxe Python e cenários simulados de fstab, persistência/idempotência, proteção do disco de sistema e permissões realizadas. Não foi feita instalação limpa em máquina física/VM, simulação de queda de energia ou compilação NVIDIA 610 contra kernel futuro. Por autorização explícita do usuário nesta conversa, a exigência de novo backup do instalador no Google Drive foi dispensada **somente nesta entrega**.
+
 ## 3.19.0 — 2026-11-20
 
 - Adiciona **Discos (GNOME Disks)**, pacote oficial `gnome-disk-utility`, ao catálogo de aplicativos nativos do Callas OS (`present`, fase `apps`). É instalado na instalação limpa e também pela opção 5 — **Callas OS Update**, respeitando a proteção de kernel, headers, driver NVIDIA e a escolha de desinstalação do usuário.
