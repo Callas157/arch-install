@@ -135,6 +135,8 @@ Se a memória indicar `3.2.2`, mas o repositório já estiver em `3.4.1`, uma no
 
 ## Backup obrigatório do instalador antes de alterações
 
+**Exceção explícita de 2026-11-24 — alterações visuais de baixo risco:** adicionar ou substituir fotos de perfil, wallpapers e ícones, ou ajustar exclusivamente sua cópia/seleção visual no instalador, não exige novo backup no Google Drive. Registre o commit de origem e valide a alteração. A exceção não se aplica a mudanças de particionamento, formatação, boot, kernel, drivers, dependências, contas/permissões ou lógica crítica de instalação; em entregas mistas ou de risco incerto, mantenha o backup obrigatório. Esta exceção prevalece sobre as regras gerais de backup abaixo, sem dispensar testes nem alterar a retenção de 10 backups.
+
 Esta é uma autorização permanente do usuário para realizar o backup e a retenção abaixo como parte de cada atualização do instalador, sem pedir nova confirmação.
 
 1. **Antes de editar ou implementar qualquer atualização em `instalar-arch.sh`**, consulte a `main` remota atualizada e fixe o commit de origem. Leia VERSION e baixe o instalador original desse mesmo commit, sem alterações locais.
