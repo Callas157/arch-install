@@ -1,6 +1,8 @@
 """PreTransaction policy: no installed kernel replacement without prior build."""
 import importlib.util
+import contextlib
 import io
+import json
 import os
 from pathlib import Path
 import tarfile
@@ -18,7 +20,94 @@ class KernelPolicyTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('kernel_policy', FILE)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        module.WORK_DIRECTORY = Path(tempfile.gettempdir())
         return module
+
+    def test_kernel_catalog_requires_signed_matching_headers(self):
+        policy = self.load()
+        with patch.object(policy, 'package_index', side_effect=[
+                {'7.3.5.arch1-1': 'new', '7.2.15.arch1-1': 'old'},
+                {'7.2.15.arch1-1': 'headers'}]):
+            self.assertEqual(policy.kernel_catalog(), {
+                '7.2.15.arch1-1': {'linux': 'old', 'linux-headers': 'headers'}})
+
+    def test_kernel_selection_rejects_unrelated_targets_before_build(self):
+        policy = self.load()
+        with patch.object(policy, 'verify_candidate') as build:
+            with self.assertRaisesRegex(RuntimeError, 'linux e linux-headers'):
+                policy.kernel_preflight(['linux', 'linux-headers', 'linux-lts'],
+                                        '7.2.15.arch1-1', Path('/unused'))
+            build.assert_not_called()
+
+    def test_kernel_selection_requires_registration_if_nvidia_is_installed(self):
+        policy = self.load()
+        version = '7.2.15.arch1-1'
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            for package in policy.PRIMARY_PAIR:
+                (work / f'{package}.pkg.tar.zst').touch()
+            with patch.object(policy, 'command', side_effect=lambda args: f'{args[-1].name.split(".pkg")[0]} {version}'), \
+                    patch.object(policy, 'VERSION_FILE', work / 'missing'), \
+                    patch.object(policy, 'installed_driver', return_value=dict.fromkeys(policy.DRIVER, '610.57.04-1')), \
+                    patch.object(policy, 'verify_candidate') as build:
+                with self.assertRaisesRegex(RuntimeError, 'Reparar versão instalada'):
+                    policy.kernel_preflight(policy.PRIMARY_PAIR, version, work)
+                build.assert_not_called()
+
+    def test_kernel_selection_restores_pair_after_boot_check_failure(self):
+        policy = self.load()
+        old, new = '7.3.5.arch1-1', '7.2.15.arch1-1'
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(policy, 'DRIVER_LOCK', Path(directory) / 'lock'), \
+                patch.object(policy, 'check_hooks'), \
+                patch.object(policy, 'command', return_value=f'linux {new}\nlinux-headers {new}'), \
+                patch.object(policy, 'primary_version', return_value=old), \
+                patch.object(policy, 'stage_packages', side_effect=lambda urls, folder: list(urls)), \
+                patch.object(policy, 'run_kernel_transaction',
+                             side_effect=[policy.SelectionVerificationError('boot falhou', new), None]) as run:
+            with self.assertRaisesRegex(RuntimeError, 'boot falhou'):
+                policy.select_kernel(new)
+        self.assertEqual([call.args[1] for call in run.call_args_list], [new, old])
+        self.assertEqual([call.kwargs['expected'] for call in run.call_args_list], [old, new])
+        self.assertEqual(run.call_args.args[0], [policy.package_url(p, old) for p in policy.PRIMARY_PAIR])
+
+    def test_pci_check_finds_nvidia_gpu_without_bound_driver(self):
+        policy = self.load()
+        with tempfile.TemporaryDirectory() as directory:
+            pci = Path(directory)
+            for slot, vendor, device, device_class in (
+                ('gpu', '0x10de', '0x2786', '0x030000'),
+                ('audio', '0x10de', '0x22bc', '0x040300'),
+                ('amd', '0x1002', '0x744c', '0x030000'),
+            ):
+                path = pci / slot
+                path.mkdir()
+                for name, value in [('vendor', vendor), ('device', device), ('class', device_class)]:
+                    (path / name).write_text(value + '\n')
+            with patch.object(policy, 'PCI_DEVICES', pci):
+                self.assertEqual(policy.nvidia_device_ids(), {'2786'})
+
+    def test_current_nvidia_support_excludes_legacy_pci_ids(self):
+        policy = self.load()
+        chips = ('<h3>Current NVIDIA GPUs</h3><table><tr id="devid2786"></tr></table>'
+                 '<h3>Legacy GPUs</h3><table><tr id="devid1380"></tr></table>')
+        self.assertEqual(policy.current_nvidia_devices(chips), {'2786'})
+
+    def test_nvidia_list_survives_unreadable_legacy_marker_and_archive_timeout(self):
+        policy = self.load()
+        packages = dict.fromkeys(policy.DRIVER, '595.71.05-1')
+        with patch.object(policy.sys, 'argv', ['policy', '--nvidia-list']), \
+                patch.object(policy, 'VERSION_FILE') as marker, \
+                patch.object(policy, 'installed_driver', return_value=packages), \
+                patch.object(policy, 'modules_coherent', return_value=False), \
+                patch.object(policy, 'driver_catalog', side_effect=TimeoutError), \
+                contextlib.redirect_stdout(io.StringIO()) as stdout:
+            marker.read_text.side_effect = PermissionError
+            self.assertEqual(policy.main(), 0)
+        state = json.loads(stdout.getvalue())
+        self.assertTrue(state['packages_coherent'])
+        self.assertFalse(state['modules_ok'])
+        self.assertIn('610.57.04', state['versions'])
 
     def test_nvidia_catalog_only_offers_complete_signed_stacks(self):
         policy = self.load()
@@ -27,7 +116,7 @@ class KernelPolicyTests(unittest.TestCase):
                     **({'620.70.06': package + '-620'} if package != 'lib32-nvidia-utils' else {})}
         with patch.object(policy, 'archive_index', side_effect=index):
             self.assertEqual(policy.driver_catalog(policy.DRIVER),
-                             {'610.57.04': [name + '-610' for name in policy.DRIVER]})
+                             {'610.57.04': {name: name + '-610' for name in policy.DRIVER}})
 
     def test_nvidia_preflight_refuses_any_unrelated_target_before_build(self):
         policy = self.load()
@@ -42,22 +131,23 @@ class KernelPolicyTests(unittest.TestCase):
         old, new = '610.57.04', '620.70.06'
         originals = {package: old + '-1' for package in policy.DRIVER}
         changed = {package: new + '-1' for package in policy.DRIVER}
-        catalog = {version: [f'https://example.com/{name}-{version}-2-x86_64.pkg.tar.zst'
-                             for name in policy.DRIVER] for version in (old, new)}
+        catalog = {version: {name: f'https://example.com/{name}-{version}-2-x86_64.pkg.tar.zst'
+                             for name in policy.DRIVER} for version in (old, new)}
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            marker = root / 'version'; marker.write_text(old)
+            marker = root / 'version'; marker.write_text('595.71.05\n')
             with patch.object(policy, 'VERSION_FILE', marker), \
                     patch.object(policy, 'DRIVER_LOCK', root / 'lock'), \
                     patch.object(policy, 'check_hooks'), patch.object(policy, 'command'), \
-                    patch.object(policy, 'installed_driver', side_effect=[originals, changed]), \
+                    patch.object(policy, 'installed_driver', return_value=originals), \
                     patch.object(policy, 'driver_catalog', return_value=catalog), \
-                    patch.object(policy, 'download_driver', side_effect=lambda urls, folder: list(urls)), \
+                    patch.object(policy, 'stage_packages', side_effect=lambda urls, folder: list(urls)), \
                     patch.object(policy, 'run_driver_transaction',
-                                 side_effect=[RuntimeError('boot falhou'), None]) as transaction:
+                                 side_effect=[policy.SelectionVerificationError('boot falhou', changed), None]) as transaction:
                 with self.assertRaisesRegex(RuntimeError, 'boot falhou'):
                     policy.select_driver(new)
                 self.assertEqual([call.args[1] for call in transaction.call_args_list], [new, old])
+                self.assertEqual(transaction.call_args.kwargs['expected'], changed)
                 self.assertTrue(all('-610.57.04-1-x86_64' in url for url in transaction.call_args.args[0]))
 
     def test_non_general_modes_cannot_replace_either_kernel_or_headers(self):

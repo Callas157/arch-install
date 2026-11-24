@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Add a graphical transition only to the three recognized Callas boot entries."""
+"""Validate Callas boot entries, add the transition and put the LTS first."""
 import argparse
 import os
 from pathlib import Path
@@ -30,12 +30,15 @@ def commands(body):
     if pending: raise ValueError('Comando de boot com continuação incompleta')
 
 
+def entry_pattern(title):
+    return re.compile(r"(?m)^(?P<indent>[ \t]*)menuentry[ \t]+(?P<quote>['\"])" + re.escape(title)
+        + r"(?P=quote)[^\r\n]*\{\r?\n(?P<body>.*?)^(?P=indent)\}[ \t]*(?:#[^\r\n]*)?(?=\r?$)", re.S)
+
+
 def migrate(source):
     result = source
     for title in TITLES:
-        pattern = re.compile(r"(?m)^(?P<indent>[ \t]*)menuentry[ \t]+(?P<quote>['\"])" + re.escape(title)
-            + r"(?P=quote)[^\r\n]*\{\r?\n(?P<body>.*?)^(?P=indent)\}[ \t]*(?:#[^\r\n]*)?(?=\r?$)", re.S)
-        matches = list(pattern.finditer(result))
+        matches = list(entry_pattern(title).finditer(result))
         if len(matches) != 1:
             raise ValueError('Layout GRUB desconhecido: ' + title)
         match = matches[0]; body = match['body']
@@ -58,6 +61,12 @@ def migrate(source):
             ending = '\r\n' if '\r\n' in body else '\n'
             body = body[:position] + indent + TRANSITION.strip() + ending + body[position:]
             result = result[:match.start('body')] + body + result[match.end('body'):]
+    entries = [entry_pattern(title).search(result) for title in TITLES]
+    first = min(entries, key=lambda entry: entry.start())
+    lts = entries[1]
+    if first != lts:
+        end = lts.end() + (2 if result.startswith('\r\n', lts.end()) else 1)
+        result = result[:first.start()] + result[lts.start():end] + result[first.start():lts.start()] + result[end:]
     return result
 
 

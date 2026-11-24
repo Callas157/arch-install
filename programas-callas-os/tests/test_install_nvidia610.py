@@ -57,12 +57,9 @@ class Nvidia610Test(unittest.TestCase):
 
     def test_main_installer_validates_before_mkinitcpio(self):
         source = INSTALLER.read_text(encoding='utf-8')
-        self.assertIn('CALLAS_NVIDIA_STAGE', source)
-        self.assertIn('callas-nvidia-610-prepare.py', source)
-        self.assertIn('digest != matches[0]', source)
-        self.assertLess(source.index('CALLAS_NVIDIA_STAGE'), source.index('wipefs -af "$DISCO"'))
-        self.assertLess(source.index('"$libexec/callas-nvidia-610-prepare"'), source.index('mkinitcpio -P'))
-        self.assertEqual(source.count('"$libexec/callas-nvidia-610-prepare"'), 1)
+        self.assertLess(source.index('--nvidia-check-hardware'), source.index('wipefs -af "$DISCO"'))
+        self.assertLess(source.index('"$libexec/callas-nvidia-prepare"'), source.index('mkinitcpio -P'))
+        self.assertEqual(source.count('"$libexec/callas-nvidia-prepare"'), 1)
         self.assertIn('610.57.04', source)
 
     def test_rescue_never_wipes_and_has_strict_mount_guards(self):

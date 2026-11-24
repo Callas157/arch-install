@@ -1,4 +1,4 @@
-# Atualizações de kernel com NVIDIA fixada
+# Seleção e atualizações de kernel e NVIDIA
 
 Leia junto com [AGENTS.md](../AGENTS.md) e [versionamento.md](versionamento.md).
 
@@ -6,23 +6,24 @@ Leia junto com [AGENTS.md](../AGENTS.md) e [versionamento.md](versionamento.md).
 
 Leia a seção “Regra obrigatória: cada opção respeita seu escopo” em [AGENTS.md](../AGENTS.md) antes de alterar qualquer fluxo. **A opção 5 — Callas OS Update só atende aplicativos (adição/remoção autorizada) e configurações do Linux/Callas OS. Não altera pacotes de kernel, headers ou driver NVIDIA**, inclusive reinstalação, remoção, substituição e downgrade. Uma dependência incompatível interrompe a transação; não autoriza atualização geral, troca do driver ou ativação/antecipação do agendamento.
 
-O driver NVIDIA escolhido pelo usuário deve permanecer fixo nas atualizações gerais. Em instalações novas, a série **595** é o padrão; instalações anteriores preservam sua escolha. A opção 4 pode tratar kernel/headers com as validações abaixo; não é autorização automática para mudar a NVIDIA fixada.
+A instalação limpa usa Linux **7.2.15.arch1-1** com os headers correspondentes do Arquivo do Arch e Linux LTS com headers dos repositórios atuais. O LTS aparece primeiro no menu GRUB e é o padrão em instalações novas. Em GPUs compatíveis, a versão inicial é NVIDIA Open DKMS **610.57.04**. Os pacotes arquivados e suas assinaturas são verificados antes de formatar. A série 7.2 encerrou o suporte upstream.
 
-A instalação limpa atual não fixa Linux em **7.2.15**: solicita os pacotes do repositório do Arch. Não prometa essa versão sem implementar uma fixação explicitamente solicitada. A aceitação de um kernel novo na instalação limpa depende de preservar o driver e validar compatibilidade; não concede à opção 5 permissão para trocar o kernel instalado.
+## Troca manual na Central
 
-## Autorização
+- **Kernel Linux** mostra o kernel em uso e as versões instaladas. A seleção troca `linux` e `linux-headers` juntos. Escolha uma versão anterior para reverter e selecione **Callas OS Linux** no GRUB para iniciá-la.
+- **Driver NVIDIA** verifica a GPU pelo barramento PCI, confere a pilha assinada e testa os módulos nos dois kernels. A ação **Reparar versão instalada** recompila os módulos da versão atual.
+- Se a listagem do Arquivo do Arch estiver indisponível, digite a versão do kernel no formato do pacote, como `7.2.15.arch1-1`, ou a versão do driver, como `610.57.04`. A instalação depende dos pacotes e assinaturas correspondentes.
+- Os seletores preparam os pacotes anteriores antes de aplicar a troca e tentam restaurá-los se houver falha depois que os pacotes mudarem. O Callas OS Update migra os blocos `IgnorePkg` antigos do projeto.
 
-A opção **4 — Atualizar geral** é o único fluxo do projeto que autoriza atualizar kernels/headers em um sistema instalado. Atualizações são exclusivamente manuais; os agendamentos antigos devem permanecer desativados. Opção 2, Discord, AUR e instalação pontual não autorizam alterações de kernel.
-
-A NVIDIA permanece na versão escolhida pelo usuário: série **595** por padrão em instalações novas, ou a versão já selecionada na máquina existente. Não a atualize para contornar incompatibilidade de kernel. O instalador limpo provisiona o sistema inicial com os auxiliares compartilhados do mesmo commit; não executa a interface da opção 5 e não pode anunciar conclusão se a NVIDIA fixada ou o boot falharem.
+A opção **4 — Atualizar geral** também pode atualizar os pares de kernel/headers. Ela preserva a escolha da NVIDIA nessa transação. As ações da Central são manuais. Os agendamentos antigos permanecem desativados.
 
 ## Antes da transação
 
-O hook `00-callas-kernel-policy.hook` recebe todos os alvos, usa PreTransaction, NeedsTargets e AbortOnFail, e roda antes dos hooks que removem módulos. O comando geral exige antes `callas-kernel-policy --check-hooks`: auxiliar e hooks precisam existir, pertencer a root, ter permissões seguras e corresponder às definições esperadas. A transação usa explicitamente o diretório desses hooks. Só o comando oficial da opção 4 recebe `CALLAS_KERNEL_UPDATE_CONTEXT=general`; não exporte essa autorização globalmente nem para o AUR.
+O hook `00-callas-kernel-policy.hook` recebe todos os alvos, usa PreTransaction, NeedsTargets e AbortOnFail, e roda antes dos hooks que removem módulos. O comando geral e os seletores exigem antes `callas-kernel-policy --check-hooks`: auxiliar e hooks precisam existir, pertencer a root, ter permissões seguras e corresponder às definições esperadas. A transação usa explicitamente o diretório desses hooks. Só o comando oficial da opção 4 recebe `CALLAS_KERNEL_UPDATE_CONTEXT=general`; não exporte essa autorização globalmente nem para o AUR.
 
-Com NVIDIA fixada, exige pares oficiais completos (`linux` e `linux-headers`, ou `linux-lts` e `linux-lts-headers`) na mesma transação. As versões do kernel e dos headers devem coincidir. Pacotes precisam estar disponíveis no cache após validação de assinatura/integridade pelo pacman; metadados são consultados em locale C, independentemente do idioma do sistema.
+O teste com NVIDIA exige pares oficiais completos (`linux` e `linux-headers`, ou `linux-lts` e `linux-lts-headers`) na mesma transação. As versões do kernel e dos headers devem coincidir. Na atualização geral, os pacotes candidatos vêm do cache do pacman. A seleção manual usa pacotes locais assinados como alvos da transação; metadados são consultados em locale C, independentemente do idioma do sistema.
 
-O teste extrai dados dos pacotes em diretório temporário, sem executar scripts de instalação. Um namespace de montagem privado usa a árvore candidata apenas naquela visão de `/usr/lib/modules`, mantém `/usr/src` somente leitura e direciona a árvore DKMS para a área temporária. Executa `dkms add` e `dkms build`, não `dkms install`. Os quatro módulos produzidos devem informar a versão NVIDIA fixada e o vermagic candidato.
+O teste extrai dados dos pacotes em diretório temporário, sem executar scripts de instalação. Um namespace de montagem privado usa a árvore candidata apenas naquela visão de `/usr/lib/modules`, mantém `/usr/src` somente leitura e direciona a árvore DKMS para a área temporária. Executa `dkms add` e `dkms build`, não `dkms install`. Os quatro módulos produzidos devem informar a versão NVIDIA instalada e o vermagic candidato.
 
 Falha no build, pacote/fonte/ferramenta ausente, par incompleto, kernel não suportado ou impossibilidade de criar isolamento bloqueiam a transação inteira. Se DKMS, compiladores ou bibliotecas/ferramentas de build/assinatura também forem mudar, a transação é bloqueada: não é seguro aprová-la com o ambiente anterior. Não contorne isso com atualização parcial da base ou troca do driver.
 

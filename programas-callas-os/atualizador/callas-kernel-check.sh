@@ -10,11 +10,10 @@ stage=$(mktemp -d /var/tmp/callas-kernel.XXXXXXXX)
 status=0
 declare -A installed_releases
 nvidia_version=''
-if [[ -r /etc/callas-nvidia-version ]]; then
+if [[ ${CALLAS_KERNEL_UPDATE_CONTEXT:-} == nvidia-selection ]]; then
+  nvidia_version=${CALLAS_NVIDIA_TARGET:?Versão NVIDIA selecionada ausente}
+elif [[ -r /etc/callas-nvidia-version ]]; then
   nvidia_version=$(< /etc/callas-nvidia-version)
-  if [[ ${CALLAS_KERNEL_UPDATE_CONTEXT:-} == nvidia-selection ]]; then
-    nvidia_version=${CALLAS_NVIDIA_TARGET:?Versão NVIDIA selecionada ausente}
-  fi
 fi
 exec 3>&1 4>&2
 # Keep diagnostics even when an unexpected command aborts the check. The
@@ -29,7 +28,7 @@ finish() {
   install -m 0600 "$stage/kernel.log" /var/lib/callas-os/kernel-check-last.log || status=1
   cat "$stage/kernel.log"
   /usr/local/libexec/callas-logs --record 'Kernel Linux' < "$stage/kernel.log" || status=1
-  if [[ -r /etc/callas-nvidia-version ]]; then
+  if [[ -n $nvidia_version ]]; then
     /usr/local/libexec/callas-logs --record 'Driver NVIDIA' < "$stage/kernel.log" || status=1
   fi
   if (( status )); then
@@ -58,9 +57,22 @@ falha() {
     exit 1
   fi
   pacman -Q linux linux-lts linux-headers linux-lts-headers || falha 'Pacote de kernel ou headers obrigatório ausente.'
-  if [[ -r /etc/callas-nvidia-version ]]; then
-    printf 'NVIDIA preservada na versão: %s\n' "$nvidia_version"
-    pacman -Q nvidia-open-dkms nvidia-utils lib32-nvidia-utils || falha 'A pilha NVIDIA está incompleta.'
+  if [[ -z $nvidia_version ]] && pacman -Qq nvidia-open-dkms >/dev/null 2>&1; then
+    falha 'O registro NVIDIA está ausente. Na Central, use Reparar versão instalada.'
+    exit 1
+  fi
+  if [[ -n $nvidia_version ]]; then
+    printf 'NVIDIA esperada: %s\n' "$nvidia_version"
+    if ! packages=$(pacman -Q nvidia-open-dkms nvidia-utils lib32-nvidia-utils); then
+      falha 'A pilha NVIDIA está incompleta.'
+      exit 1
+    fi
+    while read -r package installed; do
+      if [[ ${installed%-*} != "$nvidia_version" ]]; then
+        falha "$package diverge da versão NVIDIA esperada. Na Central, use Reparar versão instalada."
+        exit 1
+      fi
+    done <<< "$packages"
   fi
   for kernel in linux linux-lts; do
     found=0
@@ -76,7 +88,7 @@ falha() {
       if (( ! verify_only )) && command -v dkms >/dev/null; then
         dkms autoinstall -k "$release" || falha "DKMS não conseguiu preparar os módulos para $kernel ($release)."
       fi
-      if [[ -r /etc/callas-nvidia-version ]]; then
+      if [[ -n $nvidia_version ]]; then
         for module in nvidia nvidia-modeset nvidia-uvm nvidia-drm; do
           if ! version=$(modinfo -k "$release" -F version "$module"); then
             falha "Módulo NVIDIA ausente para $kernel ($release): $module."

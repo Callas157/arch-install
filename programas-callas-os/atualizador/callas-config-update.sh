@@ -330,7 +330,7 @@ if [[ -f $updater_desktop ]]; then
   sed -i 's/^Categories=.*/Categories=System;/' "$updater_desktop"
 fi
 rm -rf -- "$monitor_stage"
-# NVIDIA: versão e trava existentes preservadas por solicitação do usuário.
+# A versão NVIDIA instalada é preservada por esta atualização de configurações.
 
 phase_done tools
 fi

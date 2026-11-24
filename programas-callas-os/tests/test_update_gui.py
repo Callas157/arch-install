@@ -5,7 +5,7 @@ import tempfile
 import time
 import subprocess
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 def load(name):
@@ -19,6 +19,21 @@ from PySide6.QtWidgets import QApplication
 APP = QApplication.instance() or QApplication([])
 
 class UpdaterGuiTests(unittest.TestCase):
+    def test_kernel_selector_confirms_explicit_rollback(self):
+        with patch.object(gui.QTimer, 'singleShot'):
+            dialog = gui.KernelDialog()
+        dialog.current = '7.3.5.arch1-1'
+        dialog.controller = Mock()
+        dialog.versions.setEditText('7.2.15.arch1-1')
+        self.assertTrue(dialog.apply.isEnabled())
+        dialog.choose()
+        confirmation = dialog.controller.confirm_action.call_args.args
+        self.assertIn('Callas OS Linux', confirmation[1])
+        confirmation[2]()
+        dialog.controller.start.assert_called_once_with('kernel:7.2.15.arch1-1', True)
+        self.assertEqual(gui.action_command('kernel:7.2.15.arch1-1'),
+                         [gui.KERNEL_POLICY, '--kernel-select', '7.2.15.arch1-1'])
+
     def test_monitor_list_stays_between_texts_and_secondary_actions_stay_at_bottom(self):
         with patch.object(gui.MonitorDialog, 'detect'):
             dialog = gui.MonitorDialog()

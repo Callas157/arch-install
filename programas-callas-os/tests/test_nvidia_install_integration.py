@@ -18,11 +18,25 @@ class NvidiaInstallationIntegration(unittest.TestCase):
 
     def test_clean_install_stages_signed_preparer_before_disk_operations(self):
         script = INSTALLER.read_text()
-        self.assertIn('CALLAS_NVIDIA_STAGE', script)
         self.assertIn('callas-nvidia-default.json', script)
         self.assertIn('pacman-key --verify "$arquivo.sig" "$arquivo"', script)
-        self.assertLess(script.index('CALLAS_NVIDIA_STAGE'),
-                        script.index('arch-chroot /mnt'))
+        self.assertLess(script.index('--nvidia-check-hardware'), script.index('wipefs -af "$DISCO"'))
+        self.assertIn('programas-callas-os/instalador/callas-nvidia-prepare.py', RELEASE.read_text())
+
+    def test_clean_install_uses_archived_primary_pair_and_lts_from_repo(self):
+        script = INSTALLER.read_text()
+        base = script.split('pacstrap -K /mnt ', 1)[1].split('\ngenfstab', 1)[0].split()
+        self.assertIn('linux-lts', base)
+        self.assertIn('linux-lts-headers', base)
+        self.assertNotIn('linux', base)
+        self.assertNotIn('linux-headers', base)
+        self.assertLess(script.index('for pacote in linux linux-headers; do'), script.index('wipefs -af "$DISCO"'))
+        self.assertIn('linux-headers-$kernel_version-x86_64.pkg.tar.zst', script)
+        self.assertIn('LocalFileSigLevel = Required', script)
+        config = script.split("<<'CALLAS_CHROOT'", 1)[1]
+        self.assertNotIn('pacman -Syu', config)
+        self.assertNotIn('IgnorePkg', config)
+        self.assertLess(config.index("menuentry 'Callas OS (kernel LTS"), config.index("menuentry 'Callas OS Linux'"))
 
     def test_clean_install_patches_before_dkms_then_verifies_both_kernels(self):
         script = INSTALLER.read_text()
@@ -30,9 +44,9 @@ class NvidiaInstallationIntegration(unittest.TestCase):
         self.assertIn("30-callas-nvidia-initial-compat.hook", chroot)
         self.assertIn('When = PostTransaction', chroot)
         self.assertIn('Exec = /usr/local/libexec/callas-nvidia-prepare --compat-installed', chroot)
-        self.assertLess(chroot.index('printf \'%s\\n\' "$nvidia_version"'),
-                        chroot.index('pacman -U --noconfirm'))
-        self.assertLess(chroot.index('pacman -U --noconfirm'),
+        local_install = 'pacman --config /var/tmp/callas-install-pacman.conf -U --noconfirm'
+        self.assertLess(chroot.index('printf \'%s\\n\' "$nvidia_version"'), chroot.index(local_install))
+        self.assertLess(chroot.index(local_install),
                         chroot.index('"$libexec/callas-nvidia-prepare"'))
         self.assertLess(chroot.index('"$libexec/callas-nvidia-prepare"'),
                         chroot.index('mkinitcpio -P'))

@@ -11,7 +11,7 @@ policy = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(policy)
 
 
-class NvidiaBranch595Tests(unittest.TestCase):
+class NvidiaArchiveTests(unittest.TestCase):
     def setUp(self):
         self.index = {
             'nvidia-open-dkms': {'595.91.07': 'https://archive.archlinux.org/core/595a',
@@ -30,26 +30,27 @@ class NvidiaBranch595Tests(unittest.TestCase):
         self.patcher.stop()
 
     def test_optional_packages_do_not_hide_595(self):
-        data = policy.default_driver()
-        self.assertEqual(data['version'], '595.91.07')
-        self.assertEqual(set(data['packages']), set(policy.DRIVER))
+        catalog = policy.driver_catalog((*policy.DRIVER, 'nvidia-settings', 'libxnvctrl'))
+        self.assertEqual(set(catalog['595.91.07']), set(policy.DRIVER))
 
-    def test_matching_optional_pair_is_installed(self):
-        self.index['nvidia-settings']['595.91.07'] = 'https://archive.archlinux.org/opt/595a'
-        self.index['libxnvctrl']['595.91.07'] = 'https://archive.archlinux.org/opt/595b'
+    def test_installer_starts_with_exact_nvidia_610_arch_packages(self):
         data = policy.default_driver()
-        self.assertEqual(set(data['packages']), set(policy.DRIVER) | {'nvidia-settings', 'libxnvctrl'})
+        self.assertEqual(data['version'], '610.57.04')
+        self.assertEqual(data['packages'], {name: policy.package_url(name, '610.57.04-1')
+                                             for name in (*policy.DRIVER, 'nvidia-settings', 'libxnvctrl')})
 
-    def test_incomplete_core_rejects_default(self):
+    def test_saved_installer_manifest_remains_on_595(self):
+        self.assertEqual(policy.legacy_default_driver()['version'], '595.91.07')
+
+    def test_incomplete_core_is_absent_from_switch_catalog(self):
         del self.index['lib32-nvidia-utils']['595.91.07']
-        with self.assertRaisesRegex(RuntimeError, 'pilha NVIDIA Open DKMS 595'):
-            policy.default_driver()
+        self.assertNotIn('595.91.07', policy.driver_catalog(policy.DRIVER))
 
-    def test_newest_complete_patch_within_595(self):
+    def test_newer_complete_patch_remains_selectable(self):
         for p in policy.DRIVER:
             self.index[p]['595.112.07'] = f'https://archive.archlinux.org/new/{p}'
-        data = policy.default_driver()
-        self.assertEqual(data['version'], '595.112.07')
+        self.assertEqual(list(policy.driver_catalog(policy.DRIVER)),
+                         ['610.57.04', '595.112.07', '595.91.07'])
 
 
 if __name__ == '__main__':

@@ -126,7 +126,7 @@ GPU_PACOTES=(mesa)
 if grep -q '^10de:' <<<"$GPU_PCI"; then
   NVIDIA=1
   GPU_PACOTES+=(egl-wayland)
-  echo "GPU NVIDIA detectada: a instalação buscará a série NVIDIA 595 completa e assinada."
+  echo "GPU NVIDIA detectada: a instalação buscará a pilha Open DKMS 610.57.04 assinada."
 fi
 if grep -q '^1002:' <<<"$GPU_PCI"; then
   AMD_GPU=1
@@ -164,9 +164,6 @@ if (( RISEMODE )); then
 else
   echo "Water cooler Rise Mode aa88:8666 não detectado: integração será ignorada."
 fi
-
-# A seleção da pilha NVIDIA 595 ocorre após o estágio de auxiliares
-# verificado e ANTES de qualquer operação destrutiva nos discos.
 
 # ---------------- Escolha do disco ----------------
 BOOTPART="$(findmnt -no SOURCE /run/archiso/bootmnt 2>/dev/null || true)"
@@ -286,11 +283,15 @@ done
 
 # Full installation output, excluding hidden password input and without shell tracing.
 CALLAS_INSTALL_LOG=$(mktemp /var/tmp/callas-install.XXXXXXXX.log)
+CALLAS_SECURITY_TMP=
+CALLAS_ARCHIVES=
 finish_installation() {
   local code=$?
   trap - EXIT
   exec 1>&3 2>&4
   wait "$CALLAS_INSTALL_LOG_PID" || :
+  [[ -z ${CALLAS_SECURITY_TMP:-} ]] || rm -rf -- "$CALLAS_SECURITY_TMP"
+  [[ -z ${CALLAS_ARCHIVES:-} ]] || rm -rf -- "$CALLAS_ARCHIVES"
   if mountpoint -q /mnt; then
     install -d -m 0700 /mnt/var/log/callas-os/Instalacao
     install -d -m 0755 /mnt/var/lib/callas-os
@@ -315,6 +316,7 @@ trap finish_installation EXIT
 # ---------------- Preparação da ISO ----------------
 timedatectl set-ntp true
 sed -i 's/^#ParallelDownloads.*/ParallelDownloads = 10/' /etc/pacman.conf
+sed -i '/^#\[multilib\]/,/^#Include/ s/^#//' /etc/pacman.conf
 pacman -Sy --noconfirm archlinux-keyring
 
 # Valida a ferramenta adicional antes de apagar o disco.
@@ -362,71 +364,45 @@ compile(payload, str(source), 'exec')
 print('Complemento de armazenamento validado, sem alteração dos outros discos.')
 CALLAS_STORAGE_STAGE
 
-# NVIDIA: baixa auxiliar exclusivamente da instalação limpa, do mesmo commit
-# imutável, e confere o blob antes de qualquer formatação de disco.
+# Downloads assinados são conferidos antes de qualquer gravação nos discos.
+CALLAS_ARCHIVES=$(mktemp -d /tmp/callas-archives.XXXXXXXX)
+policy="$CALLAS_SECURITY_TMP/callas-kernel-policy.py"
+kernel_version=$(python "$policy" --kernel-default)
+echo ">>> Preparando kernel Linux $kernel_version e headers"
+
+baixar_pacote_arch() {
+  local url=$1 arquivo
+  [[ $url == https://archive.archlinux.org/packages/* ]] || return 1
+  arquivo="$CALLAS_ARCHIVES/${url##*/}"
+  curl --proto '=https' --proto-redir '=https' -fLSs --retry 2 --connect-timeout 15 --max-time 900 \
+    "$url" -o "$arquivo" &&
+  curl --proto '=https' --proto-redir '=https' -fLSs --retry 2 --connect-timeout 15 --max-time 60 \
+    "$url.sig" -o "$arquivo.sig" &&
+  pacman-key --verify "$arquivo.sig" "$arquivo"
+}
+
+for pacote in linux linux-headers; do
+  arquivo="$pacote-$kernel_version-x86_64.pkg.tar.zst"
+  baixar_pacote_arch "https://archive.archlinux.org/packages/l/$pacote/$arquivo" || {
+    echo "ERRO: não foi possível preparar $arquivo com assinatura válida. Discos preservados." >&2
+    exit 1
+  }
+  [[ $(LC_ALL=C pacman -Qp "$CALLAS_ARCHIVES/$arquivo") == "$pacote $kernel_version" ]] || exit 1
+done
+
 if (( NVIDIA )); then
-  curl --proto '=https' --proto-redir '=https' -fsSL --retry 2 \
-    "$CALLAS_PROGRAMAS_BASE/instalador/callas-nvidia-prepare.py" \
-    -o "$CALLAS_SECURITY_TMP/callas-nvidia-prepare.py"
-  python - "$CALLAS_SECURITY_TMP/callas-nvidia-prepare.py" "$CALLAS_ASSET_REF" <<'CALLAS_NVIDIA_STAGE'
-import hashlib, json, pathlib, sys, urllib.request
-source = pathlib.Path(sys.argv[1])
-ref = sys.argv[2]
-path = 'programas-callas-os/instalador/callas-nvidia-prepare.py'
-request = urllib.request.Request(
-    'https://api.github.com/repos/Callas157/arch-install/git/trees/' + ref + '?recursive=1',
-    headers={'User-Agent': 'CallasOS-Installer'})
-with urllib.request.urlopen(request, timeout=60) as response:
-    tree = json.load(response)
-if tree.get('truncated'):
-    raise RuntimeError('Árvore de arquivos incompleta; instalação interrompida.')
-matches = [item for item in tree['tree'] if item.get('path') == path
-           and item.get('type') == 'blob' and item.get('mode') in ('100644', '100755')]
-if len(matches) != 1:
-    raise RuntimeError('Auxiliar NVIDIA selecionado não identificado no commit.')
-payload = source.read_bytes()
-digest = hashlib.sha1(b'blob ' + str(len(payload)).encode() + b'\0' + payload).hexdigest()
-if digest != matches[0]['sha']:
-    raise RuntimeError('Auxiliar NVIDIA diferente do GitHub; instalação interrompida.')
-compile(payload, str(source), 'exec')
-print('Auxiliar NVIDIA verificado antes de alterar os discos.')
-CALLAS_NVIDIA_STAGE
-  # O catálogo usa apenas os três pacotes obrigatórios para não ocultar 595
-  # devido a utilitários opcionais. O estágio foi validado pelo blob do Git.
-  echo '>>> Selecionando a NVIDIA 595 antes de formatar qualquer disco'
-  python "$CALLAS_SECURITY_TMP/callas-kernel-policy.py" --nvidia-default \
-    > "$CALLAS_SECURITY_TMP/callas-nvidia-default.json" || {
-      echo 'ERRO: não encontrei NVIDIA 595 completa no arquivo do Arch. Discos preservados.' >&2
+  echo '>>> Preparando NVIDIA 610.57.04'
+  manifest="$CALLAS_SECURITY_TMP/callas-nvidia-default.json"
+  python "$policy" --nvidia-install-default > "$manifest"
+  mapfile -t nvidia_urls < <(python -c 'import json,sys; print(*json.load(open(sys.argv[1]))["packages"].values(), sep="\n")' "$manifest")
+  (( ${#nvidia_urls[@]} >= 3 )) || { echo 'ERRO: pilha NVIDIA inicial incompleta.' >&2; exit 1; }
+  for url in "${nvidia_urls[@]}"; do
+    baixar_pacote_arch "$url" || {
+      echo "ERRO: não foi possível preparar ${url##*/} com assinatura válida. Discos preservados." >&2
       exit 1
     }
-  python - "$CALLAS_SECURITY_TMP/callas-nvidia-default.json" <<'CALLAS_NVIDIA_MANIFEST'
-import json, sys
-from urllib.parse import urlparse
-with open(sys.argv[1], encoding='utf-8') as stream:
-    manifest = json.load(stream)
-required = {'nvidia-open-dkms', 'nvidia-utils', 'lib32-nvidia-utils'}
-packages = manifest.get('packages', {})
-if not manifest.get('version', '').startswith('595.') or not required <= set(packages):
-    raise SystemExit('Manifesto NVIDIA 595 inválido; discos preservados.')
-if not all(urlparse(url).scheme == 'https' and
-           urlparse(url).hostname == 'archive.archlinux.org' for url in packages.values()):
-    raise SystemExit('Origem NVIDIA inválida; discos preservados.')
-print('NVIDIA selecionada: ' + manifest['version'])
-CALLAS_NVIDIA_MANIFEST
-  mapfile -t NVIDIA_URLS < <(python - "$CALLAS_SECURITY_TMP/callas-nvidia-default.json" <<'CALLAS_NVIDIA_URLS'
-import json, sys
-print(*json.load(open(sys.argv[1]))['packages'].values(), sep='\n')
-CALLAS_NVIDIA_URLS
-  )
-  for url in "${NVIDIA_URLS[@]}"; do
-    curl -fIsSL --retry 2 --connect-timeout 10 --max-time 30 "$url" >/dev/null || {
-      echo "ERRO: pacote NVIDIA ausente: ${url##*/}; discos preservados." >&2; exit 1;
-    }
-    curl -fIsSL --retry 2 --connect-timeout 10 --max-time 30 "$url.sig" >/dev/null || {
-      echo "ERRO: assinatura NVIDIA ausente: ${url##*/}.sig; discos preservados." >&2; exit 1;
-    }
   done
-  echo 'NVIDIA 595 pronta para baixar e instalar após preparar o sistema.'
+  python "$policy" --nvidia-check-hardware "$CALLAS_ARCHIVES/nvidia-utils-610.57.04-1-x86_64.pkg.tar.zst"
 fi
 
 # Revalida TODOS os dispositivos selecionados antes de qualquer gravação.
@@ -483,8 +459,8 @@ done
 # ---------------- Instalação base ----------------
 echo ">>> Instalando pacotes (isso demora)"
 pacstrap -K /mnt \
-  base linux linux-lts linux-firmware "$UCODE_PACKAGE" base-devel sudo nano git curl gnupg acl grub efibootmgr \
-  linux-headers linux-lts-headers dkms pciutils usbutils usb_modeswitch libnotify \
+  base linux-lts linux-firmware "$UCODE_PACKAGE" base-devel sudo nano git curl gnupg acl grub efibootmgr \
+  linux-lts-headers dkms pciutils usbutils usb_modeswitch libnotify \
   networkmanager "${REDE_PACOTES[@]}" \
   plasma-desktop sddm sddm-kcm plasma-nm plasma-pa kscreen powerdevil xorg-xwayland \
   konsole dolphin kate ark gwenview okular spectacle kdeplasma-addons \
@@ -501,6 +477,26 @@ pacstrap -K /mnt \
   zram-generator ufw plasma-firewall rebuild-detector pacman-contrib gpu-screen-recorder-ui
 
 genfstab -U /mnt > /mnt/etc/fstab
+
+# Pacstrap usa um único conjunto de bancos para o Arch atual, inclusive o multilib.
+# Os pacotes arquivados do kernel principal entram em uma transação separada.
+install -d /mnt/var/cache/pacman/pkg /mnt/var/tmp
+install -m 0644 -- "$CALLAS_ARCHIVES/"* /mnt/var/cache/pacman/pkg/
+rm -rf -- "$CALLAS_ARCHIVES"
+CALLAS_ARCHIVES=
+cat > /mnt/var/tmp/callas-install-pacman.conf <<'CALLAS_LOCAL_PACMAN'
+[options]
+Architecture = auto
+SigLevel = Required
+LocalFileSigLevel = Required
+CALLAS_LOCAL_PACMAN
+arch-chroot /mnt pacman --config /var/tmp/callas-install-pacman.conf -U --noconfirm -- \
+  "/var/cache/pacman/pkg/linux-$kernel_version-x86_64.pkg.tar.zst" \
+  "/var/cache/pacman/pkg/linux-headers-$kernel_version-x86_64.pkg.tar.zst"
+[[ $(arch-chroot /mnt pacman -Q linux linux-headers) == "$(printf 'linux %s\nlinux-headers %s' "$kernel_version" "$kernel_version")" ]] || {
+  echo "ERRO: o kernel principal e seus headers não correspondem à versão $kernel_version." >&2
+  exit 1
+}
 
 UUID_RAIZ="$(blkid -s UUID -o value "$RAIZ")"
 
@@ -744,6 +740,10 @@ atualizar_arch() {
         return 1
     }
     mountpoint -q /boot || { printf 'A partição /boot não está montada; atualização geral interrompida antes do pacman.\n' >&2; return 1; }
+    if [[ ! -s /etc/callas-nvidia-version ]] && pacman -Qq nvidia-open-dkms >/dev/null 2>&1; then
+        printf 'Registro NVIDIA ausente. Na Central, use Driver NVIDIA → Reparar versão instalada.\n' >&2
+        return 1
+    fi
     local origem=$1 dbpath tentativa
     local -a dependencias=() confirmacao=(--noconfirm)
     dbpath=$(pacman-conf DBPath) || return
@@ -785,8 +785,13 @@ atualizar_arch() {
         done
         (( falhou_modulo == 0 )) || return 1
     else
-        CALLAS_KERNEL_UPDATE_CONTEXT=general pacman --hookdir /etc/pacman.d/hooks -Syu --needed "${confirmacao[@]}" "${dependencias[@]}"
+        CALLAS_KERNEL_UPDATE_CONTEXT=general pacman --hookdir /etc/pacman.d/hooks -Syu --needed "${confirmacao[@]}" "${dependencias[@]}" || return
     fi
+    if [[ -e /var/lib/callas-os/kernel-check-failed ]]; then
+        printf 'A validação do boot falhou. Consulte os logs antes de reiniciar.\n' >&2
+        return 1
+    fi
+    /usr/local/libexec/callas-kernel-check --verify-only
 }
 
 atualizar_aur() (
@@ -2288,42 +2293,24 @@ printf '127.0.0.1 localhost\n::1 localhost\n127.0.1.1 %s.localdomain %s\n' "$hos
 sed -i 's/^#ParallelDownloads.*/ParallelDownloads = 10/; s/^#Color/Color/' /etc/pacman.conf
 sed -i '/^#\[multilib\]/,/^#Include/ s/^#//' /etc/pacman.conf
 
-# NVIDIA: a série 595 é o padrão de instalações novas. A versão exata
-# foi resolvida antes da formatação, num manifesto validado do Arch Archive.
-# Atualizações gerais preservam a escolha; a Central permite troca manual.
+# A pilha NVIDIA inicial foi baixada e verificada antes de formatar.
 if (( nvidia )); then
-  pacman -Syu --needed --noconfirm lib32-libglvnd egl-wayland
-
+  pacman -S --needed --noconfirm lib32-libglvnd egl-wayland egl-wayland2 egl-gbm egl-x11 jansson gtk3 libxv libvdpau
   nvidia_manifest=/usr/local/share/callas-os/security-stage/callas-nvidia-default.json
-  [[ -s $nvidia_manifest ]] || { echo 'ERRO: manifesto NVIDIA 595 ausente.' >&2; exit 1; }
   nvidia_version=$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$nvidia_manifest")
-  [[ $nvidia_version == 595.* ]] || { echo 'ERRO: versão inicial NVIDIA não pertence à série 595.' >&2; exit 1; }
-  mapfile -t nvidia_urls < <(python -c 'import json,sys; print(*json.load(open(sys.argv[1]))["packages"].values(),sep="\n")' "$nvidia_manifest")
-  (( ${#nvidia_urls[@]} >= 3 )) || { echo 'ERRO: pilha NVIDIA inicial incompleta.' >&2; exit 1; }
-
-  nvidia_dir=$(mktemp -d /var/tmp/callas-nvidia.XXXXXXXX)
+  [[ $nvidia_version == 610.57.04 ]] || { echo 'ERRO: versão NVIDIA inicial inesperada.' >&2; exit 1; }
+  mapfile -t nvidia_urls < <(python -c 'import json,sys; print(*json.load(open(sys.argv[1]))["packages"].values(), sep="\n")' "$nvidia_manifest")
   nvidia_pkgs=()
   for url in "${nvidia_urls[@]}"; do
-    arquivo="$nvidia_dir/${url##*/}"
-    curl -fL --retry 3 --connect-timeout 15 --max-time 300 "$url" -o "$arquivo" || {
-      echo "ERRO: não foi possível baixar ${url##*/} do Arch Linux Archive." >&2; exit 1;
-    }
-    curl -fL --retry 3 --connect-timeout 15 --max-time 60 "$url.sig" -o "$arquivo.sig" || {
-      echo "ERRO: assinatura ausente para ${url##*/}." >&2; exit 1;
-    }
-    pacman-key --verify "$arquivo.sig" "$arquivo" || {
-      echo 'ERRO: assinatura NVIDIA inválida.' >&2; exit 1;
-    }
-    nvidia_pkgs+=("$arquivo")
+    nvidia_pkgs+=("/var/cache/pacman/pkg/${url##*/}")
   done
-  # Fixação inicial antes do pacman: o hook DKMS precisa conhecer a versão
-  # durante PostTransaction. Em instalação nova não existe escolha anterior.
+  (( ${#nvidia_pkgs[@]} >= 3 )) || { echo 'ERRO: pilha NVIDIA inicial incompleta.' >&2; exit 1; }
+
+  # O hook DKMS usa o registro da versão enquanto o pacote é instalado.
   printf '%s\n' "$nvidia_version" > /etc/callas-nvidia-version
-  # A NVIDIA 595.71.05 precisa da adaptação DRM antes do hook 70-dkms-install.
-  # Hook temporário apenas para o pacote inicial, instalado na ordem correta.
-  if [[ $nvidia_version == 595.71.05 ]]; then
-    install -d -m 0755 /etc/pacman.d/hooks
-    cat > /etc/pacman.d/hooks/30-callas-nvidia-initial-compat.hook <<'CALLAS_NVIDIA_INIT_HOOK'
+  chmod 0644 /etc/callas-nvidia-version
+  install -d -m 0755 /etc/pacman.d/hooks
+  cat > /etc/pacman.d/hooks/30-callas-nvidia-initial-compat.hook <<'CALLAS_NVIDIA_INIT_HOOK'
 [Trigger]
 Operation = Install
 Operation = Upgrade
@@ -2331,28 +2318,21 @@ Type = Package
 Target = nvidia-open-dkms
 
 [Action]
-Description = Preparar NVIDIA 595.71.05 para DRM Linux 7.2+ antes do DKMS
+Description = Preparar compatibilidade NVIDIA antes do DKMS
 When = PostTransaction
 Exec = /usr/local/libexec/callas-nvidia-prepare --compat-installed
 CALLAS_NVIDIA_INIT_HOOK
-  fi
-  pacman -U --noconfirm "${nvidia_pkgs[@]}" ||
-    { echo 'ERRO: a instalação da pilha NVIDIA assinada falhou; não concluir boot.' >&2; exit 1; }
+  pacman --config /var/tmp/callas-install-pacman.conf -U --noconfirm -- "${nvidia_pkgs[@]}" ||
+    { echo 'ERRO: a instalação da pilha NVIDIA assinada falhou.' >&2; exit 1; }
   rm -f /etc/pacman.d/hooks/30-callas-nvidia-initial-compat.hook
   for pacote in nvidia-open-dkms nvidia-utils lib32-nvidia-utils; do
-    instalado=$(pacman -Q "$pacote" | awk '{sub(/-[^-]*$/, "", $2); print $2}') ||
-      { echo "ERRO: pacote NVIDIA ausente: $pacote" >&2; exit 1; }
-    [[ $instalado == "$nvidia_version" ]] ||
-      { echo "ERRO: $pacote não corresponde à NVIDIA $nvidia_version." >&2; exit 1; }
+    [[ $(pacman -Q "$pacote") == "$pacote $nvidia_version-1" ]] || {
+      echo "ERRO: $pacote não corresponde à NVIDIA $nvidia_version." >&2
+      exit 1
+    }
   done
-  # Só o gerenciador NVIDIA pode mudar a versão selecionada. O IgnorePkg
-  # continua protegendo a pilha das atualizações gerais e do Paru.
-  sed -i '/^# CALLAS_NVIDIA_610_BEGIN$/,/^# CALLAS_NVIDIA_610_END$/d' /etc/pacman.conf
-  sed -i '/^# CALLAS_NVIDIA_PIN_BEGIN$/,/^# CALLAS_NVIDIA_PIN_END$/d' /etc/pacman.conf
-  sed -i '/^\[options\]$/a # CALLAS_NVIDIA_PIN_BEGIN\nIgnorePkg = nvidia-utils nvidia-open-dkms nvidia-open nvidia-open-lts lib32-nvidia-utils nvidia-settings libxnvctrl opencl-nvidia lib32-opencl-nvidia\n# CALLAS_NVIDIA_PIN_END' /etc/pacman.conf
-  printf '%s\n' "$nvidia_version" > /etc/callas-nvidia-version
-  rm -rf "$nvidia_dir"
 fi
+rm -f /var/tmp/callas-install-pacman.conf
 
 printf '%%wheel ALL=(ALL:ALL) ALL\n' > /etc/sudoers.d/10-wheel
 chmod 0440 /etc/sudoers.d/10-wheel
@@ -2418,7 +2398,7 @@ ZRAM
 # Dependências gráficas do Steam. O driver virtual ou de software evita
 # puxar NVIDIA em uma VM que apresenta apenas VMSVGA, Virtio ou VGA.
 gpu_multilib=(lib32-mesa)
-# Em NVIDIA, lib32-nvidia-utils da série 595 já foi instalado e fixado acima.
+# Em NVIDIA, lib32-nvidia-utils já foi instalado com a mesma versão do DKMS.
 if (( amd_gpu )); then
   gpu_multilib+=(vulkan-radeon lib32-vulkan-radeon)
 fi
@@ -2431,9 +2411,9 @@ fi
 if (( ! nvidia && ! amd_gpu && ! intel_gpu )); then
   gpu_multilib+=(vulkan-swrast lib32-vulkan-swrast)
 fi
-pacman -Syu --needed --noconfirm "${gpu_multilib[@]}" vulkan-icd-loader lib32-vulkan-icd-loader steam discord shotcut
+pacman -S --needed --noconfirm "${gpu_multilib[@]}" vulkan-icd-loader lib32-vulkan-icd-loader steam discord shotcut
 
-# Arch recebe kernels atuais. Somente prossegue ao mkinitcpio depois que o
+# Somente prossegue ao mkinitcpio depois que o
 # DKMS selecionado foi compilado e seus quatro módulos conferidos em Linux e Linux LTS.
 # Adapta a API dmem quando reconhecida; nunca troca o driver automaticamente.
 if (( nvidia )); then
@@ -2502,16 +2482,16 @@ rm -f /etc/grub.d/42_callas_diagnostico /etc/grub.d/43_callas_recuperacao_lts
 cat > /etc/grub.d/09_callas <<'GRUB_CALLAS'
 #!/bin/sh
 cat <<'MENU'
-menuentry 'Callas OS Linux' --class gnu-linux --class callas {
-    search --no-floppy --fs-uuid --set=root CALLAS_EFI_UUID
-    linux /vmlinuz-linux root=UUID=CALLAS_ROOT_UUID rw quiet splashCALLAS_NVIDIA_ARGS
-    initrd /initramfs-linux.img
-}
-
 menuentry 'Callas OS (kernel LTS - recuperação)' --class gnu-linux --class callas {
     search --no-floppy --fs-uuid --set=root CALLAS_EFI_UUID
     linux /vmlinuz-linux-lts root=UUID=CALLAS_ROOT_UUID rw quiet splashCALLAS_NVIDIA_ARGS
     initrd /initramfs-linux-lts.img
+}
+
+menuentry 'Callas OS Linux' --class gnu-linux --class callas {
+    search --no-floppy --fs-uuid --set=root CALLAS_EFI_UUID
+    linux /vmlinuz-linux root=UUID=CALLAS_ROOT_UUID rw quiet splashCALLAS_NVIDIA_ARGS
+    initrd /initramfs-linux.img
 }
 
 menuentry 'Callas OS (diagnóstico sem splash)' --class gnu-linux --class callas {

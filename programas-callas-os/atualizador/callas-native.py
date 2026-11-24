@@ -16,6 +16,9 @@ FROZEN = frozenset(('base', 'filesystem', 'glibc', 'bash', 'coreutils', 'sudo', 
     'grub', 'efibootmgr', 'sddm', 'kwin', 'mesa', 'lib32-mesa', 'gdm', 'dbus', 'dbus-broker',
     'networkmanager', 'linux-firmware', 'linux-api-headers', 'plymouth', 'dracut', 'booster', 'amd-ucode', 'intel-ucode', 'kmod', 'libxnvctrl'))
 PREFIXES = ('linux', 'nvidia', 'lib32-nvidia', 'systemd', 'pacman', 'mkinitcpio', 'plasma', 'opencl-nvidia', 'lib32-opencl-nvidia', 'vulkan-', 'lib32-vulkan')
+DRIVER_RECORD = Path('/etc/callas-nvidia-version')
+DRIVER_PACKAGES = {'nvidia-utils', 'nvidia-open-dkms', 'nvidia-open', 'nvidia-open-lts',
+                   'lib32-nvidia-utils', 'nvidia-settings', 'libxnvctrl', 'opencl-nvidia', 'lib32-opencl-nvidia'}
 
 def frozen(name): return name in FROZEN or name.startswith(PREFIXES)
 
@@ -36,7 +39,7 @@ def guarded_transaction(arguments, runner=None):
     options = {'--noconfirm'} if arguments[0] == '-R' else {'--needed', '--noconfirm', '--asdeps'}
     if any(arg.startswith('-') and arg not in options for arg in arguments[1:]):
         raise ValueError('Sincronização e atualização geral não são permitidas neste fluxo.')
-    with tempfile.TemporaryDirectory(prefix='callas-install-', dir='/var/tmp') as temp:
+    with tempfile.TemporaryDirectory(prefix='callas-install-') as temp:
         guard = Path(temp) / 'guard.py'
         guard.write_text(pretransaction_code())
         guard.chmod(0o600)
@@ -71,15 +74,22 @@ def install_packages(packages):
         print('Instalação pontual não concluída. Nenhuma atualização geral será iniciada automaticamente.', file=sys.stderr)
     return result.returncode
 
+def pending_updates(output, exclusions):
+    return [entry for line in output.splitlines() if (entry := line.strip())
+            and '[ignored]' not in entry and entry.split()[0] not in exclusions]
+
+
 def update():
-    with tempfile.TemporaryDirectory(prefix='callas-native-', dir='/var/tmp') as temp:
+    with tempfile.TemporaryDirectory(prefix='callas-native-') as temp:
         env = dict(os.environ, CHECKUPDATES_DB=temp + '/db', LC_ALL='C')
         check = subprocess.run(['/usr/bin/checkupdates'], env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True)
         if check.returncode == 2:
             print('Aplicativos oficiais: nenhuma atualização disponível.'); return 0
         if check.returncode:
             print(check.stderr, file=sys.stderr); return 1
-        pending = [line.split()[0] for line in check.stdout.splitlines() if line.split() and '[ignored]' not in line]
+        exclusions = DRIVER_PACKAGES if DRIVER_RECORD.is_file() else set()
+        expected = pending_updates(check.stdout, exclusions)
+        pending = [line.split()[0] for line in expected]
         blocked = [name for name in pending if frozen(name)]
         if not any(not frozen(name) for name in pending):
             print('Nenhum aplicativo oficial pendente; alterações de base ficam reservadas a Atualizar geral.')
@@ -95,9 +105,8 @@ def update():
         if local.returncode not in (0, 1) or (local.returncode == 1 and (local.stdout or local.stderr)):
             print('Não consegui verificar o banco local de pacotes.', file=sys.stderr)
             return 1
-        expected = {line.strip() for line in check.stdout.splitlines() if line.strip() and '[ignored]' not in line}
-        current = {line.strip() for line in local.stdout.splitlines() if line.strip() and '[ignored]' not in line}
-        if current != expected:
+        current = pending_updates(local.stdout, exclusions)
+        if set(current) != set(expected):
             print('Aplicativos adiados: banco local difere dos repositórios atuais. Use a opção 4 quando decidir atualizar a base.')
             return 2
         return install_packages(pending)

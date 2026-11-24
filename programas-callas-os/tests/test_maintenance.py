@@ -140,6 +140,20 @@ class LogTests(unittest.TestCase):
             logs.prune(base); self.assertTrue(file.exists())
 
 class NativeTests(unittest.TestCase):
+    def test_selected_driver_does_not_defer_unrelated_app_updates(self):
+        selected = 'nvidia-utils 610.57.04-1 -> 620.70.06-1\n'
+        app = 'qbittorrent 1 -> 2\n'
+        repo = types.SimpleNamespace(returncode=0, stdout=selected + app, stderr='')
+        local = types.SimpleNamespace(returncode=0, stdout=app, stderr='')
+        with tempfile.TemporaryDirectory() as directory:
+            marker = Path(directory) / 'driver-version'
+            marker.write_text('610.57.04\n')
+            with patch.object(native, 'DRIVER_RECORD', marker), \
+                    patch.object(native.subprocess, 'run', side_effect=[repo, local]), \
+                    patch.object(native, 'install_packages', return_value=0) as install:
+                self.assertEqual(native.update(), 0)
+                install.assert_called_once_with(['qbittorrent'])
+
     def test_pretransaction_guard_blocks_kernel_and_boot(self):
         for packages, expected in (('qbittorrent\nqt6-base\n',0),('linux\n',1),('mkinitcpio\n',1),('grub\n',1),('amd-ucode\n',1)):
             with self.subTest(packages=packages):

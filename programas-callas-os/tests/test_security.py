@@ -142,7 +142,11 @@ class ShellTests(unittest.TestCase):
                     (base / ('boot/vmlinuz-' + pkg)).write_text('kernel')
                     (base / ('boot/initramfs-' + pkg + '.img')).write_text('initramfs')
                 (base / 'boot/grub/grub.cfg').write_text('menuentry Callas\nvmlinuz-linux\nvmlinuz-linux-lts\n')
-                for cmd, body in {'mountpoint':'exit 0', 'pacman':'exit 0', 'dkms':'exit 0',
+                pacman = '''if [[ $1 == -Q && $2 == nvidia-open-dkms ]]; then
+    shift
+    printf '%s 610.57.04-1\\n' "$@"
+fi'''
+                for cmd, body in {'mountpoint':'exit 0', 'pacman':pacman, 'dkms':'exit 0',
                                   'modinfo': 'exit 1' if fail else 'if [[ $4 == vermagic ]]; then echo "$2 SMP"; else echo 610.57.04; fi', 'mkinitcpio':'exit 0',
                                   'lsinitcpio': 'printf "usr/lib/modules/main/kernel/module.ko\\nusr/lib/modules/lts/kernel/module.ko\\n"',
                                   'grub-script-check':'exit 0',

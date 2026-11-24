@@ -202,7 +202,7 @@ def prepare_compat_tree(source, release):
         raise RuntimeError('Release do kernel inválido.')
     if kernel_family(release) >= (7, 2):
         patch_595_atomic_tree(source)
-    if kernel_family(release) >= (7, 3):
+    if PINNED == '610.57.04' or kernel_family(release) >= (7, 3):
         patch_73_source(source / 'kernel-open/nvidia/os-interface.c' if
                         (source / 'kernel-open/nvidia/os-interface.c').is_file()
                         else source / 'nvidia/os-interface.c')
@@ -212,7 +212,7 @@ def prepare_installed_source():
     """Pacman PostTransaction pre-DKMS: patch only the newly installed source."""
     if os.geteuid() != 0:
         raise RuntimeError('Compatibilidade NVIDIA exige root.')
-    if PINNED != '595.71.05':
+    if PINNED not in ('595.71.05', '610.57.04'):
         return
     releases = versions()
     newer = [value for value in releases.values() if kernel_family(value) >= (7, 2)]

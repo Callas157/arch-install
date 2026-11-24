@@ -98,6 +98,7 @@ class PrepareTests(unittest.TestCase):
              mock.patch.object(mod, "versions", return_value={
                  "linux": "7.3.5-arch1-1", "linux-lts": "6.18.64-1-lts"}), \
              mock.patch.object(mod, "inspect_modules", side_effect=inspect), \
+             mock.patch.object(mod, "patch_595_atomic_tree"), \
              mock.patch.object(mod, "patch_73_source"), \
              mock.patch.object(mod, "run", side_effect=run):
             mod.main()

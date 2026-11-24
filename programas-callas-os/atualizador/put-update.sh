@@ -124,6 +124,10 @@ atualizar_arch() {
         return 1
     }
     mountpoint -q /boot || { printf 'A partição /boot não está montada; atualização geral interrompida antes do pacman.\n' >&2; return 1; }
+    if [[ ! -s /etc/callas-nvidia-version ]] && pacman -Qq nvidia-open-dkms >/dev/null 2>&1; then
+        printf 'Registro NVIDIA ausente. Na Central, use Driver NVIDIA → Reparar versão instalada.\n' >&2
+        return 1
+    fi
     local origem=$1 dbpath tentativa
     local -a dependencias=() confirmacao=(--noconfirm)
     dbpath=$(pacman-conf DBPath) || return
@@ -165,8 +169,13 @@ atualizar_arch() {
         done
         (( falhou_modulo == 0 )) || return 1
     else
-        CALLAS_KERNEL_UPDATE_CONTEXT=general pacman --hookdir /etc/pacman.d/hooks -Syu --needed "${confirmacao[@]}" "${dependencias[@]}"
+        CALLAS_KERNEL_UPDATE_CONTEXT=general pacman --hookdir /etc/pacman.d/hooks -Syu --needed "${confirmacao[@]}" "${dependencias[@]}" || return
     fi
+    if [[ -e /var/lib/callas-os/kernel-check-failed ]]; then
+        printf 'A validação do boot falhou. Consulte os logs antes de reiniciar.\n' >&2
+        return 1
+    fi
+    /usr/local/libexec/callas-kernel-check --verify-only
 }
 
 atualizar_aur() (

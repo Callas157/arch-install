@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """Abort installed-system kernel transactions before hooks remove working modules.
 
-Only General may request kernels. With pinned NVIDIA, candidate official kernel
+General and the manual selector may request kernels. With NVIDIA, candidate official kernel
 and headers must already be in pacman's verified download cache and build in a
 private mount namespace. Nothing is installed by this helper; uncertainty aborts
 the entire transaction. AUR/custom kernels are deliberately not approved here.
@@ -13,6 +13,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -91,24 +92,24 @@ def verify_modules(root, release, version):
                 raise RuntimeError('Módulo compilado para outro kernel: ' + name)
 
 
-def verify_candidate(kernel, version, work):
-    candidate_version = repository_version(kernel)
-    headers_version = repository_version(PAIRS[kernel])
-    if candidate_version != headers_version:
-        raise RuntimeError('Kernel e headers candidatos não têm a mesma versão.')
+def verify_candidate(kernel, version, work, *, packages=None):
     installed = command(['/usr/bin/pacman', '-Q', 'nvidia-open-dkms']).split()
     if len(installed) != 2 or not installed[1].startswith(version + '-'):
         raise RuntimeError('O pacote NVIDIA instalado diverge da versão fixada; não será substituído.')
     source = SOURCE_ROOT / ('nvidia-' + version)
     if not (source / 'dkms.conf').is_file():
         raise RuntimeError('Fonte DKMS da NVIDIA fixada ausente; kernel preservado.')
-    caches = [Path(p) for p in command(['/usr/bin/pacman-conf', 'CacheDir']).splitlines() if p]
-    if not caches:
-        raise RuntimeError('Cache do pacman indisponível; kernel preservado.')
+    if packages is None:
+        candidate_version = repository_version(kernel)
+        if candidate_version != repository_version(PAIRS[kernel]):
+            raise RuntimeError('Kernel e headers candidatos não têm a mesma versão.')
+        caches = [Path(p) for p in command(['/usr/bin/pacman-conf', 'CacheDir']).splitlines() if p]
+        if not caches:
+            raise RuntimeError('Cache do pacman indisponível; kernel preservado.')
+        packages = [archive(package, candidate_version, caches) for package in (kernel, PAIRS[kernel])]
     root = work / kernel
     root.mkdir(mode=0o700)
-    for package in (kernel, PAIRS[kernel]):
-        package_path = archive(package, candidate_version, caches)
+    for package_path in packages:
         # Pacman invokes this PreTransaction hook only after signature/integrity
         # validation. Extract data only; never execute package install scripts.
         command(['/usr/bin/bsdtar', '-xf', package_path, '-C', root, 'usr/lib/modules'])
@@ -143,34 +144,58 @@ DRIVER_CONTEXT = 'nvidia-selection'
 DRIVER_VERSION = re.compile(r'[0-9]+(?:\.[0-9]+){1,3}')
 ARCHIVE_URL = 'https://archive.archlinux.org/packages'
 MODULES = Path('/usr/lib/modules')
+PCI_DEVICES = Path('/sys/bus/pci/devices')
 KERNEL_CHECK = '/usr/local/libexec/callas-kernel-check'
 DRIVER_LOCK = Path('/run/lock/callas-nvidia-selection.lock')
+WORK_DIRECTORY = Path('/var/tmp')
+KERNEL_CONTEXT = 'kernel-selection'
+ARCH_VERSION = re.compile(r'[0-9][0-9A-Za-z_.+]*-[0-9]+(?:\.[0-9]+)*')
+PRIMARY_PAIR = ('linux', PAIRS['linux'])
+INITIAL_KERNEL = '7.2.15.arch1-1'
+INITIAL_DRIVER = '610.57.04'
 
 
-def installed_driver():
+class SelectionVerificationError(RuntimeError):
+    def __init__(self, message, expected):
+        super().__init__(message)
+        self.expected = expected
+
+
+def installed_driver(*, required=True):
     result = subprocess.run(['/usr/bin/pacman', '-Q', *DRIVER, *DRIVER_OPTIONAL],
                             capture_output=True, text=True, timeout=15)
     if result.returncode not in (0, 1):
         raise RuntimeError('Falha ao consultar a pilha NVIDIA.')
     packages = dict(line.split() for line in result.stdout.splitlines())
+    if not required and not set(DRIVER) & packages.keys():
+        return {}
     if not set(DRIVER) <= packages.keys():
         raise RuntimeError('O seletor requer a pilha NVIDIA Open DKMS de 64 e 32 bits do Callas OS.')
     return packages
 
 
-def archive_index(package):
+def package_index(package):
     url = f'{ARCHIVE_URL}/{package[0]}/{package}/'
-    request = urllib.request.Request(url, headers={'User-Agent': 'CallasOS-NVIDIA'})
+    request = urllib.request.Request(url, headers={'User-Agent': 'CallasOS-Packages'})
     with urllib.request.urlopen(request, timeout=12) as response:
-        html = response.read(3_000_000).decode('utf-8')
-    pattern = rf'href="({re.escape(package)}-({DRIVER_VERSION.pattern})-([0-9]+(?:\.[0-9]+)?)-(?:x86_64|any)\.pkg\.tar\.zst)\.sig"'
+        html = response.read(8_000_001).decode('utf-8')
+    if len(html) > 8_000_000:
+        raise ValueError('Índice de pacotes acima do limite: ' + package)
+    links = set(re.findall(r'href="([^"/]+)"', html))
+    pattern = re.compile(rf'{re.escape(package)}-({ARCH_VERSION.pattern})-(?:x86_64|any)\.pkg\.tar\.zst')
+    return {match[1]: url + filename for filename in sorted(links)
+            if (match := pattern.fullmatch(filename)) and filename + '.sig' in links}
+
+
+def archive_index(package):
     versions = {}
-    for filename, version, release in re.findall(pattern, html):
-        if f'href="{filename}"' not in html:
+    for pkgver, url in package_index(package).items():
+        version, release = pkgver.rsplit('-', 1)
+        if not DRIVER_VERSION.fullmatch(version):
             continue
         key = tuple(map(int, release.split('.')))
         if version not in versions or versions[version][0] < key:
-            versions[version] = (key, f'{url}{filename}')
+            versions[version] = (key, url)
     return {version: entry[1] for version, entry in versions.items()}
 
 
@@ -195,53 +220,200 @@ def driver_catalog(packages):
     }
 
 
+def package_url(package, version):
+    return f'{ARCHIVE_URL}/{package[0]}/{package}/{package}-{version}-x86_64.pkg.tar.zst'
+
+
 def default_driver():
-    """Resolve the newest complete, signed 595 branch before wiping any disk."""
-    catalog = driver_catalog((*DRIVER, 'nvidia-settings', 'libxnvctrl'))
+    return {'version': INITIAL_DRIVER,
+            'packages': {p: package_url(p, INITIAL_DRIVER + '-1')
+                         for p in (*DRIVER, 'nvidia-settings', 'libxnvctrl')}}
+
+
+def legacy_default_driver():
+    # Saved installers before 3.25 reject any branch other than 595.
+    tools = ('nvidia-settings', 'libxnvctrl')
+    catalog = driver_catalog((*DRIVER, *tools))
     version = next((candidate for candidate in catalog if candidate.startswith('595.')), None)
     if version is None:
-        raise RuntimeError('Não encontrei a pilha NVIDIA Open DKMS 595 completa e assinada no Arch Linux Archive. Disco preservado.')
-    selected = {p: catalog[version][p] for p in DRIVER}
-    if all(p in catalog[version] for p in ('nvidia-settings', 'libxnvctrl')):
-        selected.update({p: catalog[version][p] for p in ('nvidia-settings', 'libxnvctrl')})
-    return {'version': version, 'packages': selected}
+        raise RuntimeError('A pilha NVIDIA 595 exigida pelo instalador antigo está indisponível no Arquivo do Arch.')
+    packages = {name: catalog[version][name] for name in DRIVER}
+    if all(name in catalog[version] for name in tools):
+        packages.update({name: catalog[version][name] for name in tools})
+    return {'version': version, 'packages': packages}
 
 
-def download_driver(urls, directory):
+def kernel_catalog():
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        kernel, headers = pool.map(package_index, PRIMARY_PAIR)
+    versions = sorted(kernel.keys() & headers.keys(),
+                      key=lambda version: tuple(int(part) if part.isdigit() else part
+                                                for part in re.split(r'([0-9]+)', version)),
+                      reverse=True)
+    return {v: dict(zip(PRIMARY_PAIR, (kernel[v], headers[v]))) for v in versions}
+
+
+def stage_packages(urls, directory):
     directory.mkdir()
+    caches = [Path(path) for path in command(['/usr/bin/pacman-conf', 'CacheDir']).splitlines()]
     paths = []
     for url in urls:
         target = directory / url.rsplit('/', 1)[-1]
-        for suffix in ('.sig', ''):
-            command(['/usr/bin/curl', '--fail', '--silent', '--show-error',
-                     '--location', '--proto', '=https', '--proto-redir', '=https', '--max-time', '600', '--output', str(target) + suffix, url + suffix])
+        signature = target.with_name(target.name + '.sig')
+        for cache in caches:
+            files = (cache / target.name, cache / signature.name)
+            if all(path.is_file() and not path.is_symlink() for path in files):
+                shutil.copyfile(files[0], target)
+                shutil.copyfile(files[1], signature)
+                break
+        else:
+            for suffix in ('.sig', ''):
+                command(['/usr/bin/curl', '--fail', '--silent', '--show-error', '--retry', '2',
+                         '--location', '--proto', '=https', '--proto-redir', '=https',
+                         '--max-time', '600', '--output', str(target) + suffix, url + suffix])
+        command(['/usr/bin/pacman-key', '--verify', signature, target])
         paths.append(target)
     return paths
 
 
-def driver_preflight(targets, version, directory):
+def primary_version():
+    packages = dict(line.split() for line in command(['/usr/bin/pacman', '-Q', *PRIMARY_PAIR]).splitlines())
+    version = packages.get('linux', '')
+    if not ARCH_VERSION.fullmatch(version) or packages.get(PAIRS['linux']) != version:
+        raise RuntimeError('Os pacotes linux e linux-headers instalados precisam ter a mesma versão.')
+    return version
+
+
+def kernel_preflight(targets, version, directory, expected=None):
+    if set(targets) != set(PRIMARY_PAIR):
+        raise RuntimeError('A seleção pode alterar apenas o par linux e linux-headers.')
+    if not ARCH_VERSION.fullmatch(version):
+        raise RuntimeError('Versão de kernel inválida.')
+    if expected is not None and primary_version() != expected:
+        raise RuntimeError('O kernel principal mudou durante a preparação. Atualize a lista na Central.')
+    paths = sorted(directory.glob('*.pkg.tar.zst'))
+    metadata = sorted(command(['/usr/bin/pacman', '-Qp', path]).split() for path in paths)
+    if metadata != sorted([package, version] for package in PRIMARY_PAIR):
+        raise RuntimeError('Os pacotes não correspondem ao par de kernel selecionado.')
+    driver = installed_driver(required=False)
+    if driver or VERSION_FILE.is_file():
+        driver_version = VERSION_FILE.read_text().strip() if VERSION_FILE.is_file() else ''
+        if (not DRIVER_VERSION.fullmatch(driver_version)
+                or any(driver.get(name, '').rsplit('-', 1)[0] != driver_version for name in DRIVER)):
+            raise RuntimeError('Registro NVIDIA inconsistente. Use "Reparar versão instalada" na Central.')
+        with tempfile.TemporaryDirectory(prefix='callas-kernel-preflight-', dir=WORK_DIRECTORY) as temp:
+            verify_candidate('linux', driver_version, Path(temp), packages=paths)
+
+
+def run_kernel_transaction(paths, version, work, *, expected):
+    env = dict(os.environ, CALLAS_KERNEL_UPDATE_CONTEXT=KERNEL_CONTEXT,
+               CALLAS_KERNEL_TARGET=version, CALLAS_KERNEL_EXPECTED=expected,
+               CALLAS_KERNEL_PACKAGES=str(paths[0].parent),
+               LC_ALL='C', PATH='/usr/bin:/bin')
+    subprocess.run(['/usr/bin/pacman', '--config', str(work / 'pacman.conf'),
+                    '--hookdir', str(HOOK_DIRECTORY), '--hookdir', str(work / 'hooks'),
+                    '-U', '--noconfirm', '--', *map(str, paths)], check=True, env=env,
+                   stdin=subprocess.DEVNULL)
+    try:
+        if primary_version() != version:
+            raise RuntimeError('O pacman não confirmou o par solicitado.')
+        if Path('/var/lib/callas-os/kernel-check-failed').exists():
+            raise RuntimeError('O hook de boot falhou após a troca de kernel.')
+        subprocess.run([KERNEL_CHECK, '--verify-only'], check=True, env=env)
+    except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+        raise SelectionVerificationError(str(error), version) from error
+
+
+def prepare_local_transaction(work):
+    (work / 'pacman.conf').write_text('[options]\nArchitecture = auto\nSigLevel = Required\nLocalFileSigLevel = Required\n')
+    (work / 'hooks').mkdir()
+    (work / 'hooks/00-0-callas-no-remove.hook').write_text(
+        '[Trigger]\nOperation = Remove\nType = Package\nTarget = *\n\n'
+        '[Action]\nWhen = PreTransaction\nNeedsTargets\nAbortOnFail\n'
+        'Exec = /usr/local/libexec/callas-kernel-policy --remove\n')
+
+
+def select_kernel(version):
+    if not ARCH_VERSION.fullmatch(version):
+        raise ValueError('Versão de kernel inválida.')
+    check_hooks()
+    command(['/usr/bin/mountpoint', '-q', '/boot'])
+    with DRIVER_LOCK.open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        current = primary_version()
+        if version == current:
+            return
+        with tempfile.TemporaryDirectory(prefix='callas-kernel-selection-', dir=WORK_DIRECTORY) as temp:
+            work = Path(temp)
+            prepare_local_transaction(work)
+            previous = stage_packages([package_url(p, current) for p in PRIMARY_PAIR], work / 'previous')
+            selected = stage_packages([package_url(p, version) for p in PRIMARY_PAIR], work / 'selected')
+            try:
+                run_kernel_transaction(selected, version, work, expected=current)
+            except SelectionVerificationError as error:
+                print(str(error), flush=True)
+                try:
+                    run_kernel_transaction(previous, current, work, expected=error.expected)
+                except Exception as rollback:
+                    raise RuntimeError('Não consegui restaurar o kernel anterior. Consulte os detalhes e use o LTS no GRUB.') from rollback
+                print(f'Kernel anterior {current} restaurado e verificado.', flush=True)
+                raise
+
+
+def nvidia_device_ids():
+    device_ids = set()
+    for device in PCI_DEVICES.iterdir():
+        try:
+            if ((device / 'vendor').read_text().strip() == '0x10de'
+                    and (device / 'class').read_text().startswith('0x03')):
+                device_ids.add((device / 'device').read_text().strip()[2:].lower())
+        except FileNotFoundError:
+            continue
+    return device_ids
+
+
+def current_nvidia_devices(chips):
+    table = re.search(r'<h3>\s*Current NVIDIA GPUs\s*</h3>.*?<table\b[^>]*>(.*?)</table>', chips,
+                      re.IGNORECASE | re.DOTALL)
+    if table is None:
+        raise RuntimeError('Tabela de GPUs atuais ausente na documentação NVIDIA.')
+    return set(re.findall(r'<tr\s+id="devid([0-9a-f]{4})', table[1].lower()))
+
+
+def check_nvidia_hardware(utils_package, version):
+    device_ids = nvidia_device_ids()
+    if not device_ids:
+        raise RuntimeError('Nenhuma GPU NVIDIA foi detectada no barramento PCI.')
+    chips = command(['/usr/bin/bsdtar', '-xOf', utils_package,
+                     'usr/share/doc/nvidia/html/supportedchips.html'])
+    supported = current_nvidia_devices(chips)
+    if int(version.split('.')[0]) < 590:
+        # Those lists also include GPUs supported only by the proprietary module.
+        url = f'https://download.nvidia.com/XFree86/Linux-x86_64/{INITIAL_DRIVER}/README/supportedchips.html'
+        with urllib.request.urlopen(url, timeout=15) as response:
+            supported &= current_nvidia_devices(response.read(1_000_000).decode('utf-8'))
+    unsupported = sorted(device_ids - supported)
+    if unsupported:
+        raise RuntimeError('A versão selecionada não confirma suporte às GPUs NVIDIA: ' + ', '.join(unsupported))
+
+
+def driver_preflight(targets, version, directory, expected=None):
     if not DRIVER_VERSION.fullmatch(version):
         raise RuntimeError('Versão NVIDIA inválida.')
     installed = installed_driver()
+    if expected is not None and installed != expected:
+        raise RuntimeError('A pilha NVIDIA mudou durante a preparação. Atualize a lista na Central.')
     if not set(DRIVER) <= set(targets) or not set(targets) <= set(installed):
-        raise RuntimeError('A seleção deve trocar a pilha NVIDIA Open DKMS completa, sem outros pacotes.')
+        raise RuntimeError('A seleção só pode alterar a pilha NVIDIA Open DKMS completa.')
     paths = list(directory.glob('*.pkg.tar.zst'))
     metadata = [command(['/usr/bin/pacman', '-Qp', path]).split() for path in paths]
     if (len(metadata) != len(targets) or {row[0] for row in metadata} != set(targets)
             or any(row[1].rsplit('-', 1)[0] != version for row in metadata)):
         raise RuntimeError('Os pacotes não correspondem à seleção NVIDIA.')
     by_package = {row[0]: path for row, path in zip(metadata, paths)}
-    device_ids = {path.read_text().strip()[2:].lower()
-                  for path in Path('/sys/bus/pci/drivers/nvidia').glob('*:*:*.*/device')}
-    if not device_ids:
-        raise RuntimeError('Nenhuma GPU está ativa com o driver NVIDIA atual.')
-    chips = command(['/usr/bin/bsdtar', '-xOf', by_package['nvidia-utils'],
-                     'usr/share/doc/nvidia/html/supportedchips.html'])
-    supported = set(re.findall(r'<tr id="devid([0-9a-f]{4})', chips.lower()))
-    if not device_ids <= supported:
-        raise RuntimeError('A versão selecionada não confirma suporte a todas as GPUs NVIDIA em uso.')
+    check_nvidia_hardware(by_package['nvidia-utils'], version)
     dkms_package = by_package[DRIVER[0]]
-    with tempfile.TemporaryDirectory(prefix='callas-nvidia-build-', dir='/var/tmp') as temp:
+    with tempfile.TemporaryDirectory(prefix='callas-nvidia-build-', dir=WORK_DIRECTORY) as temp:
         root = Path(temp)
         source = f'usr/src/nvidia-{version}'
         command(['/usr/bin/bsdtar', '-xf', dkms_package, '-C', root, source])
@@ -253,9 +425,8 @@ def driver_preflight(targets, version, directory):
             if len(releases) != 1 or not (releases[0] / 'build/Makefile').is_file():
                 raise RuntimeError('Kernel/headers indisponíveis: ' + kernel)
             release = releases[0].name
-            # Patch only the extracted candidate 595 source, never the active
-            # installed driver. Linux 6.x remains on the original API.
-            if version == '595.71.05' and tuple(map(int, release.split('-', 1)[0].split('.')[:2])) >= (7, 2):
+            # Prepare the known compatibility patches in the extracted candidate.
+            if version in ('595.71.05', INITIAL_DRIVER):
                 command(['/usr/bin/env', 'CALLAS_NVIDIA_REPAIR_TARGET=' + version,
                          '/usr/bin/python3', '/usr/local/libexec/callas-nvidia-prepare',
                          '--compat-tree', root / source, release])
@@ -275,22 +446,26 @@ dkms build -m nvidia -v "$2" -k "$3" --dkmstree "$4"
             verify_modules(tree, release, version)
 
 
-def run_driver_transaction(paths, version, work):
+def run_driver_transaction(paths, version, work, *, expected):
+    selected = dict(command(['/usr/bin/pacman', '-Qp', path]).split() for path in paths)
+    candidate = {**expected, **selected}
     env = dict(os.environ, CALLAS_KERNEL_UPDATE_CONTEXT=DRIVER_CONTEXT,
                CALLAS_NVIDIA_TARGET=version, CALLAS_NVIDIA_REPAIR_TARGET=version,
+               CALLAS_NVIDIA_EXPECTED=json.dumps(expected),
                CALLAS_NVIDIA_PACKAGES=str(paths[0].parent),
                LC_ALL='C', PATH='/usr/bin:/bin')
     subprocess.run(['/usr/bin/pacman', '--config', str(work / 'pacman.conf'),
                     '--hookdir', str(HOOK_DIRECTORY), '--hookdir', str(work / 'hooks'),
                     '-U', '--noconfirm', '--', *map(str, paths)], check=True, env=env,
                    stdin=subprocess.DEVNULL)
-    installed = installed_driver()
-    selected_names = {command(['/usr/bin/pacman', '-Qp', path]).split()[0] for path in paths}
-    if any(installed[name].rsplit('-', 1)[0] != version for name in selected_names):
-        raise RuntimeError('O pacman não confirmou todos os componentes NVIDIA substituídos.')
-    if Path('/var/lib/callas-os/kernel-check-failed').exists():
-        raise RuntimeError('A verificação de boot após a troca NVIDIA falhou.')
-    subprocess.run([KERNEL_CHECK, '--verify-only'], check=True, env=env)
+    try:
+        if installed_driver() != candidate:
+            raise RuntimeError('O pacman não confirmou todos os componentes NVIDIA substituídos.')
+        if Path('/var/lib/callas-os/kernel-check-failed').exists():
+            raise RuntimeError('A verificação de boot após a troca NVIDIA falhou.')
+        subprocess.run([KERNEL_CHECK, '--verify-only'], check=True, env=env)
+    except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+        raise SelectionVerificationError(str(error), candidate) from error
     with tempfile.NamedTemporaryFile(mode='w', dir=VERSION_FILE.parent, delete=False) as marker:
         marker_path = Path(marker.name)
         try:
@@ -310,36 +485,32 @@ def select_driver(version):
     command(['/usr/bin/mountpoint', '-q', '/boot'])
     with DRIVER_LOCK.open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        current = VERSION_FILE.read_text().strip()
         packages = installed_driver()
-        if current == version and all(packages[name].rsplit('-', 1)[0] == version for name in DRIVER):
+        versions = {packages[name].rsplit('-', 1)[0] for name in DRIVER}
+        if len(versions) != 1:
+            raise RuntimeError('Os três pacotes NVIDIA instalados precisam ter a mesma versão antes da troca.')
+        current = versions.pop()
+        if current == version:
             # The GUI exposes a dedicated repair path for missing modules.
             if not modules_coherent(version):
                 raise RuntimeError('Módulos NVIDIA ausentes. Use "Reparar versão instalada" na Central.')
             return
-        catalog = driver_catalog(packages)
-        if version not in catalog:
-            raise RuntimeError('A versão escolhida não possui os três pacotes NVIDIA Open DKMS assinados no arquivo oficial.')
-        selected_urls = {p: catalog[version][p] for p in DRIVER}
-        # nvidia-settings and libxnvctrl form an optional pair; do not update
-        # only one side if the matching version is absent.
+        try:
+            available = driver_catalog(packages).get(version, {})
+        except (OSError, ValueError):
+            available = {}
+        selected_urls = {p: available.get(p, package_url(p, version + '-1')) for p in DRIVER}
         tools = ('nvidia-settings', 'libxnvctrl')
-        if all(p in packages and p in catalog[version] for p in tools):
-            selected_urls.update({p: catalog[version][p] for p in tools})
-        for p in DRIVER_OPTIONAL:
-            if p not in tools and p in packages and p in catalog[version]:
-                selected_urls[p] = catalog[version][p]
-        skipped = sorted(set(packages) - set(selected_urls))
-        if skipped:
-            print('Complementos opcionais sem pacote correspondente preservados: ' + ', '.join(skipped), flush=True)
-        with tempfile.TemporaryDirectory(prefix='callas-nvidia-selection-', dir='/var/tmp') as temp:
+        if all(p in packages and p in available and packages[p].rsplit('-', 1)[0] == current for p in tools):
+            selected_urls.update({p: available[p] for p in tools})
+        for package in ('opencl-nvidia', 'lib32-opencl-nvidia'):
+            if package in packages:
+                if packages[package].rsplit('-', 1)[0] != current:
+                    raise RuntimeError('O componente OpenCL instalado diverge da versão NVIDIA: ' + package)
+                selected_urls[package] = available.get(package, package_url(package, version + '-1'))
+        with tempfile.TemporaryDirectory(prefix='callas-nvidia-selection-', dir=WORK_DIRECTORY) as temp:
             work = Path(temp)
-            (work / 'pacman.conf').write_text('[options]\nArchitecture = auto\nSigLevel = Required\nLocalFileSigLevel = Required\n')
-            (work / 'hooks').mkdir()
-            (work / 'hooks/00-0-callas-nvidia-no-remove.hook').write_text(
-                '[Trigger]\nOperation = Remove\nType = Package\nTarget = *\n\n'
-                '[Action]\nWhen = PreTransaction\nNeedsTargets\nAbortOnFail\n'
-                'Exec = /usr/local/libexec/callas-kernel-policy --remove\n')
+            prepare_local_transaction(work)
             # The archive package installs unpatched DKMS sources. This hook
             # runs before 70-dkms-install and after pacman unpacked the source;
             # otherwise the candidate preflight would succeed but the real
@@ -347,28 +518,21 @@ def select_driver(version):
             (work / 'hooks/30-callas-nvidia-compat.hook').write_text(
                 '[Trigger]\nOperation = Install\nOperation = Upgrade\n'
                 'Type = Package\nTarget = nvidia-open-dkms\n\n'
-                '[Action]\nDescription = Adaptar NVIDIA 595 para a API DRM do kernel\n'
+                '[Action]\nDescription = Preparar compatibilidade NVIDIA antes do DKMS\n'
                 'When = PostTransaction\n'
                 'Exec = /usr/local/libexec/callas-nvidia-prepare --compat-installed\n')
-            old_urls = []
-            if all(packages[p].rsplit('-', 1)[0] == current for p in DRIVER):
-                for package in selected_urls:
-                    old_version = packages[package]
-                    old_urls.append(f'{ARCHIVE_URL}/{package[0]}/{package}/{package}-{old_version}-x86_64.pkg.tar.zst')
-            elif version != current:
-                raise RuntimeError('Os componentes essenciais divergem da fixação. Primeiro repare a versão fixada.')
-            previous = download_driver(old_urls, work / 'previous')
-            for path in previous:
-                command(['/usr/bin/pacman-key', '--verify', str(path) + '.sig', path])
-            selected = download_driver(list(selected_urls.values()), work / 'selected')
-            for path in selected:
-                command(['/usr/bin/pacman-key', '--verify', str(path) + '.sig', path])
+            old_urls = [package_url(p, packages[p]) for p in selected_urls]
+            previous = stage_packages(old_urls, work / 'previous')
+            selected = stage_packages(list(selected_urls.values()), work / 'selected')
             try:
-                run_driver_transaction(selected, version, work)
-            except Exception:
-                if previous and installed_driver() != packages:
-                    print('A troca falhou. Restaurando a versão NVIDIA anterior.', flush=True)
-                    run_driver_transaction(previous, current, work)
+                run_driver_transaction(selected, version, work, expected=packages)
+            except SelectionVerificationError as error:
+                print(str(error), flush=True)
+                print('A troca falhou. Restaurando a versão NVIDIA anterior.', flush=True)
+                try:
+                    run_driver_transaction(previous, current, work, expected=error.expected)
+                except Exception as rollback:
+                    raise RuntimeError('Não consegui restaurar a NVIDIA anterior. Consulte os detalhes antes de reiniciar.') from rollback
                 raise
 
 
@@ -524,7 +688,7 @@ def guard(targets, context, version):
             raise RuntimeError('Kernel e headers precisam estar juntos na transação; par incompleto preservado: ' + kernel)
     if any(p in BUILD_PACKAGES or p.startswith(('gcc', 'binutils', 'llvm', 'clang')) for p in targets):
         raise RuntimeError('O ambiente de compilação também mudaria nesta transação; não é seguro aprovar o kernel com o ambiente antigo. Kernel preservado.')
-    with tempfile.TemporaryDirectory(prefix='callas-kernel-preflight-', dir='/var/tmp') as temp:
+    with tempfile.TemporaryDirectory(prefix='callas-kernel-preflight-', dir=WORK_DIRECTORY) as temp:
         for kernel in sorted(PAIRS):
             if kernel in kernels or PAIRS[kernel] in kernels:
                 verify_candidate(kernel, version, Path(temp))
@@ -533,21 +697,47 @@ def guard(targets, context, version):
 def main():
     args = sys.argv[1:]
     if args == ['--nvidia-default']:
+        print(json.dumps(legacy_default_driver(), sort_keys=True))
+        return 0
+    if args == ['--nvidia-install-default']:
         print(json.dumps(default_driver(), sort_keys=True))
         return 0
-    if args == ['--nvidia-list']:
-        if not VERSION_FILE.is_file():
-            raise RuntimeError('Nenhum driver NVIDIA fixado foi encontrado neste Callas OS.')
-        current = VERSION_FILE.read_text().strip()
-        packages = installed_driver()
-        state = {'fixed': current, 'installed': packages['nvidia-utils'].rsplit('-', 1)[0],
-                 'coherent': all(packages[p].rsplit('-', 1)[0] == current for p in DRIVER),
-                 'modules_ok': modules_coherent(packages['nvidia-utils'].rsplit('-', 1)[0]),
-                 'versions': []}
+    if args == ['--kernel-default']:
+        print(INITIAL_KERNEL)
+        return 0
+    if len(args) == 2 and args[0] == '--nvidia-check-hardware':
+        check_nvidia_hardware(Path(args[1]), INITIAL_DRIVER)
+        return 0
+    if args == ['--kernel-list']:
+        with contextlib.redirect_stdout(sys.stderr):
+            installed = primary_version()
+            lts = command(['/usr/bin/pacman', '-Q', 'linux-lts']).split()[1]
+        state = {'installed': installed, 'lts': lts, 'running': os.uname().release,
+                 'versions': [INITIAL_KERNEL]}
         try:
-            state['versions'] = list(driver_catalog(packages))
+            state['versions'] = list(dict.fromkeys((*kernel_catalog(), INITIAL_KERNEL)))
         except (OSError, ValueError):
-            state['error'] = 'Arquivo do Arch indisponível. Tente atualizar a lista.'
+            state['error'] = 'Lista do Arquivo do Arch indisponível. Você pode digitar a versão completa do pacote.'
+        print(json.dumps(state))
+        return 0
+    if args == ['--nvidia-list']:
+        try:
+            current = VERSION_FILE.read_text().strip()
+        except (FileNotFoundError, PermissionError):
+            current = ''
+        packages = installed_driver()
+        installed = packages['nvidia-utils'].rsplit('-', 1)[0]
+        coherent = all(packages[p].rsplit('-', 1)[0] == installed for p in DRIVER)
+        state = {'fixed': current, 'installed': installed, 'packages_coherent': coherent,
+                 'coherent': coherent and installed == current, 'modules_ok': False, 'versions': [INITIAL_DRIVER]}
+        try:
+            state['modules_ok'] = coherent and modules_coherent(installed)
+        except RuntimeError as exc:
+            state['error'] = str(exc)
+        try:
+            state['versions'] = list(dict.fromkeys((*driver_catalog(packages), INITIAL_DRIVER)))
+        except (OSError, ValueError):
+            state['error'] = 'Lista do Arquivo do Arch indisponível. Você pode digitar a versão do driver.'
         print(json.dumps(state))
         return 0
     if os.geteuid() == 0 and args == ['--nvidia-repair']:
@@ -564,6 +754,9 @@ def main():
     if os.geteuid() == 0 and len(args) == 2 and args[0] == '--nvidia-select':
         select_driver(args[1])
         return 0
+    if os.geteuid() == 0 and len(args) == 2 and args[0] == '--kernel-select':
+        select_kernel(args[1])
+        return 0
     if os.geteuid() != 0 or args not in ([], ['--remove'], ['--check-hooks']):
         raise RuntimeError('Uso interno do hook PreTransaction, como root.')
     if sys.argv[1:] == ['--check-hooks']:
@@ -577,11 +770,18 @@ def main():
     code = 0
     with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
         try:
-            if os.environ.get('CALLAS_KERNEL_UPDATE_CONTEXT') == DRIVER_CONTEXT:
+            context = os.environ.get('CALLAS_KERNEL_UPDATE_CONTEXT')
+            if context == DRIVER_CONTEXT:
                 if args == ['--remove']:
                     raise RuntimeError('A seleção NVIDIA não pode remover pacotes.')
                 driver_preflight(targets, os.environ['CALLAS_NVIDIA_TARGET'],
-                                 Path(os.environ['CALLAS_NVIDIA_PACKAGES']))
+                                 Path(os.environ['CALLAS_NVIDIA_PACKAGES']),
+                                 json.loads(os.environ['CALLAS_NVIDIA_EXPECTED']))
+            elif context == KERNEL_CONTEXT:
+                if args == ['--remove']:
+                    raise RuntimeError('A seleção de kernel não pode remover pacotes.')
+                kernel_preflight(targets, os.environ['CALLAS_KERNEL_TARGET'],
+                                 Path(os.environ['CALLAS_KERNEL_PACKAGES']), os.environ['CALLAS_KERNEL_EXPECTED'])
             else:
                 context = 'remove' if sys.argv[1:] == ['--remove'] else os.environ.get('CALLAS_KERNEL_UPDATE_CONTEXT', '')
                 guard(targets, context, version)

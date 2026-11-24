@@ -1,5 +1,12 @@
 # Histórico do Callas OS
 
+## 3.25.0 — 2026-11-24
+
+- O instalador usa Linux **7.2.15.arch1-1** e os headers assinados do Arquivo do Arch. Linux LTS e seus headers vêm dos repositórios atuais. O LTS fica no topo do GRUB e inicia por padrão em instalações novas.
+- A versão inicial em GPUs compatíveis é **NVIDIA Open DKMS 610.57.04**. As assinaturas dos pacotes arquivados são conferidas antes de formatar e o instalador verifica DKMS e initramfs nos dois kernels.
+- **Kernel Linux**, na Central, permite trocar ou reverter o par principal. **Driver NVIDIA** permite trocar a versão mesmo se o módulo atual estiver descarregado. As trocas usam pacotes assinados, validam o boot e tentam restaurar os pacotes anteriores se a etapa posterior à transação falhar.
+- O Callas OS Update remove os blocos `IgnorePkg` antigos criados pelo projeto e coloca o LTS primeiro nas entradas Callas reconhecidas. A migração preserva os pacotes instalados.
+
 ## 3.24.3 — 2026-11-21
 
 - **Instalação limpa NVIDIA:** o instalador oficial prepara a fonte DKMS da NVIDIA 595.71.05 em hook temporário PostTransaction `30-callas-nvidia-initial-compat.hook` antes do hook `70-dkms-install`. A versão escolhida é registrada antes da transação para que o preparador identifique o alvo correto. Depois, a instalação confirma os três pacotes essenciais (`nvidia-open-dkms`, `nvidia-utils`, `lib32-nvidia-utils`), executa o preparador nos dois kernels e só gera initramfs/GRUB depois da validação de módulos. Qualquer falha interrompe a instalação; não substitui silenciosamente por outra série.

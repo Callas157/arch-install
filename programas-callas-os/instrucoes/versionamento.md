@@ -11,7 +11,7 @@ Leia este roteiro no início de cada tarefa e retomada, junto com [AGENTS.md](..
 
 ## Escopo obrigatório antes de planejar a alteração
 
-Releia a seção “Regra obrigatória: cada opção respeita seu escopo” em [AGENTS.md](../AGENTS.md). A opção 5 — Callas OS Update atende adição/remoção de aplicativos e configurações do Linux/Callas OS; não altera kernel, headers ou NVIDIA, nem por dependências ou agendamento. Se o aplicativo exigir essa alteração, interrompa a transação em vez de executar atualização geral. A opção 4 é o fluxo separado para kernel/headers; a NVIDIA escolhida no gerenciador permanece fixada até pedido explícito de troca; a instalação limpa passa a usar a série 595, conforme a decisão de 2026-11-21. Não confunda a versão instalada na máquina principal (7.2.15) com uma fixação implementada na instalação limpa.
+Releia a seção “Regra obrigatória: cada opção respeita seu escopo” em [AGENTS.md](../AGENTS.md). A opção 5 — Callas OS Update atende adição/remoção de aplicativos e configurações do Linux/Callas OS; não altera kernel, headers ou NVIDIA, nem por dependências ou agendamento. Se o aplicativo exigir essa alteração, interrompa a transação em vez de executar atualização geral. A opção 4 e o painel **Kernel Linux** são fluxos manuais distintos. O painel **Driver NVIDIA** permite trocar a versão instalada. O instalador inicia com Linux **7.2.15**, Linux LTS e NVIDIA Open DKMS **610.57.04** quando compatível.
 
 ## 2. Identificar a entrega e decidir o incremento
 

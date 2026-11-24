@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QScrollArea, QStackedWidget)
 
 BACKEND = '/usr/local/libexec/put-update'
-NVIDIA_HELPER = '/usr/local/libexec/callas-kernel-policy'
+KERNEL_POLICY = '/usr/local/libexec/callas-kernel-policy'
 UNINSTALL_HELPER = '/usr/local/libexec/callas-uninstall'
 DEFAULTS_HELPER = '/usr/local/libexec/callas-defaults'
 WIDGET_HELPER = '/usr/local/libexec/callas-widget'
@@ -214,9 +214,11 @@ def action_command(action):
     if action == 'hd500': return [HD500_HELPER, '--recriar']
     if action == 'codex': return ['/usr/bin/python3', '-u', str(Path(__file__).resolve()), '--install-codex']
     if action.startswith('nvidia:'):
-        return [NVIDIA_HELPER, '--nvidia-select', action.split(':', 1)[1]]
+        return [KERNEL_POLICY, '--nvidia-select', action.split(':', 1)[1]]
     if action.startswith('nvidia-repair:'):
-        return [NVIDIA_HELPER, '--nvidia-repair-installed', action.split(':', 1)[1]]
+        return [KERNEL_POLICY, '--nvidia-repair-installed', action.split(':', 1)[1]]
+    if action.startswith('kernel:'):
+        return [KERNEL_POLICY, '--kernel-select', action.split(':', 1)[1]]
     if action == 'callas': return ['/usr/local/libexec/callas-release']
     raise ValueError('Função desconhecida')
 
@@ -889,8 +891,8 @@ class NvidiaDialog(QDialog):
         super().__init__(parent)
         self.busy = False
         self.current = ''
-        self.fixed = ''
         self.coherent = True
+        self.packages_coherent = True
         self.modules_ok = True
         layout = QVBoxLayout(self)
         layout.setContentsMargins(28, 25, 28, 24)
@@ -902,7 +904,9 @@ class NvidiaDialog(QDialog):
         layout.addWidget(self.status)
         layout.addWidget(QLabel('Versões com pacotes Open DKMS no arquivo oficial do Arch'))
         self.versions = QComboBox()
-        self.versions.currentIndexChanged.connect(self.update_button)
+        self.versions.setEditable(True)
+        self.versions.setInsertPolicy(QComboBox.NoInsert)
+        self.versions.editTextChanged.connect(self.update_button)
         layout.addWidget(self.versions)
         layout.addStretch()
         row = QHBoxLayout()
@@ -910,7 +914,7 @@ class NvidiaDialog(QDialog):
         self.reload.clicked.connect(self.refresh)
         self.back = QPushButton('Voltar')
         self.back.clicked.connect(self.reject)
-        self.apply = QPushButton('Aplicar e fixar')
+        self.apply = QPushButton('Trocar driver')
         self.apply.setObjectName('primary')
         self.apply.setEnabled(False)
         self.apply.clicked.connect(self.choose)
@@ -922,11 +926,12 @@ class NvidiaDialog(QDialog):
         QTimer.singleShot(0, self.refresh)
 
     def update_button(self, *_):
-        version = self.versions.currentData()
-        repair = (version == self.current and (not self.coherent or not self.modules_ok))
-        switch = self.coherent and bool(version) and version != self.fixed
-        self.apply.setEnabled(not self.busy and bool(version) and (repair or switch))
-        self.apply.setText('Reparar versão instalada' if repair else 'Aplicar e fixar')
+        version = self.versions.currentText().strip()
+        valid = bool(re.fullmatch(r'[0-9]+(?:\.[0-9]+){1,3}', version))
+        repair = self.packages_coherent and version == self.current and (not self.coherent or not self.modules_ok)
+        switch = self.packages_coherent and version != self.current
+        self.apply.setEnabled(not self.busy and valid and (repair or switch))
+        self.apply.setText('Reparar versão instalada' if repair else 'Trocar driver')
 
     def refresh(self):
         self.busy = True
@@ -946,24 +951,22 @@ class NvidiaDialog(QDialog):
                 if code:
                     raise ValueError(error or 'Não consegui iniciar o auxiliar NVIDIA.')
                 state = json.loads(bytes(process.readAllStandardOutput()))
-                self.current, self.fixed = state['installed'], state['fixed']
+                self.current = state['installed']
                 self.coherent = state['coherent']
+                self.packages_coherent = state.get('packages_coherent', self.coherent)
                 self.modules_ok = state.get('modules_ok', False)
-                self.status.setText(f'Instalado {self.current} · Fixado {self.fixed}')
-                if not self.coherent:
-                    self.status.setText(self.status.text() + '\nVersões divergentes: reparar a instalada exige sua confirmação; não será trocada automaticamente.')
+                self.status.setText(f'Versão instalada {self.current}')
+                if not self.packages_coherent:
+                    self.status.setText(self.status.text() + '\nOs componentes NVIDIA estão em versões diferentes.')
+                elif not self.coherent:
+                    self.status.setText(self.status.text() + '\nO registro anterior diverge da versão instalada. Você pode reparar o driver atual ou escolher outra versão.')
                 elif not self.modules_ok:
                     self.status.setText(self.status.text() + '\nMódulos ausentes ou incorretos: repare antes de reiniciar.')
-                self.versions.addItem('Selecione uma versão', None)
                 for version in state['versions']:
-                    label = version + (' (série padrão do Callas OS)' if version.startswith('595.') else '')
-                    self.versions.addItem(label, version)
-                if self.current and self.versions.findData(self.current) < 0:
-                    self.versions.addItem(self.current + ' (instalado; reparo local)', self.current)
-                if not self.coherent or not self.modules_ok:
-                    self.versions.setCurrentIndex(self.versions.findData(self.current))
-                elif self.fixed in state['versions']:
-                    self.versions.setCurrentIndex(self.versions.findData(self.fixed))
+                    self.versions.addItem(version)
+                if self.versions.findText(self.current) < 0:
+                    self.versions.addItem(self.current)
+                self.versions.setCurrentText(self.current)
                 if state.get('error'):
                     self.status.setText(self.status.text() + '\n' + state['error'])
             except (ValueError, KeyError, TypeError) as exc:
@@ -973,17 +976,17 @@ class NvidiaDialog(QDialog):
 
         process.finished.connect(finish)
         process.errorOccurred.connect(lambda error: finish(1) if error == QProcess.FailedToStart else None)
-        process.start(NVIDIA_HELPER, ['--nvidia-list'])
+        process.start(KERNEL_POLICY, ['--nvidia-list'])
 
     def choose(self):
-        version = self.versions.currentData()
+        version = self.versions.currentText().strip()
         if not self.apply.isEnabled():
             return
         if version == self.current and (not self.coherent or not self.modules_ok):
             self.controller.confirm_action(
                 'Reparar NVIDIA instalada',
                 f'Recompilar a NVIDIA {version} nos kernels Linux e LTS sem baixar outra versão? '
-                'Após validar os módulos e o boot, a versão fixada será ajustada para a instalada. '
+                'Após validar os módulos e o boot, a Central registrará a versão instalada. '
                 'Se a compilação falhar, a correção será interrompida e os logs serão preservados. '
                 'Feche os jogos antes de continuar. Reinicie somente após confirmação de sucesso.',
                 lambda: self.controller.start('nvidia-repair:' + version, True),
@@ -991,9 +994,96 @@ class NvidiaDialog(QDialog):
         else:
             self.controller.confirm_action(
                 'Trocar o driver NVIDIA',
-                f'Aplicar e fixar a versão {version}? A Central testa a compilação nos kernels padrão e LTS '
+                f'Trocar para a versão {version}? A Central testa a compilação nos kernels principal e LTS '
                 'antes da troca. Feche os jogos e salve seu trabalho. Após a validação, reinicie para carregar o driver.',
-                lambda: self.controller.start('nvidia:' + version, True), 'Aplicar e fixar')
+                lambda: self.controller.start('nvidia:' + version, True), 'Trocar driver')
+
+    def reject(self):
+        if not self.busy:
+            super().reject()
+
+
+class KernelDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.busy = False
+        self.current = ''
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(28, 25, 28, 24)
+        layout.setSpacing(14)
+        layout.addWidget(QLabel('Kernel Linux', objectName='title'))
+        self.status = QLabel()
+        self.status.setTextFormat(Qt.PlainText)
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
+        layout.addWidget(QLabel('Versão do kernel principal'))
+        self.versions = QComboBox()
+        self.versions.setEditable(True)
+        self.versions.setInsertPolicy(QComboBox.NoInsert)
+        self.versions.editTextChanged.connect(self.update_button)
+        layout.addWidget(self.versions)
+        layout.addStretch()
+        row = QHBoxLayout()
+        self.reload = QPushButton('Atualizar lista')
+        self.reload.clicked.connect(self.refresh)
+        row.addWidget(self.reload)
+        row.addStretch()
+        back = QPushButton('Voltar')
+        back.clicked.connect(self.reject)
+        row.addWidget(back)
+        self.apply = QPushButton('Trocar kernel', objectName='primary')
+        self.apply.setEnabled(False)
+        self.apply.clicked.connect(self.choose)
+        row.addWidget(self.apply)
+        layout.addLayout(row)
+        QTimer.singleShot(0, self.refresh)
+
+    def update_button(self, *_):
+        version = self.versions.currentText().strip()
+        valid = bool(re.fullmatch(r'[0-9][0-9A-Za-z_.+]*-[0-9]+(?:\.[0-9]+)*', version))
+        self.apply.setEnabled(not self.busy and valid and version != self.current)
+
+    def refresh(self):
+        self.busy = True
+        self.reload.setEnabled(False)
+        self.versions.clear()
+        self.update_button()
+        self.status.setText('Consultando os kernels instalados e o arquivo do Arch…')
+        process = QProcess(self)
+
+        def finish(code, *_):
+            self.busy = False
+            self.reload.setEnabled(True)
+            try:
+                if code:
+                    error = bytes(process.readAllStandardError()).decode('utf-8', 'replace').strip()
+                    raise ValueError(error or 'Não consegui iniciar o gerenciador de kernels.')
+                state = json.loads(bytes(process.readAllStandardOutput()))
+                self.current = state['installed']
+                self.status.setText(f"Em uso {state['running']}\nPrincipal {self.current} · LTS {state['lts']}")
+                self.versions.addItem(self.current)
+                for version in state['versions']:
+                    if version != self.current:
+                        self.versions.addItem(version)
+                if state.get('error'):
+                    self.status.setText(self.status.text() + '\n' + state['error'])
+            except (ValueError, KeyError, TypeError) as exc:
+                self.status.setText(str(exc))
+            self.update_button()
+            process.deleteLater()
+
+        process.finished.connect(finish)
+        process.errorOccurred.connect(lambda error: finish(1) if error == QProcess.FailedToStart else None)
+        process.start(KERNEL_POLICY, ['--kernel-list'])
+
+    def choose(self):
+        if self.apply.isEnabled():
+            version = self.versions.currentText().strip()
+            self.controller.confirm_action(
+                'Trocar o kernel Linux',
+                f'Instalar Linux {version} e os headers correspondentes? O LTS permanece disponível no GRUB. '
+                'Para iniciar com a versão escolhida, selecione Callas OS Linux ao reiniciar.',
+                lambda: self.controller.start('kernel:' + version, True), 'Trocar kernel')
 
     def reject(self):
         if not self.busy:
@@ -1253,6 +1343,7 @@ class Window(QWidget):
             ('Volante G920 e câmbio', 'input-gaming', self.g920),
             ('Codex', 'codex', self.codex),
             ('Driver NVIDIA', 'video-display', self.nvidia),
+            ('Kernel Linux', 'system-software-update', self.kernel),
             ('Callas OS Update', 'system-upgrade', lambda: self.start('callas')),
             ('Atualizar geral', 'system-software-update', lambda: self.start('sistema')),
         )
@@ -1399,6 +1490,7 @@ class Window(QWidget):
     def uninstall_apps(self): self.open_page(UninstallDialog)
 
     def nvidia(self): self.open_page(NvidiaDialog)
+    def kernel(self): self.open_page(KernelDialog)
 
     def codex(self, confirmed=False):
         if self.process is not None: return
@@ -1473,7 +1565,7 @@ class Window(QWidget):
         self.notifier.activated.connect(self.read_output)
         for button in self.buttons: button.setEnabled(False)
         show_details = (not self.details.isHidden() or action in ('games', 'orphans', 'codex', 'hd500')
-                        or action.startswith('nvidia:'))
+                        or action.startswith(('nvidia:', 'nvidia-repair:', 'kernel:')))
         self.set_details_visible(show_details)
         if action == 'codex':
             self.stage.setText('Instalando Codex')
@@ -1532,7 +1624,11 @@ class Window(QWidget):
             if self.action.startswith(('nvidia:', 'nvidia-repair:')):
                 self.reboot_pending = True
                 self.restart_panel.show()
-                self.status.setText('Driver NVIDIA reparado/fixado e boot verificado. Reinicie para carregar a versão escolhida.')
+                self.status.setText('Driver NVIDIA e boot verificados. Reinicie para carregar a versão escolhida.')
+            if self.action.startswith('kernel:'):
+                self.reboot_pending = True
+                self.restart_panel.show()
+                self.status.setText('Kernel e boot verificados. No GRUB, escolha Callas OS Linux para iniciar com essa versão.')
             if self.action in ('sistema', 'nativos', 'callas', 'flatpaks'):
                 self.reboot_pending = (self.action in ('sistema', 'callas') or
                                        reboot_needed(self.before, after, Path('/run/reboot-required').exists()))

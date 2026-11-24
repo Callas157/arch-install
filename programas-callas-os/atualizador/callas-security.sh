@@ -185,8 +185,12 @@ seguranca() {
   # signatures on repository packages, including old per-repository overrides.
   python - <<'PY'
 from pathlib import Path
+import re
 p = Path('/etc/pacman.conf')
-lines = p.read_text().splitlines()
+content = p.read_text()
+# Remove only complete, project-managed blocks from earlier releases.
+content = re.sub(r'(?m)^# CALLAS_NVIDIA_(610|PIN)_BEGIN\nIgnorePkg\s*=[^\n]*\n# CALLAS_NVIDIA_\1_END\n?', '', content)
+lines = content.splitlines()
 out, options, done = [], False, False
 for line in lines:
     if line.strip().startswith('['):
@@ -205,13 +209,10 @@ if options and not done:
 p.write_text('\n'.join(out) + '\n')
 PY
   nvidia_before=$(pacman -Q nvidia-utils nvidia-open-dkms lib32-nvidia-utils nvidia-settings libxnvctrl 2>/dev/null || :)
-  if [[ -n $nvidia_before ]]; then
-    if [[ ! -f /etc/callas-nvidia-version ]]; then
-      pacman -Q nvidia-utils | awk '{sub(/-[^-]*$/, "", $2); print $2}' > /etc/callas-nvidia-version
-    fi
-    # Keep the existing driver, even if this machine predates the marker file.
-    sed -i '/^# CALLAS_NVIDIA_610_BEGIN$/,/^# CALLAS_NVIDIA_610_END$/d' /etc/pacman.conf
-    sed -i '/^\[options\]$/a # CALLAS_NVIDIA_610_BEGIN\nIgnorePkg = nvidia-utils nvidia-open-dkms nvidia-open nvidia-open-lts lib32-nvidia-utils nvidia-settings libxnvctrl opencl-nvidia lib32-opencl-nvidia\n# CALLAS_NVIDIA_610_END' /etc/pacman.conf
+  if [[ ! -e /etc/callas-nvidia-version ]] && installed_nvidia=$(pacman -Q nvidia-utils 2>/dev/null); then
+    version=${installed_nvidia#* }
+    printf '%s\n' "${version%-*}" > /etc/callas-nvidia-version
+    chmod 0644 /etc/callas-nvidia-version
   fi
   # Configuration updates install missing requirements; they do not initiate a
   # full Arch upgrade when every requirement is already available.

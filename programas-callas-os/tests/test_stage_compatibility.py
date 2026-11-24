@@ -124,10 +124,15 @@ curl() {
     cp "$FIXTURE_SOURCE/${url##*/}" "$destination"
 }
 '''
-            code=transport+prepare+copy.replace('/mnt/',str(target)+'/')
+            extra='''
+NVIDIA=0
+cp "$FIXTURE_STORAGE" "$CALLAS_SECURITY_TMP/callas-storage-setup.py"
+'''
+            code=transport+prepare+extra+copy.replace('/mnt/',str(target)+'/')
             env=dict(os.environ,TMPDIR=str(root),CALLAS_ASSET_REF='a'*40,
                 CALLAS_PROGRAMAS_BASE='https://fixture/'+'a'*40+'/programas-callas-os',
                 FIXTURE_TREE=str(root/'tree.json'),FIXTURE_SOURCE=str(source),
+                FIXTURE_STORAGE=str(ROOT/'instalador/callas-storage-setup.py'),
                 FIXTURE_REQUESTS=str(counter),FIXTURE_TAMPER='1' if tamper else '0')
             result=subprocess.run(['bash','-c',code],env=env,capture_output=True,text=True)
             if tamper:

@@ -22,7 +22,12 @@ class KernelCheckTests(unittest.TestCase):
         commands = {
             'uname': 'echo iso-kernel-without-headers',
             'mountpoint': 'exit 1' if failure=='mount' else 'exit 0',
-            'pacman': 'exit 1' if failure=='packages' else 'exit 0',
+            'pacman': 'exit 1' if failure=='packages' else f'''case "$1 $2" in
+  '-Qq nvidia-open-dkms') exit {0 if nvidia else 1} ;;
+  '-Q nvidia-open-dkms')
+    shift
+    printf '%s 610.57.04-1\\n' "$@" ;;
+esac''',
             'dkms': '''printf '%s\n' "$*" >> "$FAKE_ROOT/dkms-calls"
 [[ $1 == autoinstall && ${2:-} == -k && ${3:-} == installed-* ]] || {
   echo "Missing headers for running $(uname -r)" >&2; exit 1;
@@ -149,7 +154,10 @@ done''',
             fn=text[text.index('atualizar_arch() {'):text.index('\natualizar_aur()')]
             fn=fn.replace('/usr/lib/modules/',str(root)+'/usr/lib/modules/').replace('/etc/callas-nvidia-version',str(root)+'/etc/callas-nvidia-version')
             fn=fn.replace('/usr/local/libexec/callas-kernel-policy', 'policy_fixture')
+            fn=fn.replace('/usr/local/libexec/callas-kernel-check', 'kernel_fixture')
+            fn=fn.replace('/var/lib/callas-os/',str(root)+'/var/lib/callas-os/')
             code='''policy_fixture() { [[ $1 == --check-hooks ]]; }
+kernel_fixture() { [[ $1 == --verify-only ]]; }
 mountpoint() { return 0; }
 pacman-conf() { printf '%s\n' "$FAKE_ROOT"; }
 pacman() { return 0; }
