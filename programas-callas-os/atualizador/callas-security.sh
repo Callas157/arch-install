@@ -417,6 +417,7 @@ SPOTIFY_HOOK
 # CALLAS_CLOCK_CLEAN_BEGIN
   if [[ ${2:-} == --installation ]]; then
     python "$stage/callas-widget.py" --prepare-clean "$usuario"
+    python "$stage/callas-kde-defaults.py" "$stage/callas-profile.png" --initial-user "$usuario"
   fi
 # CALLAS_CLOCK_CLEAN_END
   # Shared by clean-install --installation and option 5 --config-update.

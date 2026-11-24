@@ -68,7 +68,7 @@ install_fixture() {
     def test_required_step_precedes_favorites_and_release_completion(self):
         text=(ROOT/'atualizador/callas-config-update.sh').read_text()
         start=text.index('# Complete the native application set')
-        self.assertLess(start,text.index('Prepend='))
+        self.assertLess(start,text.index('python "$CALLAS_RELEASE_DIR/callas-kde-defaults.py"'))
         self.assertLess(start,text.index('/usr/local/libexec/callas-version --complete'))
         self.assertLess(text.index('/usr/bin/bash "$CALLAS_RELEASE_DIR/callas-security.sh"'),start)
 

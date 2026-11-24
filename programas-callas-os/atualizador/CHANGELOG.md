@@ -1,5 +1,10 @@
 # Histórico do Callas OS
 
+## 3.26.0 — 2026-11-24
+
+- O menu KDE passa a oferecer Central Callas OS, Steam, Discord, Configurações do Sistema e Konsole como favoritos padrão. A instalação limpa e o Callas OS Update compartilham a mesma lista. Os favoritos pessoais já salvos são preservados.
+- `callas-profile.png` entra no catálogo de avatares do KDE. A conta criada na instalação recebe essa foto no Plasma e na tela de login. Em instalações existentes, o Update adiciona a imagem ao catálogo e preserva a foto da conta.
+
 ## 3.25.1 — 2026-11-24
 
 - **Callas OS Linux** aparece primeiro no GRUB. Em instalações novas, o Linux **7.2.15** inicia após **três segundos**. O **LTS** fica em segundo e a entrada de diagnóstico fica em terceiro.

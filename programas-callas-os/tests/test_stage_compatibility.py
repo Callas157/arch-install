@@ -156,9 +156,17 @@ cp "$FIXTURE_STORAGE" "$CALLAS_SECURITY_TMP/callas-storage-setup.py"
             for name in ('callas-release.py','callas-game-logs.py','put-update.sh','VERSION',
                          'callas-update-gui.py','callas-update-gui-install.py','callas-uninstall.py',
                          'callas-defaults.py','default-app-icons.json','callas-browser.py',
+                         'callas-kde-defaults.py','callas-profile.png',
                          'callas-automount.py','callas-steam-libraries.py',
                          'callas-steam-libraries.desktop'):
                 self.assertEqual((stage/name).read_bytes(),(source/name).read_bytes())
+            spec = importlib.util.spec_from_file_location('staged_kde_defaults', stage/'callas-kde-defaults.py')
+            kde_defaults = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(kde_defaults)
+            kde_defaults.provision(stage/'callas-profile.png', root=target, initial_user='fixture')
+            self.assertEqual((target/'var/lib/AccountsService/icons/fixture').read_bytes(),
+                             (ROOT.parent/'assets/profile-pictures/callas-profile.png').read_bytes())
+            self.assertIn('org.kde.konsole.desktop;', (target/'etc/xdg/kicker-extra-favoritesrc').read_text())
             # Install the exact staged GUI into a disposable new-system prefix.
             spec=importlib.util.spec_from_file_location('staged_gui_installer',stage/'callas-update-gui-install.py')
             gui_installer=importlib.util.module_from_spec(spec);spec.loader.exec_module(gui_installer)

@@ -19,7 +19,8 @@ DEPENDENCIES={
     'apps':('callas-apps.py','callas-apps.json','callas-spotify-permissions.sh','callas-aur-install.py','callas-native.py','callas-kernel-check.sh'),
     'tools':('callas-monitores.py','callas-janelas.py','callas-inicio-kde.sh','callas-kde-desligamento-login.sh'),
     'boot':('callas.script','callas.plymouth','callas-boot-theme.py'),
-    'flatpaks':('callas-apps.py','callas-apps.json'), 'browser':('callas-browser.py',), 'desktop':(),
+    'flatpaks':('callas-apps.py','callas-apps.json'), 'browser':('callas-browser.py',),
+    'desktop':('callas-kde-defaults.py','callas-profile.png'),
     'session':('callas-game-logs.py','callas-inicio-kde.sh','callas-janelas.py','callas-nekofetch.sh','callas-version.py'),
 }
 REQUIRED={
@@ -28,7 +29,9 @@ REQUIRED={
     'apps':(),
     'tools':('/usr/local/share/applications/io.github.Callas157.Monitores.desktop','/etc/systemd/user/callas-janelas.service'),
     'boot':('/etc/grub.d/09_callas','/boot/grub/themes/callas/loading.cfg','/boot/grub/themes/callas/background.png','/boot/grub/grub.cfg','/boot/initramfs-linux.img','/boot/initramfs-linux-lts.img'),
-    'flatpaks':(), 'browser':('/etc/brave/policies/managed/callas-bonjourr.json','/etc/brave/policies/recommended/callas-defaults.json'), 'desktop':('/etc/xdg/kicker-extra-favoritesrc',), 'session':('/etc/systemd/user/callas-game-logs.service',),
+    'flatpaks':(), 'browser':('/etc/brave/policies/managed/callas-bonjourr.json','/etc/brave/policies/recommended/callas-defaults.json'),
+    'desktop':('/etc/xdg/kicker-extra-favoritesrc','/usr/share/plasma/avatars/callas-profile.png'),
+    'session':('/etc/systemd/user/callas-game-logs.service',),
 }
 
 

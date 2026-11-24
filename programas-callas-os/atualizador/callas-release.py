@@ -25,6 +25,8 @@ FILES = (
     "programas-callas-os/atualizador/callas-browser.py",
     "assets/central-callas-os/default-app-icons.json",
     "programas-callas-os/atualizador/callas-defaults.py",
+    "programas-callas-os/atualizador/callas-kde-defaults.py",
+    "assets/profile-pictures/callas-profile.png",
     "programas-callas-os/atualizador/callas-boot-theme.py",
     "programas-callas-os/atualizador/callas-apps.py",
     "programas-callas-os/atualizador/callas-uninstall.py",

@@ -276,6 +276,11 @@ phase_done apps
 fi
 # CALLAS_PHASE_END apps
 
+# Os padrões do KDE também podem ser instalados em sistemas com GRUB legado.
+if phase_needed desktop; then
+  python "$CALLAS_RELEASE_DIR/callas-kde-defaults.py" "$CALLAS_RELEASE_DIR/callas-profile.png"
+fi
+
 grub_compativel=0
 if [[ -x /etc/grub.d/09_callas && -f /etc/grub.d/10_linux && ! -x /etc/grub.d/10_linux ]]; then
   grub_compativel=1
@@ -534,14 +539,6 @@ for wallpaper in "${wallpapers[@]}"; do
 }
 EOF
 done
-
-# Favoritos padrão do Kickoff.
-install -d /etc/xdg
-cat > /etc/xdg/kicker-extra-favoritesrc <<'EOF'
-[General]
-IgnoreDefaults=true
-Prepend=io.github.Callas157.AtualizadorDoSistema.desktop;steam.desktop;discord.desktop;systemsettings.desktop;
-EOF
 
 # Energia: sem suspensão, escurecimento ou desligamento automático de tela.
 if command -v kwriteconfig6 >/dev/null; then
