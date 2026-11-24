@@ -33,14 +33,15 @@ class BootThemeTests(unittest.TestCase):
         self.assertNotIn('echo ', result)
         self.assertNotIn('sleep ', result)
 
-    def test_legacy_main_first_is_migrated_to_lts_first(self):
+    def test_legacy_lts_first_is_migrated_to_main_then_lts(self):
         helper = self.helper()
         original = ('#!/bin/sh\ncat <<\'MENU\'\n'
-                    "menuentry 'Callas OS Linux' {\n linux /vmlinuz-linux\n initrd /initramfs-linux.img\n}\n\n"
                     "menuentry 'Callas OS (kernel LTS - recuperação)' {\n linux /vmlinuz-linux-lts\n initrd /initramfs-linux-lts.img\n}\n\n"
+                    "menuentry 'Callas OS Linux' {\n linux /vmlinuz-linux\n initrd /initramfs-linux.img\n}\n\n"
                     "menuentry 'Callas OS (diagnóstico sem splash)' {\n linux /vmlinuz-linux\n initrd /initramfs-linux.img\n}\nMENU\n")
         result = helper.migrate(original)
-        self.assertLess(result.index("menuentry 'Callas OS (kernel LTS"), result.index("menuentry 'Callas OS Linux'"))
+        titles = [line.split("'", 2)[1] for line in result.splitlines() if line.startswith('menuentry ')]
+        self.assertEqual(titles, list(helper.TITLES))
         self.assertEqual(helper.migrate(result), result)
 
     def test_valid_legacy_variants_preserve_all_boot_commands(self):

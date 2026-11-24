@@ -4,6 +4,7 @@ import io
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -201,7 +202,7 @@ with tempfile.TemporaryDirectory() as temp:
  assert not monitor._accept(bytes.fromhex('03 10 40 02 0b'))
  assert not monitor._accept(bytes.fromhex('03 e5 01 00 00'))
 '''
-        result = subprocess.run(['python3', '-c', code], cwd=SOURCE / 'app', capture_output=True, text=True)
+        result = subprocess.run([sys.executable, '-c', code], cwd=SOURCE / 'app', capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_absent_kde_session_does_not_fail_the_app(self):
@@ -247,5 +248,5 @@ with TemporaryDirectory() as tmp, patch.object(Path,'home',return_value=Path(tmp
  assert p.is_file() and 'Hidden=true' in p.read_text()
  assert UnifiedTray.set_autostart(obj,True) is True
 '''
-        result = subprocess.run(['python3', '-c', code], cwd=SOURCE / 'app', capture_output=True, text=True)
+        result = subprocess.run([sys.executable, '-c', code], cwd=SOURCE / 'app', capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)

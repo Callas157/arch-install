@@ -192,7 +192,9 @@ if(events.length!==2||b.unresponsiveChanged.f.length!==1)throw Error('closed UUI
                 expected=['systemctl','--root=/','enable','callas-game-events.service'] if chroot else ['systemctl','restart','callas-game-events.service']
                 self.assertIn(expected,commands)
                 self.assertIn('NoNewPrivileges=yes',written['/etc/systemd/system/callas-game-events.service'])
-                self.assertIn('OnlyShowIn=KDE;',written['/etc/xdg/autostart/callas-game-logs.desktop'])
+                autostart=written['/etc/xdg/autostart/callas-game-logs.desktop']
+                self.assertIn('OnlyShowIn=KDE;',autostart)
+                self.assertIn('Exec=/usr/bin/systemctl --user start callas-game-logs.service',autostart)
 
     def test_system_journal_stream_filters_events_and_persists_only_deduplication_keys(self):
         account=types.SimpleNamespace(pw_uid=1000,pw_name='callas')
@@ -215,13 +217,13 @@ if(events.length!==2||b.unresponsiveChanged.f.length!==1)throw Error('closed UUI
             self.assertIn('_UID=1000',argv);self.assertIn('+',argv)
             child.terminate.assert_called_once()
 
-    def test_published_stage_clean_installer_and_menu_include_helper(self):
+    def test_update_clean_installer_and_menu_include_game_logs_helper(self):
         release=(UP/'callas-release.py').read_text();security=(UP/'callas-security.sh').read_text();updater=(UP/'callas-config-update.sh').read_text()
         menu=(UP/'put-update.sh').read_text();installer=(UP.parent.parent/'instalar-arch.sh').read_text()
         self.assertIn('programas-callas-os/atualizador/callas-game-logs.py',release)
         self.assertIn('callas-game-logs.py) target=callas-game-logs',security)
         self.assertIn('/usr/local/libexec/callas-game-logs --install-system',security)
-        self.assertIn('restart callas-game-logs.service',updater)
+        self.assertIn('callas-security.sh" "$usuario" --config-update',updater)
         self.assertIn('Coletar diagnóstico de jogo',menu)
         self.assertIn('Coletar diagnóstico de jogo',installer)
         self.assertIn('callas-security.sh" "$usuario" --installation',installer)

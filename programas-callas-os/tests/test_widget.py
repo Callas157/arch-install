@@ -3,9 +3,11 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -150,18 +152,23 @@ class WidgetTests(unittest.TestCase):
         return engine,error
 
     def test_leaving_edit_mode_before_geometry_snapshot_avoids_scaled_scene_coordinates(self):
-        helper=load()
-        with patch.object(helper,'plasma_object'), patch('dbus.Interface') as interface, patch.object(helper.time,'sleep'):
-            interface.return_value.Get.return_value=True
+        helper = load()
+        interface = Mock()
+        interface.return_value.Get.return_value = True
+        dbus = SimpleNamespace(Interface=interface, Boolean=bool)
+        with patch.dict(sys.modules, {'dbus': dbus}), patch.object(helper, 'plasma_object') as plasma, \
+                patch.object(helper.time, 'sleep'):
             helper.leave_edit_mode()
-            self.assertEqual(interface.return_value.Set.call_args.args[:2],('org.kde.PlasmaShell','editMode'))
-            self.assertFalse(interface.return_value.Set.call_args.args[2])
+        interface.assert_called_once_with(plasma.return_value, 'org.freedesktop.DBus.Properties')
+        interface.return_value.Set.assert_called_once_with('org.kde.PlasmaShell', 'editMode', False)
 
     def test_snapshot_accepts_literal_error_word_inside_user_configuration(self):
-        helper=load()
-        with patch.object(helper,'plasma_object'), patch('dbus.Interface') as interface:
-            interface.return_value.evaluateScript.return_value='CALLAS_WIDGET_OK:{"format":"Error"}'
-            self.assertEqual(helper.result('read-only fixture'),{'format':'Error'})
+        helper = load()
+        interface = Mock()
+        interface.return_value.evaluateScript.return_value = 'CALLAS_WIDGET_OK:{"format":"Error"}'
+        dbus = SimpleNamespace(Interface=interface)
+        with patch.dict(sys.modules, {'dbus': dbus}), patch.object(helper, 'plasma_object'):
+            self.assertEqual(helper.result('read-only fixture'), {'format': 'Error'})
 
     def test_initial_placement_preserves_existing_widget_without_creating_or_moving(self):
         engine, result = self.run_script(initial=True)

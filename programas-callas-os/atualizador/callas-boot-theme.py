@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Validate Callas boot entries, add the transition and put the LTS first."""
+"""Validate Callas entries and order the main kernel, the LTS and diagnostics."""
 import argparse
 import os
 from pathlib import Path
@@ -62,12 +62,14 @@ def migrate(source):
             body = body[:position] + indent + TRANSITION.strip() + ending + body[position:]
             result = result[:match.start('body')] + body + result[match.end('body'):]
     entries = [entry_pattern(title).search(result) for title in TITLES]
-    first = min(entries, key=lambda entry: entry.start())
-    lts = entries[1]
-    if first != lts:
-        end = lts.end() + (2 if result.startswith('\r\n', lts.end()) else 1)
-        result = result[:first.start()] + result[lts.start():end] + result[first.start():lts.start()] + result[end:]
-    return result
+    ordered = sorted(entries, key=lambda entry: entry.start())
+    parts = []
+    offset = 0
+    for slot, entry in zip(ordered, entries):
+        parts.extend((result[offset:slot.start()], entry.group()))
+        offset = slot.end()
+    parts.append(result[offset:])
+    return ''.join(parts)
 
 
 def main():

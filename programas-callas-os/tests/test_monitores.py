@@ -273,16 +273,18 @@ if(ps[0].screen!==0 || !logs.includes('CALLAS_OK')) throw Error('panel');
              patch.object(win, 'atomic', side_effect=lambda path, text, mode: written.update({str(path): text})):
             win.install_system()
         self.assertEqual(len(written), 3)
-        self.assertIn('NoDisplay=true', written['/etc/xdg/autostart/callas-janelas.desktop'])
+        autostart = written['/etc/xdg/autostart/callas-janelas.desktop']
+        self.assertIn('NoDisplay=true', autostart)
+        self.assertIn('Exec=/usr/local/libexec/callas-janelas --activate', autostart)
         self.assertIn('callas-janelas --activate', written['/etc/systemd/user/callas-janelas.service'])
         self.assertIn('Type=notify',written['/etc/systemd/user/callas-discord-memory.service'])
         self.assertIn('callas-discord --watch',written['/etc/systemd/user/callas-discord-memory.service'])
         self.assertNotIn('callas-monitores', ''.join(written.values()))
 
-    def test_update_activates_memory_and_install_does_not_open_monitor_tool(self):
+    def test_update_provisions_memory_and_install_leaves_monitor_tool_closed(self):
         updater = (ROOT / 'atualizador/callas-config-update.sh').read_text()
         installer = (REPO / 'instalar-arch.sh').read_text()
-        self.assertIn('start callas-janelas.service', updater)
+        self.assertIn('/usr/local/libexec/callas-janelas --install-system', updater)
         self.assertIn('DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_sessao/bus" systemctl --user', updater)
         self.assertIn('"$libexec/callas-janelas" --install-system', installer)
         self.assertNotIn('callas-monitores.service', updater)

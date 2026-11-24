@@ -6,7 +6,7 @@ Leia junto com [AGENTS.md](../AGENTS.md) e [versionamento.md](versionamento.md).
 
 Leia a seção “Regra obrigatória: cada opção respeita seu escopo” em [AGENTS.md](../AGENTS.md) antes de alterar qualquer fluxo. **A opção 5 — Callas OS Update só atende aplicativos (adição/remoção autorizada) e configurações do Linux/Callas OS. Não altera pacotes de kernel, headers ou driver NVIDIA**, inclusive reinstalação, remoção, substituição e downgrade. Uma dependência incompatível interrompe a transação; não autoriza atualização geral, troca do driver ou ativação/antecipação do agendamento.
 
-A instalação limpa usa Linux **7.2.15.arch1-1** com os headers correspondentes do Arquivo do Arch e Linux LTS com headers dos repositórios atuais. O LTS aparece primeiro no menu GRUB e é o padrão em instalações novas. Em GPUs compatíveis, a versão inicial é NVIDIA Open DKMS **610.57.04**. Os pacotes arquivados e suas assinaturas são verificados antes de formatar. A série 7.2 encerrou o suporte upstream.
+A instalação limpa usa Linux **7.2.15.arch1-1** com os headers correspondentes do Arquivo do Arch e Linux LTS com headers dos repositórios atuais. O kernel principal é a primeira opção do GRUB e inicia após três segundos. O LTS fica em segundo. Em GPUs compatíveis, a versão inicial é NVIDIA Open DKMS **610.57.04**. Os pacotes arquivados e suas assinaturas são verificados antes de formatar. A série 7.2 encerrou o suporte upstream.
 
 ## Troca manual na Central
 

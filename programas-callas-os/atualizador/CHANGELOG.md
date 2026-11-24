@@ -1,5 +1,11 @@
 # Histórico do Callas OS
 
+## 3.25.1 — 2026-11-24
+
+- **Callas OS Linux** aparece primeiro no GRUB. Em instalações novas, o Linux **7.2.15** inicia após **três segundos**. O **LTS** fica em segundo e a entrada de diagnóstico fica em terceiro.
+- A instalação limpa e o Callas OS Update usam o mesmo auxiliar para ordenar as entradas reconhecidas. A atualização conserva os kernels, drivers, argumentos de boot e entradas personalizadas já presentes.
+- A suíte offline voltou a exercitar a instalação opcional do Codex e deixou de depender de serviços e diretórios reais da máquina para testar bateria, widgets, aplicativos, instalação e atualização. Os testes de sessão agora verificam a preparação dos serviços sem reativá-los durante o Update.
+
 ## 3.25.0 — 2026-11-24
 
 - O instalador usa Linux **7.2.15.arch1-1** e os headers assinados do Arquivo do Arch. Linux LTS e seus headers vêm dos repositórios atuais. O LTS fica no topo do GRUB e inicia por padrão em instalações novas.

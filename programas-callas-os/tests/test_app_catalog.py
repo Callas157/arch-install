@@ -193,23 +193,37 @@ class CatalogTests(unittest.TestCase):
             self.assertEqual(result, {'cpu': ['AMD'], 'gpu': ['AMD', 'Intel', 'NVIDIA']})
 
     def test_flatpak_removal_checks_desktop_users_and_preserves_user_data(self):
+        accounts = {
+            'fixture': types.SimpleNamespace(pw_dir='/home/fixture', pw_uid=1000),
+            'other': types.SimpleNamespace(pw_dir='/home/other', pw_uid=1001),
+        }
         for busy in (True, False):
             calls = []
+
             def command(argv):
                 calls.append(argv)
-                return 'com.example.Retired\n' if busy and argv[0].endswith('runuser') else ''
-            account = types.SimpleNamespace(pw_dir='/home/fixture', pw_uid=1000)
-            with self.subTest(busy=busy), patch.object(self.apps, 'command', side_effect=command), \
-                    patch.object(self.apps.pwd, 'getpwnam', return_value=account):
+                if busy and argv[:3] == ['/usr/bin/runuser', '-u', 'other']:
+                    return 'com.example.Retired\n'
+                return ''
+
+            with self.subTest(busy=busy), tempfile.TemporaryDirectory() as temp, \
+                    patch.object(self.apps, 'command', side_effect=command), \
+                    patch.object(self.apps.pwd, 'getpwnam', side_effect=accounts.__getitem__), \
+                    patch.object(self.apps.pwd, 'getpwuid', return_value=types.SimpleNamespace(pw_name='other')) as lookup:
+                runtimes = Path(temp)
+                (runtimes / '1001').mkdir()
                 entry = self.entry('com.example.Retired', 'absent', 'flatpak', 'flatpaks')
-                if busy:
-                    with self.assertRaisesRegex(RuntimeError, 'em uso'):
+                with patch.object(self.apps, 'Path', side_effect=lambda path: runtimes if path == '/run/user' else Path(path)):
+                    if busy:
+                        with self.assertRaisesRegex(RuntimeError, 'em uso'):
+                            self.apps.remove(entry, 'fixture')
+                    else:
                         self.apps.remove(entry, 'fixture')
-                else:
-                    self.apps.remove(entry, 'fixture')
+                lookup.assert_called_once_with(1001)
                 queries = [args for args in calls if args[0].endswith('runuser')]
-                self.assertTrue(queries)
+                self.assertEqual([args[2] for args in queries], ['fixture', 'other'])
                 self.assertIn('XDG_RUNTIME_DIR=/run/user/1000', queries[0])
+                self.assertIn('XDG_RUNTIME_DIR=/run/user/1001', queries[1])
                 removals = [args for args in calls if args[0] == 'flatpak']
                 self.assertEqual(bool(removals), not busy)
                 if removals:

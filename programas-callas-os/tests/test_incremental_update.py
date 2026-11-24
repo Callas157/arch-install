@@ -1,4 +1,5 @@
 """Content checkpoints, interrupted runs, asset caching, logs and window fallback."""
+from contextlib import contextmanager
 import datetime
 import importlib.util
 import io
@@ -203,38 +204,74 @@ pacman() { [[ $1 != -Syu ]] || exit 88; return 0; }
    self.assertEqual(result.returncode,0,result.stderr)
    self.assertIn('atualização geral do Arch não executada',result.stdout)
 
+ @contextmanager
+ def release_startup(self, *, pending=False, force=False):
+  user = 'fixture'
+  account = types.SimpleNamespace(pw_uid=1000)
+  ref = 'a' * 40
+  with tempfile.TemporaryDirectory() as temp:
+   root = Path(temp)
+   def fixture_path(path):
+    return root / path.lstrip('/')
+
+   installed = fixture_path('/etc/callas-os/release.json')
+   installed.parent.mkdir(parents=True)
+   installed.write_text(json.dumps({'release': ref, 'status': 'complete'}))
+   helper = fixture_path('/usr/local/libexec/callas-update-state')
+   helper.parent.mkdir(parents=True)
+   helper.touch()
+   if pending:
+    marker = fixture_path('/var/lib/callas-os/update-pending-1000')
+    marker.parent.mkdir(parents=True)
+    marker.touch()
+   fixture_path('/var/tmp').mkdir(parents=True)
+
+   def temporary_directory(*, prefix, dir):
+    return tempfile.TemporaryDirectory(prefix=prefix, dir=fixture_path(dir))
+
+   with (
+    patch.object(release.os, 'geteuid', return_value=0),
+    patch.object(release.os, 'umask'),
+    patch.dict(os.environ, {'SUDO_USER': user}, clear=True),
+    patch.object(release.pwd, 'getpwnam', return_value=account),
+    patch.object(release.sys, 'argv', ['callas-release'] + (['--force'] if force else [])),
+    patch.object(release, 'resolve_ref', return_value=ref),
+    patch.object(release, 'Path', new=fixture_path),
+    patch.object(release, 'tempfile', types.SimpleNamespace(TemporaryDirectory=temporary_directory)),
+   ):
+    yield user
+
  def test_completed_commit_skips_downloads_but_pending_work_and_force_do_not(self):
-  user=pwd.getpwuid(os.getuid()).pw_name
-  original_read=Path.read_text;original_exists=Path.exists
-  def read(path,*args,**kwargs):
-   if str(path)=='/etc/callas-os/release.json':return json.dumps({'release':'a'*40,'status':'complete'})
-   return original_read(path,*args,**kwargs)
   for pending,force,expected in ((False,False,0),(True,False,1),(False,True,1)):
-   with self.subTest(pending=pending,force=force):
-    def exists(path):
-     if path.name.startswith('update-pending-'):return pending
-     return original_exists(path)
-    with patch.object(release.os,'geteuid',return_value=0),patch.dict(os.environ,{'SUDO_USER':user}),patch.object(release.sys,'argv',['callas-release']+(['--force'] if force else [])),patch.object(release,'resolve_ref',return_value='a'*40),patch.object(release,'stage_files') as download,patch.object(release.subprocess,'run',return_value=types.SimpleNamespace(returncode=0)),patch.object(Path,'read_text',read),patch.object(Path,'exists',exists):
-     previous=os.umask(0o077)
-     try:self.assertEqual(release.main(),0)
-     finally:os.umask(previous)
-     self.assertEqual(download.call_count,expected)
+   with (
+    self.subTest(pending=pending, force=force),
+    self.release_startup(pending=pending, force=force) as user,
+    patch.object(release, 'stage_files') as download,
+    patch.object(release.subprocess, 'run', return_value=types.SimpleNamespace(returncode=0)) as run,
+   ):
+    self.assertEqual(release.main(), 0)
+    self.assertEqual(download.call_count, expected)
+    if expected:
+     stage = download.call_args.args[0]
+     self.assertEqual(run.call_args.args[0],
+                      ['/usr/bin/bash', stage + '/callas-config-update.sh'] + (['--force'] if force else []))
+    else:
+     run.assert_called_once_with(['/usr/bin/python3', '/usr/local/libexec/callas-update-state',
+                                  '--intact', user], stdout=subprocess.DEVNULL)
+
  def test_same_commit_with_local_damage_still_runs_repair(self):
-  user=pwd.getpwuid(os.getuid()).pw_name
-  original_read=Path.read_text;original_exists=Path.exists;original_file=Path.is_file
-  def read(path,*args,**kwargs):
-   if str(path)=='/etc/callas-os/release.json':return json.dumps({'release':'a'*40,'status':'complete'})
-   return original_read(path,*args,**kwargs)
-  def exists(path):
-   return False if path.name.startswith('update-pending-') else original_exists(path)
-  def is_file(path):
-   return True if str(path)=='/usr/local/libexec/callas-update-state' else original_file(path)
-  with patch.object(release.os,'geteuid',return_value=0),patch.dict(os.environ,{'SUDO_USER':user}),patch.object(release.sys,'argv',['callas-release']),patch.object(release,'resolve_ref',return_value='a'*40),patch.object(release,'stage_files') as download,patch.object(release.subprocess,'run',side_effect=[types.SimpleNamespace(returncode=1),types.SimpleNamespace(returncode=0)]) as run,patch.object(Path,'read_text',read),patch.object(Path,'exists',exists),patch.object(Path,'is_file',is_file):
-   previous=os.umask(0o077)
-   try:self.assertEqual(release.main(),0)
-   finally:os.umask(previous)
+  with (
+   self.release_startup() as user,
+   patch.object(release, 'stage_files') as download,
+   patch.object(release.subprocess, 'run', side_effect=[types.SimpleNamespace(returncode=1),
+                                                       types.SimpleNamespace(returncode=0)]) as run,
+  ):
+   self.assertEqual(release.main(), 0)
    download.assert_called_once()
-   self.assertIn('--intact',run.call_args_list[0].args[0])
+   self.assertEqual([call.args[0] for call in run.call_args_list], [
+    ['/usr/bin/python3', '/usr/local/libexec/callas-update-state', '--intact', user],
+    ['/usr/bin/bash', download.call_args.args[0] + '/callas-config-update.sh'],
+   ])
 
  def test_optional_codex_stays_separate_from_clean_install_and_retries_when_current(self):
   script=(UP/'callas-config-update.sh').read_text()

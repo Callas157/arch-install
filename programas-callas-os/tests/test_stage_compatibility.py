@@ -13,10 +13,17 @@ ROOT=Path(__file__).resolve().parents[1];UP=ROOT/'atualizador'
 spec=importlib.util.spec_from_file_location('stagingcompat',UP/'callas-release.py')
 release=importlib.util.module_from_spec(spec);spec.loader.exec_module(release)
 
+
+def installer_prepartition_flow():
+    installer = (ROOT.parent / 'instalar-arch.sh').read_text()
+    start = installer.index('# ---------------- Escolha do disco ----------------\n')
+    end = installer.index('# ---------------- Particionamento ----------------\n', start)
+    return installer[start:end]
+
+
 class StageCompatibilityTests(unittest.TestCase):
     def test_preparation_waits_for_credentials_and_failure_stops_before_partitioning(self):
-        installer=(ROOT.parent/'instalar-arch.sh').read_text()
-        flow=installer.split('# ---------------- Pré-verificação NVIDIA ----------------\n',1)[1].split('# ---------------- Particionamento ----------------',1)[0]
+        flow=installer_prepartition_flow()
         # Only replace the hardware type probe: the disposable disk fixture is
         # a regular file. All prompt and credential handling remains real Bash.
         flow=flow.replace('[[ ! -b "$DISCO"','[[ ! -e "$DISCO"')
@@ -60,10 +67,9 @@ curl() {
             self.assertEqual(disk.read_bytes(),b'untouched')
 
     def test_disk_question_is_reached_before_release_downloads(self):
-        installer=(ROOT.parent/'instalar-arch.sh').read_text()
         # Run the real pre-install flow up to partitioning. An invalid disk
         # answer must exit before any download, log setup or disk operation.
-        flow=installer.split('# ---------------- Pré-verificação NVIDIA ----------------\n',1)[1].split('# ---------------- Particionamento ----------------',1)[0]
+        flow=installer_prepartition_flow()
         with tempfile.TemporaryDirectory() as temp:
             requests=Path(temp)/'requests'
             fake='''set -Eeuo pipefail

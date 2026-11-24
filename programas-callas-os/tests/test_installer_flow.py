@@ -218,8 +218,19 @@ class InitialAurTests(unittest.TestCase):
                 self.assertIn('--noconfirm',args);self.assertFalse(any('app-debug-' in a for a in args))
                 installed.add('app')
             return types.SimpleNamespace(returncode=0,stdout='',stderr='')
+
+        def build_directory(**options):
+            # Keep the real filesystem checks in a directory writable by the test runner.
+            options.pop('dir', None)
+            return tempfile.TemporaryDirectory(**options)
+
         response=json.dumps({'results':[{'Name':'app','PackageBase':'app'}]}).encode()
-        with patch.object(aur.pwd,'getpwnam',return_value=account),patch.object(aur,'run',side_effect=simulate),patch.object(aur.urllib.request,'urlopen',return_value=io.BytesIO(response)):
+        with (
+            patch.object(aur, 'tempfile', types.SimpleNamespace(TemporaryDirectory=build_directory)),
+            patch.object(aur.pwd, 'getpwnam', return_value=account),
+            patch.object(aur, 'run', side_effect=simulate),
+            patch.object(aur.urllib.request, 'urlopen', return_value=io.BytesIO(response)),
+        ):
             aur.Installer('fixture').install('app')
         self.assertEqual(installed,{'native-lib','app'})
         self.assertFalse(any('sudo' in arg or '--review'==arg for call in calls for arg in call))

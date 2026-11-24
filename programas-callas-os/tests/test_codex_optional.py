@@ -115,7 +115,7 @@ class OptionalCodexTests(unittest.TestCase):
 
     def test_verified_overlay_rejects_changed_source_before_install(self):
         with tempfile.TemporaryDirectory() as folder:
-            remote = io.BytesIO(b'código adulterado'); remote.url = 'https://raw.githubusercontent.com/test'
+            remote = io.BytesIO('código adulterado'.encode()); remote.url = 'https://raw.githubusercontent.com/test'
             with patch.object(gui, 'CODEX_OVERLAY', {'callas_chat/ui.py': '0' * 40}), \
                  patch.object(gui.urllib.request, 'urlopen', return_value=remote):
                 with self.assertRaisesRegex(ValueError, 'integridade'):

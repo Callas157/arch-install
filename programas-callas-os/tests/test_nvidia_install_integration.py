@@ -2,6 +2,9 @@
 """Offline regression gates: no real package, kernel or disk operations."""
 import ast
 from pathlib import Path
+import subprocess
+import sys
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -9,6 +12,7 @@ INSTALLER = ROOT / 'instalar-arch.sh'
 PREPARE = ROOT / 'programas-callas-os/instalador/callas-nvidia-prepare.py'
 POLICY = ROOT / 'programas-callas-os/atualizador/callas-kernel-policy.py'
 RELEASE = ROOT / 'programas-callas-os/atualizador/callas-release.py'
+BOOT_THEME = ROOT / 'programas-callas-os/atualizador/callas-boot-theme.py'
 
 
 class NvidiaInstallationIntegration(unittest.TestCase):
@@ -36,7 +40,20 @@ class NvidiaInstallationIntegration(unittest.TestCase):
         config = script.split("<<'CALLAS_CHROOT'", 1)[1]
         self.assertNotIn('pacman -Syu', config)
         self.assertNotIn('IgnorePkg', config)
-        self.assertLess(config.index("menuentry 'Callas OS (kernel LTS"), config.index("menuentry 'Callas OS Linux'"))
+
+    def test_clean_install_generates_main_first_and_lts_second(self):
+        config = INSTALLER.read_text().split("<<'CALLAS_CHROOT'", 1)[1]
+        self.assertIn('\nGRUB_DEFAULT=0\nGRUB_TIMEOUT=3\n', config)
+        configure = 'callas-boot-theme.py --entries /etc/grub.d/09_callas'
+        self.assertLess(config.index(configure), config.index('grub-mkconfig -o'))
+        entries = config.split("<<'GRUB_CALLAS'\n", 1)[1].split('\nGRUB_CALLAS\n', 1)[0]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / '09_callas'
+            path.write_text(entries + '\n')
+            subprocess.run([sys.executable, str(BOOT_THEME), '--entries', str(path)], check=True, capture_output=True)
+            menu = subprocess.check_output(['sh', str(path)], text=True)
+        titles = [line.split("'", 2)[1] for line in menu.splitlines() if line.startswith('menuentry ')]
+        self.assertEqual(titles[:2], ['Callas OS Linux', 'Callas OS (kernel LTS - recuperação)'])
 
     def test_clean_install_patches_before_dkms_then_verifies_both_kernels(self):
         script = INSTALLER.read_text()

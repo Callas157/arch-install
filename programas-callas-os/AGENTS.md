@@ -25,7 +25,7 @@ Estas regras devem ser lidas antes de qualquer tarefa, em cada novo chat e retom
 
 ### Kernel da instalação limpa e seleção manual
 
-A instalação limpa usa `linux` e `linux-headers` **7.2.15.arch1-1** do Arquivo do Arch e instala `linux-lts` e `linux-lts-headers` pelos repositórios atuais. O LTS abre o menu GRUB. O 7.2.15 encerrou o suporte da sua série upstream.
+A instalação limpa usa `linux` e `linux-headers` **7.2.15.arch1-1** do Arquivo do Arch e instala `linux-lts` e `linux-lts-headers` pelos repositórios atuais. O kernel principal é a primeira opção do GRUB e inicia após três segundos. O LTS é a segunda opção. O 7.2.15 encerrou o suporte da sua série upstream.
 
 **Central Callas OS → Kernel Linux** instala ou reverte o par principal por escolha explícita do usuário. **Driver NVIDIA** troca a versão instalada por escolha explícita, inclusive quando o módulo atual está descarregado. Ambos validam os pacotes e o boot. A opção 5 continua restrita a aplicativos e configurações.
 
