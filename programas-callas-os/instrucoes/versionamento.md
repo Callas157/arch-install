@@ -32,6 +32,8 @@ Se a versão remota já for `3.4.1`, uma nova correção será `3.4.2`, mesmo qu
 
 ## 3. Fazer o backup obrigatório antes de alterar o instalador
 
+**Exceção explícita de 2026-11-24 — alterações visuais de baixo risco:** adicionar ou substituir fotos de perfil, wallpapers e ícones, ou ajustar exclusivamente sua cópia/seleção visual no instalador, não exige novo backup no Google Drive. Registre o commit de origem e valide a alteração. A exceção não se aplica a mudanças de particionamento, formatação, boot, kernel, drivers, dependências, contas/permissões ou lógica crítica de instalação; em entregas mistas ou de risco incerto, mantenha o backup obrigatório. Esta exceção prevalece sobre as regras gerais de backup abaixo, sem dispensar testes nem alterar a retenção de 10 backups.
+
 Antes de editar `instalar-arch.sh`, execute o procedimento da seção 6. O backup deve conter o instalador anterior da main, obtido por commit imutável. Só comece a implementação após verificar a cópia no Drive. Não adie esse passo para depois da edição ou da publicação. Se o backup falhar, interrompa a alteração do instalador.
 
 ## 4. Preparar e validar
