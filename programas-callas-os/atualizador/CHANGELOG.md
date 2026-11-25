@@ -1,5 +1,13 @@
 # Histórico do Callas OS
 
+## 3.27.0 — 2026-11-25
+
+- A Central identifica as placas AMD, Intel e NVIDIA pelo PCI. Em máquinas híbridas, exibe um botão por fabricante detectado. Os painéis AMD e Intel permitem instalar os pacotes Vulkan oficiais compatíveis com o Mesa instalado e selecionar RADV, ANV ou Lavapipe conforme a placa e a aplicação. A seleção da NVIDIA Open DKMS continua no próprio painel.
+- O instalador confirma a identidade do disco principal e dos discos selecionados para ext4 no momento da escolha e antes de apagá-los. Cada secundário elegível tem uma pergunta com as opções 1 (formatar para ext4) e 2 (preservar). Uma montagem anterior em `/mnt` interrompe a instalação antes da formatação.
+- A instalação limpa e o Update configuram montagem de volumes de dados por UUID. O fstab é validado e salvo atomicamente. Os volumes ext4 gerenciados passam pela checagem de boot. Ao falhar uma montagem NTFS, o sistema tenta acesso somente leitura e volta a tentar a montagem normal no próximo boot. Falhas de disco ou corrupção que impeça a montagem permanecem visíveis nos logs.
+- **Central → Armazenamento** abre o app Discos e permite registrar a montagem de volumes novos ou reformatados. A montagem automática preserva formatos e permissões existentes. Somente os ext4 criados com autorização durante a instalação têm o dono da raiz do volume ajustado para o usuário.
+- Backup do instalador 3.26.0 salvo no Google Drive e conferido byte a byte contra a main de origem.
+
 ## 3.26.0 — 2026-11-24
 
 - O menu KDE passa a oferecer Central Callas OS, Steam, Discord, Configurações do Sistema e Konsole como favoritos padrão. A instalação limpa e o Callas OS Update compartilham a mesma lista. Os favoritos pessoais já salvos são preservados.

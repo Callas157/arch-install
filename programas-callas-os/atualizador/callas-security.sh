@@ -93,6 +93,43 @@ if [[ -f $rescue_unit && ! -L $rescue_unit ]] &&
   printf 'Serviço antigo de resgate NTFS somente leitura desativado; o disco não foi alterado.\n'
 fi
 
+automount_helper=/usr/local/libexec/callas-automount
+if ! cmp -s "$stage/callas-automount.py" "$automount_helper"; then
+  automount_candidate=$(mktemp /usr/local/libexec/.callas-automount.XXXXXXXX)
+  install -o root -g root -m 0755 "$stage/callas-automount.py" "$automount_candidate"
+  sync -d "$automount_candidate"
+  mv -fT -- "$automount_candidate" "$automount_helper"
+  sync -f /usr/local/libexec
+fi
+install -d -m 0755 /etc/systemd/system/multi-user.target.wants
+ntfs_service=/etc/systemd/system/callas-ntfs-readonly.service
+ntfs_candidate=$(mktemp /etc/systemd/system/.callas-ntfs-readonly.XXXXXXXX)
+cat > "$ntfs_candidate" <<'CALLAS_NTFS_READONLY'
+[Unit]
+Description=Callas OS: give read-only access after failed NTFS data mounts
+After=local-fs.target
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/callas-automount --recover-ntfs
+TimeoutStartSec=35s
+Environment=PATH=/usr/bin:/bin
+CALLAS_NTFS_READONLY
+if cmp -s "$ntfs_candidate" "$ntfs_service"; then
+  rm -f -- "$ntfs_candidate"
+else
+  chmod 0644 "$ntfs_candidate"
+  sync -d "$ntfs_candidate"
+  mv -fT -- "$ntfs_candidate" "$ntfs_service"
+  sync -f /etc/systemd/system
+fi
+ntfs_enabled=/etc/systemd/system/multi-user.target.wants/callas-ntfs-readonly.service
+if [[ $(readlink -- "$ntfs_enabled") != ../callas-ntfs-readonly.service ]]; then
+  ln -sfnT ../callas-ntfs-readonly.service "$ntfs_enabled"
+  sync -f /etc/systemd/system
+fi
+
 # Distribute the optional clock without installing a user applet on Update.
 install -o root -g root -m 0755 "$stage/callas-widget.py" /usr/local/libexec/callas-widget
 install -o root -g root -m 0644 "$stage/relogio-moderno.plasmoid" /usr/local/share/callas-os/relogio-moderno.plasmoid
@@ -438,7 +475,9 @@ SPOTIFY_HOOK
     /usr/local/libexec/callas-kernel-check --verify-only
   fi
   if [[ ${2:-} == --installation ]]; then
-    python "$stage/callas-automount.py" "$usuario"
+    if [[ ! -x /usr/local/libexec/callas-storage-setup ]]; then
+      python "$stage/callas-automount.py" "$usuario"
+    fi
   fi
   printf '%s\n' '2026.11.11.security3' > /etc/callas-os/security-version
   printf 'Segurança aplicada. NVIDIA e senhas preservadas.\n'

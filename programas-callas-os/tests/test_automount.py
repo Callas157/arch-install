@@ -60,6 +60,23 @@ class PlanMountTests(unittest.TestCase):
         self.assertTrue({'nodev', 'nosuid', 'uid=1507', 'gid=1608', 'nofail'}.issubset(options.split(',')))
         self.assertRegex(options, r'(^|,)x-systemd\.device-timeout=[1-9][0-9]*s?(,|$)')
 
+    def test_new_ext4_data_mount_enables_journal_check_before_login(self):
+        [(target, row)] = self.plan(disk('sda', partition('sda1', 'ext4', NTFS_UUID, LINUX_DATA)))
+        self.assertEqual(row.split()[-1], '2')
+        self.assertIn('errors=remount-ro', row)
+        self.assertIn('x-systemd.before=local-fs.target', row)
+
+    def test_migration_preserves_custom_mounts_and_is_idempotent(self):
+        header = '# Montagem de discos de dados — Callas OS\n'
+        options = ','.join(sorted(automount.MANAGED_OPTIONS))
+        original = f'UUID={NTFS_UUID} {self.target} ext4 {options} 0 0\n'
+        custom = f'UUID={ROOT_UUID} /run/media/ana/Dados ext4 nosuid,nodev,nofail 0 0\n'
+        result = automount.refresh_managed_fstab((original + header + original + custom).encode())
+        self.assertIn((original + header).encode(), result)
+        self.assertIn(custom.encode(), result)
+        self.assertIn(b'errors=remount-ro', result)
+        self.assertEqual(automount.refresh_managed_fstab(result), result)
+
     def test_existing_udisks_path_is_preserved_and_spaces_are_escaped(self):
         active_path = '/run/media/ana/Jogos antigos'
         self.secondary['children'][0]['mountpoints'] = [active_path]
@@ -373,6 +390,24 @@ class ExistingConfigurationTests(unittest.TestCase):
         self.assertEqual(automount.managed_mounts([dict(entry, options=options + ',noauto')], sources), {})
         self.assertEqual(automount.managed_mounts([dict(entry, target='/mnt/pessoal')], sources), {})
         self.assertEqual(automount.managed_mounts([entry], {NTFS_UUID.lower(): {'/dev/sda1', '/dev/sdb1'}}), {})
+
+    def test_recovery_is_read_only_and_never_uses_force(self):
+        target = '/mnt/callas-' + NTFS_UUID.lower()
+        options = ','.join(sorted(automount.MANAGED_OPTIONS)) + ',uid=1507,gid=1608,umask=0077,force,noexec'
+        entry = f'{automount.MARKER}\nUUID={NTFS_UUID} {target} ntfs3 {options} 0 0\n'
+        lsblk = {'blockdevices': [disk('sda', partition('sda1', 'ntfs', NTFS_UUID, '0x7'))]}
+        with patch.object(automount.FSTAB.__class__, 'read_text', return_value=entry), patch.object(
+            automount, 'inventory', side_effect=[lsblk, {'filesystems': []}],
+        ), patch.object(automount, 'available_target', return_value=True), patch.object(
+            automount, 'device_path', side_effect=lambda value: '/dev/sda1' if value else None,
+        ), patch.object(automount, 'mount_unit', return_value='mnt-callas.mount'), patch.object(
+            automount.subprocess, 'run',
+            side_effect=[SimpleNamespace(returncode=0), SimpleNamespace(returncode=0)],
+        ) as run:
+            automount.recover_ntfs()
+        argv = run.call_args.args[0]
+        self.assertEqual(argv[-2:], ['/dev/disk/by-uuid/' + NTFS_UUID, target])
+        self.assertEqual(argv[argv.index('-o') + 1], 'ro,nosuid,nodev,uid=1507,gid=1608,umask=0077,noexec')
 
     def test_live_mount_skips_occupied_targets_and_devices_mounted_elsewhere(self):
         active = {'filesystems': [

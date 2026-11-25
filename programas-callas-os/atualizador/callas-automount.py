@@ -1,7 +1,8 @@
 #!/usr/bin/python3
 """Prepare boot mounts for local secondary data partitions."""
 from collections import defaultdict
-from contextlib import suppress
+from contextlib import contextmanager, suppress
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -13,16 +14,21 @@ import sys
 import tempfile
 
 FSTAB = Path('/etc/fstab')
+MARKER = '# Montagem de discos de dados — Callas OS'
+END_MARKER = '# Fim da montagem de discos de dados — Callas OS'
+MANAGED_OPTIONS = {'nosuid', 'nodev', 'nofail', 'x-systemd.device-timeout=10s',
+                   'x-systemd.mount-timeout=15s', 'x-systemd.before=display-manager.service'}
+EARLY_MOUNT = 'x-systemd.before=local-fs.target'
 INTERNAL_TRANSPORTS = {'ata', 'sata', 'nvme'}
 MICROSOFT_BASIC_DATA = 'ebd0a0a2-b9e5-4433-87c0-68b6b72699c7'
 NO_DEFAULT_DRIVE_LETTER = '0x8000000000000000'
 DATA_PARTITIONS = {
-    '0x7', '0x83',
+    '0x6', '0x7', '0xb', '0xc', '0xe', '0x83',
     MICROSOFT_BASIC_DATA,
     '0fc63daf-8483-4772-8e79-3d69d8477de4',  # Linux filesystem
 }
 FILESYSTEMS = {
-    'ntfs': 'ntfs3', 'ntfs3': 'ntfs3', 'exfat': 'exfat',
+    'ntfs': 'ntfs3', 'ntfs3': 'ntfs3', 'exfat': 'exfat', 'vfat': 'vfat',
     'ext2': 'ext2', 'ext3': 'ext3', 'ext4': 'ext4', 'xfs': 'xfs', 'btrfs': 'btrfs',
 }
 UUID_PATTERN = re.compile(r'[0-9a-fA-F]+(?:-[0-9a-fA-F]+)*')
@@ -77,6 +83,59 @@ def supported_partition(partition):
     return (parttype == MICROSOFT_BASIC_DATA
             and partition.get('fstype') in ('ntfs', 'ntfs3', 'exfat')
             and flags == NO_DEFAULT_DRIVE_LETTER)
+
+
+def managed_rows(text):
+    marked = False
+    for number, line in enumerate(text.splitlines(keepends=True)):
+        if line.rstrip('\n') == MARKER:
+            marked = True
+        elif line.rstrip('\n') == END_MARKER:
+            marked = False
+        if not marked or not line.strip() or line.lstrip().startswith('#'):
+            continue
+        fields = line.split()
+        if len(fields) != 6:
+            continue
+        source, target, filesystem, options, dump, check = fields
+        uuid = source.removeprefix('UUID=')
+        options = set(options.split(','))
+        if (source != 'UUID=' + uuid or not UUID_PATTERN.fullmatch(uuid)
+                or not (target == '/mnt/callas-' + uuid.lower()
+                        or (re.fullmatch(r'/run/media/[a-z_][a-z0-9_-]*/[^/]+', target)
+                            and target.rsplit('/', 1)[-1] not in ('.', '..')))
+                or filesystem not in FILESYSTEMS.values() or dump != '0' or check not in ('0', '2')
+                or not MANAGED_OPTIONS <= options or 'noauto' in options):
+            continue
+        yield number, fields
+
+
+def refresh_managed_fstab(previous):
+    text = previous.decode('utf-8', errors='surrogateescape')
+    lines = text.splitlines(keepends=True)
+    for number, fields in managed_rows(text):
+        options = fields[3].split(',')
+        additions = []
+        if EARLY_MOUNT not in options and not any(item.startswith('x-systemd.after=local-fs.target') for item in options):
+            additions.append(EARLY_MOUNT)
+        if fields[2] == 'ext4':
+            if not any(item.startswith('errors=') for item in options):
+                additions.append('errors=remount-ro')
+            if 'ro' not in options:
+                fields[5] = '2'
+        if additions or fields[-1] != lines[number].split()[-1]:
+            fields[3] = ','.join(options + additions)
+            ending = '\n' if lines[number].endswith('\n') else ''
+            lines[number] = '\t'.join(fields) + ending
+    return ''.join(lines).encode('utf-8', errors='surrogateescape')
+
+
+def sync_directory(path):
+    directory = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
 
 
 def plan_mounts(disks, root_source, configured, user, uid, gid, available_target, *, report=None):
@@ -172,11 +231,14 @@ def plan_mounts(disks, root_source, configured, user, uid, gid, available_target
                 continue
             options = [
                 'nosuid', 'nodev', 'nofail', 'x-systemd.device-timeout=10s',
-                'x-systemd.mount-timeout=15s', 'x-systemd.before=display-manager.service',
+                'x-systemd.mount-timeout=15s', 'x-systemd.before=display-manager.service', EARLY_MOUNT,
             ]
-            if fs in ('ntfs3', 'exfat'):
+            if fs in ('ntfs3', 'exfat', 'vfat'):
                 options.extend((f'uid={uid}', f'gid={gid}', 'umask=0077'))
-            entries.append((target, f'UUID={uuid}\t{fstab_path(target)}\t{fs}\t{",".join(options)}\t0\t0'))
+            if fs == 'ext4':
+                options.append('errors=remount-ro')
+            check = 2 if fs == 'ext4' else 0
+            entries.append((target, f'UUID={uuid}\t{fstab_path(target)}\t{fs}\t{",".join(options)}\t0\t{check}'))
             targets.add(target)
     return entries
 
@@ -229,6 +291,55 @@ def verify_candidate(candidate):
     result.check_returncode()
 
 
+def mount_unit(target):
+    return subprocess.check_output(
+        ['systemd-escape', '--path', '--suffix=mount', '--', target], text=True,
+    ).strip()
+
+
+def disk_inventory():
+    return inventory('lsblk', '--json', '--paths', '--tree', '-o',
+                     'NAME,TYPE,TRAN,RM,RO,HOTPLUG,FSTYPE,UUID,PTTYPE,PARTTYPE,PARTFLAGS,MOUNTPOINTS')['blockdevices']
+
+
+def recover_ntfs():
+    """Offer readable files after a failed normal NTFS mount, without force or repair."""
+    rows = [fields for _, fields in managed_rows(FSTAB.read_text(encoding='utf-8', errors='surrogateescape'))
+            if fields[2] == 'ntfs3']
+    if not rows:
+        return
+    devices = devices_by_uuid(device_nodes(disk_inventory()))
+    active = inventory('findmnt', '--kernel', '--json', '--list', '--nofsroot',
+                       '-o', 'SOURCE,TARGET')['filesystems']
+    active_sources = {device_path(item['source']) for item in active}
+    targets = {item['target'] for item in active}
+    for source, escaped, _, options, _, _ in rows:
+        uuid = source[5:]
+        target = re.sub(r'\\(040|011|134)', lambda match: chr(int(match[1], 8)), escaped)
+        alias = '/dev/disk/by-uuid/' + uuid
+        path = device_path(alias)
+        if (devices.get(uuid.lower()) != {path} or path in active_sources or target in targets
+                or not available_target(target, False)):
+            continue
+        unit = mount_unit(target)
+        if subprocess.run(['systemctl', 'is-failed', '--quiet', '--', unit]).returncode:
+            continue
+        permissions = [item for item in options.split(',')
+                       if item in ('noexec', 'nosymfollow')
+                       or re.fullmatch(r'(?:uid|gid)=[0-9]+|(?:umask|fmask|dmask)=[0-7]{1,4}', item)]
+        print(f'Montagem automática: {target} recusou a montagem normal. Tentando acesso somente leitura.', flush=True)
+        try:
+            subprocess.run(['mount', '-t', 'ntfs3', '-o', ','.join(('ro', 'nosuid', 'nodev', *permissions)),
+                            '--', alias, target], check=True, timeout=12)
+        except (OSError, subprocess.SubprocessError) as error:
+            print(f'Montagem automática: {target} requer diagnóstico do NTFS ou do disco: {error}', file=sys.stderr)
+        else:
+            active_sources.add(path)
+            targets.add(target)
+            print(f'Montagem automática: {target} disponível somente leitura. '
+                  'O próximo boot tentará a montagem normal novamente.', flush=True)
+
+
 def start_mounts(mounts):
     """Activate only selected, still-unmounted data volumes in the live OS."""
     if not mounts or not Path('/run/systemd/system').is_dir():
@@ -248,9 +359,7 @@ def start_mounts(mounts):
         print('Montagem automática: a configuração será ativada no próximo boot.')
         return
     for target in pending:
-        unit = subprocess.check_output(
-            ['systemd-escape', '--path', '--suffix=mount', '--', target], text=True,
-        ).strip()
+        unit = mount_unit(target)
         result = subprocess.run(['systemctl', 'start', '--', unit])
         if result.returncode:
             print(f'Montagem automática: falha ao montar {target} nesta sessão. '
@@ -289,15 +398,15 @@ def apply(user, live=False):
     root_mount = inventory('findmnt', '--kernel', '--json', '--list', '--nofsroot',
                            '--target', '/', '-o', 'SOURCE,TARGET')['filesystems']
     root_source = next((item['source'] for item in root_mount if item['target'] == '/'), None)
-    disks = inventory('lsblk', '--json', '--paths', '--tree', '-o',
-                      'NAME,TYPE,TRAN,RM,RO,HOTPLUG,FSTYPE,UUID,PTTYPE,PARTTYPE,PARTFLAGS,MOUNTPOINTS')['blockdevices']
+    disks = disk_inventory()
     configured = inventory('findmnt', '--fstab', '--evaluate', '--json', '--list',
                            '-o', 'SOURCE,SOURCES,TARGET,OPTIONS')['filesystems']
     entries = plan_mounts(disks, root_source, configured, user, account.pw_uid,
                           account.pw_gid, available_target, report=print)
     sources = devices_by_uuid(device_nodes(disks))
     mounts = managed_mounts(configured, sources) if live else {}
-    if not entries:
+    updated = refresh_managed_fstab(previous)
+    if not entries and updated == previous:
         print('Montagem automática: nenhuma nova partição de dados elegível.')
         if live:
             start_mounts(mounts)
@@ -312,16 +421,19 @@ def apply(user, live=False):
                 path.mkdir(mode=0o700)
                 created.append(path)
                 path.chmod(0o755)
-        separator = b'' if not previous or previous.endswith(b'\n') else b'\n'
-        addition = '# Montagem de discos de dados — Callas OS\n'
-        addition += ''.join(line + '\n' for _, line in entries)
+                sync_directory(path)
+                sync_directory(path.parent)
+        if entries:
+            separator = b'' if not updated or updated.endswith(b'\n') else b'\n'
+            addition = MARKER + '\n' + ''.join(line + '\n' for _, line in entries) + END_MARKER + '\n'
+            updated += separator + addition.encode('utf-8')
         with tempfile.NamedTemporaryFile(dir=FSTAB.parent, prefix='.fstab.callas-',
                                          delete=False) as staged:
             temporary = Path(staged.name)
             try:
                 os.fchown(staged.fileno(), original.st_uid, original.st_gid)
                 os.fchmod(staged.fileno(), stat.S_IMODE(original.st_mode))
-                staged.write(previous + separator + addition.encode('utf-8'))
+                staged.write(updated)
                 staged.flush()
                 os.fsync(staged.fileno())
                 verify_candidate(temporary)
@@ -332,6 +444,7 @@ def apply(user, live=False):
                     raise RuntimeError('/etc/fstab mudou durante a atualização; reaplique a etapa.')
                 os.replace(temporary, FSTAB)
                 committed = True
+                sync_directory(FSTAB.parent)
             finally:
                 temporary.unlink(missing_ok=True)
     finally:
@@ -348,11 +461,43 @@ def apply(user, live=False):
         start_mounts(mounts)
 
 
+@contextmanager
+def disk_configuration_lock():
+    fd = os.open('/run/callas-disk-configuration.lock',
+                 os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_RDWR, 0o600)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o077:
+            raise RuntimeError('O arquivo de bloqueio da configuração dos discos não está protegido.')
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)
+
+
+def main(args):
+    if os.geteuid() != 0:
+        raise ValueError('Esta operação requer root.')
+    with disk_configuration_lock():
+        if args == ['--recover-ntfs']:
+            recover_ntfs()
+        elif len(args) == 1:
+            apply(args[0])
+        elif len(args) == 2 and args[1] in ('--live', '--manual'):
+            username = args[0]
+            if args[1] == '--manual':
+                if username != os.environ.get('SUDO_USER'):
+                    raise ValueError('Abra a ferramenta de armazenamento pela sua conta na Central.')
+                subprocess.run(['/usr/local/libexec/callas-storage', '--config', username], check=True)
+            apply(username, live=True)
+            recover_ntfs()
+        else:
+            raise ValueError('Uso interno: callas-automount USUARIO [--live|--manual]')
+
+
 if __name__ == '__main__':
     try:
-        if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and sys.argv[2] != '--live'):
-            raise ValueError('Uso interno: callas-automount USUARIO [--live]')
-        apply(sys.argv[1], live=len(sys.argv) == 3)
+        main(sys.argv[1:])
     except (KeyError, OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as error:
         print(f'Montagem automática: {error}', file=sys.stderr)
         sys.exit(1)

@@ -19,29 +19,19 @@ MARKED = ROOT + setup.MARKER + '\n' + EXT4 + OTHER
 
 
 class PrepareMountTests(unittest.TestCase):
-    def test_only_callas_ext4_is_made_fsck_enabled(self):
-        result = setup.prepare_fstab(MARKED)
-        self.assertTrue(result.startswith(ROOT))
-        self.assertIn('x-systemd.before=local-fs.target', result)
-        self.assertIn('ntfs3', result)
-        self.assertEqual(result.count('x-systemd.before=local-fs.target'), 2)
-        self.assertIn('errors=remount-ro\t0\t2\n', result)
-        self.assertEqual(setup.candidates(result), [(f'/mnt/callas-{UUID}', UUID)])
-
-    def test_idempotent_and_unrelated_rows_preserved(self):
-        updated = setup.prepare_fstab(MARKED)
-        self.assertEqual(updated, setup.prepare_fstab(updated))
-        self.assertEqual(setup.prepare_fstab(ROOT + EXT4), ROOT + EXT4)
-        self.assertIn('x-systemd.before=local-fs.target',
-                      setup.prepare_fstab(ROOT + setup.MARKER + '\n' + OTHER))
-
-    def test_malicious_and_system_paths_do_not_change(self):
-        for source in ('UUID=bad space', 'UUID=invalid!!', 'LABEL=Games'):
-            for target in ('/', '/home', '/mnt/callas-wrong', '/run/media/user/Games'):
-                entry = f'{source} {target} ext4 nosuid,nodev,nofail 0 0\n'
-                config = ROOT + setup.MARKER + '\n' + entry
-                with self.subTest(source=source, target=target):
-                    self.assertEqual(setup.prepare_fstab(config), config)
+    def test_only_newly_formatted_volume_gets_new_owner(self):
+        with patch.object(setup.FSTAB.__class__, 'read_text', return_value=MARKED), patch.object(
+            setup.os, 'geteuid', return_value=0,
+        ), patch.object(setup.pwd, 'getpwnam', return_value=SimpleNamespace(pw_uid=1000)), patch.object(
+            setup.subprocess, 'run', return_value=SimpleNamespace(returncode=0),
+        ) as run, patch.object(Path, 'is_mount', return_value=False), patch.object(
+            setup, 'prepare_access',
+        ) as access:
+            setup.main('ana', [])
+            access.assert_not_called()
+            run.assert_called_once()
+            setup.main('ana', [UUID])
+            access.assert_called_once()
 
     def test_only_top_level_owner_changes(self):
         with tempfile.TemporaryDirectory() as tmp:

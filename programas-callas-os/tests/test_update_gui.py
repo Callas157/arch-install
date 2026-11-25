@@ -19,6 +19,48 @@ from PySide6.QtWidgets import QApplication
 APP = QApplication.instance() or QApplication([])
 
 class UpdaterGuiTests(unittest.TestCase):
+    def test_graphics_vendor_detection_uses_pci_class_and_handles_hybrid(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for index, (vendor, pci_class) in enumerate((
+                ('0x1002', '0x030000'), ('0x8086', '0x038000'), ('0x10de', '0x040300'),
+            )):
+                card = root / str(index)
+                card.mkdir()
+                (card / 'vendor').write_text(vendor)
+                (card / 'class').write_text(pci_class)
+            self.assertEqual(gui.graphics_vendors(root), ('AMD', 'Intel'))
+
+    def test_graphics_buttons_open_each_detected_vendor_page(self):
+        with patch.object(gui, 'graphics_vendors', return_value=('AMD', 'Intel', 'NVIDIA')), patch.object(
+            gui.Window, 'open_page',
+        ) as open_page:
+            window = gui.Window()
+            for vendor, page in (('AMD', gui.AmdDialog), ('Intel', gui.IntelDialog), ('NVIDIA', gui.NvidiaDialog)):
+                button = next(button for button in window.buttons if button.text() == f'Driver {vendor}')
+                button.click()
+                self.assertIs(open_page.call_args.args[0], page)
+            window.close()
+
+    def test_single_shared_vulkan_manifest_is_enough_for_multilib(self):
+        manifest = '/usr/share/vulkan/icd.d/radeon_icd.json'
+        inventory = ('vulkan-radeon ' + manifest + '\n'
+                     'lib32-vulkan-radeon /usr/lib32/libvulkan_radeon.so\n')
+        with patch.object(gui.subprocess, 'check_output', return_value=inventory), patch.object(
+            Path, 'is_file', return_value=True,
+        ):
+            dialog = gui.AmdDialog()
+            self.assertEqual(dialog.manifests, [manifest])
+            self.assertEqual(dialog.apply.text(), 'Copiar opção para Steam')
+            dialog.choose()
+            self.assertEqual(QApplication.clipboard().text(), 'VK_DRIVER_FILES=' + manifest + ' %command%')
+
+    def test_graphics_package_actions_have_explicit_arguments(self):
+        self.assertEqual(gui.action_command('graphics:radv'),
+                         ['/usr/local/libexec/callas-native', '--graphics', 'radv'])
+        with self.assertRaises(ValueError):
+            gui.action_command('graphics:linux')
+
     def test_kernel_selector_confirms_explicit_rollback(self):
         with patch.object(gui.QTimer, 'singleShot'):
             dialog = gui.KernelDialog()

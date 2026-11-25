@@ -29,6 +29,7 @@ DISCO=/dev/sda
 BOOTDISK=/dev/sdd
 FORMATAR_SECUNDARIOS=()
 FORMATAR_SECUNDARIOS_IDS=()
+identidade_disco() { printf '8:16/40\n'; }
 callas_disco_secundario_seguro() {
   case " $ELIGIBLE " in *" $1 "*) return 0;; *) return 1;; esac
 }
@@ -98,6 +99,27 @@ lsblk() {
         process = self.run_selection('APAGAR\n')
         self.assertEqual(process.returncode, 0, process.stderr)
         self.assertIn('SELECTED=\n', process.stdout)
+
+    def test_main_drive_change_and_existing_mount_block_before_wipe(self):
+        pre_wipe = source().split('# ---------------- Particionamento ----------------\n', 1)[1]
+        stop = pre_wipe.index('sgdisk --zap-all')
+        check = pre_wipe[:stop]
+        stub = """set -euo pipefail
+DISCO=/dev/sda
+IDENTIDADE_PRINCIPAL=8:0/42
+findmnt() { printf '%s\n' "$MOUNTED"; }
+validar_disco_principal() { return 0; }
+identidade_disco() { printf '%s' "$IDENTITY"; }
+wipefs() { printf 'WOULD WIPE %s\n' "$2"; }
+"""
+        for mount, identity, permitted in (('/mnt/old', '8:0/42', False),
+                                          ('/', '8:0/43', False),
+                                          ('/', '8:0/42', True)):
+            with self.subTest(mount=mount, disk_identity=identity):
+                result = subprocess.run(['bash', '-c', stub + check], text=True, capture_output=True,
+                                        env={**os.environ, 'MOUNTED': mount, 'IDENTITY': identity})
+                self.assertEqual(result.returncode, 0 if permitted else 1, result.stderr)
+                self.assertEqual('WOULD WIPE' in result.stdout, permitted)
 
     def test_destructive_loop_only_for_authorized_disks(self):
         src = source()

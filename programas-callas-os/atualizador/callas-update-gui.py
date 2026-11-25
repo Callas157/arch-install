@@ -203,6 +203,44 @@ def progress_state(text):
     percentages = re.findall(r'(?<!\d)(100|[1-9]?\d)%', text)
     return stage, int(percentages[-1]) if percentages else None
 
+GRAPHICS_PROFILES = {
+    'radv': ('RADV · Vulkan AMD', 'vulkan-radeon'),
+    'anv': ('ANV · Vulkan Intel', 'vulkan-intel'),
+    'lavapipe': ('Lavapipe · Vulkan por software (CPU)', 'vulkan-swrast'),
+}
+
+
+def graphics_vendors(pci=Path('/sys/bus/pci/devices')):
+    vendors = {'0x1002': 'AMD', '0x8086': 'Intel', '0x10de': 'NVIDIA'}
+    detected = set()
+    for device in pci.glob('*'):
+        try:
+            if (device / 'class').read_text().strip().startswith('0x03'):
+                vendor = vendors.get((device / 'vendor').read_text().strip())
+                if vendor:
+                    detected.add(vendor)
+        except OSError:
+            continue
+    return tuple(sorted(detected))
+
+
+def graphics_manifests(package):
+    try:
+        output = subprocess.check_output(
+            ['/usr/bin/pacman', '-Ql', package, 'lib32-' + package],
+            text=True, stderr=subprocess.DEVNULL, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    folder = Path('/usr/share/vulkan/icd.d')
+    manifests = []
+    for line in output.splitlines():
+        _, _, path = line.partition(' ')
+        candidate = Path(path)
+        if candidate.parent == folder and candidate.suffix == '.json' and candidate.is_file():
+            manifests.append(path)
+    return sorted(set(manifests))
+
+
 def action_command(action):
     user = pwd.getpwuid(os.getuid()).pw_name
     if action in ('nativos', 'sistema', 'flatpaks'):
@@ -219,6 +257,9 @@ def action_command(action):
         return [KERNEL_POLICY, '--nvidia-repair-installed', action.split(':', 1)[1]]
     if action.startswith('kernel:'):
         return [KERNEL_POLICY, '--kernel-select', action.split(':', 1)[1]]
+    if action == 'disks': return ['/usr/local/libexec/callas-automount', user, '--manual']
+    if action.startswith('graphics:') and action.split(':', 1)[1] in GRAPHICS_PROFILES:
+        return ['/usr/local/libexec/callas-native', '--graphics', action.split(':', 1)[1]]
     if action == 'callas': return ['/usr/local/libexec/callas-release']
     raise ValueError('Função desconhecida')
 
@@ -1003,6 +1044,92 @@ class NvidiaDialog(QDialog):
             super().reject()
 
 
+class MesaDialog(QDialog):
+    vendor = ''
+    hardware = ''
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel(f'Driver {self.vendor or "gráfico"}', objectName='title'))
+        note = QLabel('O kernel seleciona o módulo da placa. Escolha o driver Vulkan para um jogo ou aplicativo.')
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        self.options = QComboBox()
+        for profile in (self.hardware, 'lavapipe'):
+            if profile:
+                self.options.addItem(GRAPHICS_PROFILES[profile][0], profile)
+        layout.addWidget(self.options)
+        self.status = QLabel()
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
+        layout.addStretch()
+        self.apply = QPushButton()
+        self.apply.clicked.connect(self.choose)
+        back = QPushButton('Voltar')
+        back.clicked.connect(self.reject)
+        actions = QHBoxLayout()
+        actions.addWidget(back)
+        actions.addStretch()
+        actions.addWidget(self.apply)
+        layout.addLayout(actions)
+        self.options.currentIndexChanged.connect(self.refresh)
+        self.refresh()
+
+    def refresh(self):
+        self.profile = self.options.currentData()
+        _, package = GRAPHICS_PROFILES[self.profile]
+        self.manifests = graphics_manifests(package)
+        if self.manifests:
+            self.status.setText('Cole a opção copiada nas opções de inicialização do jogo na Steam.')
+            self.apply.setText('Copiar opção para Steam')
+        else:
+            self.status.setText(f'Pacotes deste perfil: {package} e lib32-{package}.')
+            self.apply.setText('Instalar driver')
+
+    def choose(self):
+        if self.manifests:
+            QApplication.clipboard().setText('VK_DRIVER_FILES=' + ':'.join(self.manifests) + ' %command%')
+            self.status.setText('Opção copiada. Cole-a nas opções de inicialização do jogo na Steam.')
+            return
+        profile = self.profile
+        description, _ = GRAPHICS_PROFILES[profile]
+        self.controller.confirm_action(
+            'Instalar driver Vulkan', f'Instalar os pacotes oficiais de {description}?',
+            lambda: self.controller.start('graphics:' + profile, True), 'Instalar')
+
+
+class AmdDialog(MesaDialog):
+    vendor = 'AMD'
+    hardware = 'radv'
+
+
+class IntelDialog(MesaDialog):
+    vendor = 'Intel'
+    hardware = 'anv'
+
+
+class DisksDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel('Armazenamento', objectName='title'))
+        note = QLabel('Ative a montagem no boot para discos internos novos ou formatados. Use o gerenciador de partições para mudar o formato, depois volte aqui para registrar a montagem.')
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        mount = QPushButton('Configurar montagem automática')
+        mount.clicked.connect(lambda: self.controller.start('disks', True))
+        layout.addWidget(mount)
+        partitions = QPushButton('Abrir Discos')
+        partitions.setEnabled(Path('/usr/bin/gnome-disks').is_file())
+        partitions.clicked.connect(lambda: QProcess.startDetached('/usr/bin/gnome-disks', []))
+        layout.addWidget(partitions)
+        layout.addStretch()
+        back = QPushButton('Voltar')
+        back.clicked.connect(self.reject)
+        layout.addWidget(back)
+
+
 class KernelDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1342,7 +1469,8 @@ class Window(QWidget):
             ('Monitores', 'video-display', self.monitors),
             ('Volante G920 e câmbio', 'input-gaming', self.g920),
             ('Codex', 'codex', self.codex),
-            ('Driver NVIDIA', 'video-display', self.nvidia),
+            *self.graphics_entries(),
+            ('Armazenamento', 'drive-harddisk', lambda: self.open_page(DisksDialog)),
             ('Kernel Linux', 'system-software-update', self.kernel),
             ('Callas OS Update', 'system-upgrade', lambda: self.start('callas')),
             ('Atualizar geral', 'system-software-update', lambda: self.start('sistema')),
@@ -1489,7 +1617,14 @@ class Window(QWidget):
 
     def uninstall_apps(self): self.open_page(UninstallDialog)
 
-    def nvidia(self): self.open_page(NvidiaDialog)
+    def graphics_entries(self):
+        pages = {'AMD': AmdDialog, 'Intel': IntelDialog, 'NVIDIA': NvidiaDialog}
+        vendors = graphics_vendors()
+        if not vendors:
+            return [('Driver gráfico', 'video-display', lambda: self.open_page(MesaDialog))]
+        return [(f'Driver {vendor}', 'video-display',
+                 lambda _checked=False, page=pages[vendor]: self.open_page(page))
+                for vendor in vendors]
     def kernel(self): self.open_page(KernelDialog)
 
     def codex(self, confirmed=False):
@@ -1564,8 +1699,8 @@ class Window(QWidget):
         self.notifier = QSocketNotifier(master, QSocketNotifier.Read, self)
         self.notifier.activated.connect(self.read_output)
         for button in self.buttons: button.setEnabled(False)
-        show_details = (not self.details.isHidden() or action in ('games', 'orphans', 'codex', 'hd500')
-                        or action.startswith(('nvidia:', 'nvidia-repair:', 'kernel:')))
+        show_details = (not self.details.isHidden() or action in ('games', 'orphans', 'codex', 'hd500', 'disks')
+                        or action.startswith(('nvidia:', 'nvidia-repair:', 'kernel:', 'graphics:')))
         self.set_details_visible(show_details)
         if action == 'codex':
             self.stage.setText('Instalando Codex')
@@ -1621,6 +1756,10 @@ class Window(QWidget):
                                 'A função terminou. Você já pode escolher outra opção.')
             try: after = package_state()
             except (OSError, subprocess.SubprocessError, RuntimeError): after = None
+            if self.action.startswith('graphics:'):
+                self.status.setText('Pacotes Vulkan instalados. Reabra o menu do driver para copiar a opção do jogo.')
+            if self.action == 'disks':
+                self.status.setText('Consulte os detalhes para ver os volumes montados e os que precisam de atenção.')
             if self.action.startswith(('nvidia:', 'nvidia-repair:')):
                 self.reboot_pending = True
                 self.restart_panel.show()

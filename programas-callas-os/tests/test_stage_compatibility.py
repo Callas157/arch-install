@@ -26,7 +26,7 @@ class StageCompatibilityTests(unittest.TestCase):
         flow=installer_prepartition_flow()
         # Only replace the hardware type probe: the disposable disk fixture is
         # a regular file. All prompt and credential handling remains real Bash.
-        flow=flow.replace('[[ ! -b "$DISCO"','[[ ! -e "$DISCO"')
+        flow=flow.replace('[[ -b $DISCO','[[ -e $DISCO')
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);disk=root/'disk';disk.write_bytes(b'untouched')
             fake='''set -Eeuo pipefail
@@ -38,10 +38,12 @@ lsblk() {
         '-dpno NAME,TYPE,RO') printf '%s disk 0\\n' "$FIXTURE_DISK" ;;
         '-dno SIZE,MODEL '*) echo '30G fixture' ;;
         '-dnro TYPE,RO '*) echo 'disk 0' ;;
+        '-dnro MAJ:MIN '*) echo '8:0' ;;
         '-nr -o MOUNTPOINTS '*) return 0 ;;
         *) printf '%s\\n' "$FIXTURE_DISK" ;;
     esac
 }
+blockdev() { printf '42\n'; }
 timedatectl() { return 0; }
 sed() { return 0; }
 pacman() { return 0; }

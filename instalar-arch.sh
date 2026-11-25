@@ -190,14 +190,25 @@ if [[ -z "$DISCO" ]]; then
   DISCO="${LISTA[$((ESCOLHA-1))]}"
 fi
 
+validar_disco_principal() {
+  local montagens
+  [[ -b $DISCO && $(readlink -f -- "$DISCO") == "$DISCO" ]] &&
+    [[ $(lsblk -dnro TYPE,RO "$DISCO") == "disk 0" && $DISCO != "$BOOTDISK" ]] &&
+    montagens=$(lsblk -nr -o MOUNTPOINTS "$DISCO") &&
+    [[ ! $montagens =~ [^[:space:]] ]]
+}
+
+identidade_disco() {
+  local numero sequencia
+  numero=$(lsblk -dnro MAJ:MIN "$1") &&
+    sequencia=$(blockdev --getdiskseq -- "$1") &&
+    [[ $numero =~ ^[0-9]+:[0-9]+$ && $sequencia =~ ^[0-9]+$ ]] &&
+    printf '%s/%s' "$numero" "$sequencia"
+}
+
 DISCO="$(readlink -f -- "$DISCO")"
-if [[ ! -b "$DISCO" || "$(lsblk -dnro TYPE,RO "$DISCO")" != "disk 0" ]]; then
-  echo "ERRO: destino $DISCO não é um disco gravável."
-  exit 1
-fi
-if [[ "$DISCO" == "$BOOTDISK" ]] ||
-   [[ -n "$(lsblk -nr -o MOUNTPOINTS "$DISCO" | sed '/^$/d')" ]]; then
-  echo "ERRO: o disco selecionado tem partições em uso ou é a mídia de instalação."
+if ! validar_disco_principal || ! IDENTIDADE_PRINCIPAL=$(identidade_disco "$DISCO"); then
+  echo "ERRO: $DISCO está em uso, não é gravável ou sua identidade não pode ser confirmada."
   exit 1
 fi
 
@@ -212,7 +223,7 @@ echo "=========================================================="
 FORMATAR_SECUNDARIOS=()
 FORMATAR_SECUNDARIOS_IDS=()
 callas_disco_secundario_seguro() {
-  local alvo=$1 esperado=${2:-} tran tipo ro rm id node kind fs
+  local alvo=$1 esperado=${2:-} tran tipo ro rm id node kind fs montagens arvore
   [[ -b $alvo ]] || return 1
   [[ $(readlink -f -- "$alvo") == "$alvo" ]] || return 1
   [[ $alvo != "$DISCO" && $alvo != "$BOOTDISK" ]] || return 1
@@ -220,10 +231,12 @@ callas_disco_secundario_seguro() {
   tran=$(lsblk -dnro TRAN "$alvo") || return 1
   rm=$(lsblk -dnro RM "$alvo") || return 1
   ro=$(lsblk -dnro RO "$alvo") || return 1
-  id=$(lsblk -dnro MAJ:MIN "$alvo") || return 1
+  id=$(identidade_disco "$alvo") || return 1
   [[ $tipo == disk && $rm == 0 && $ro == 0 && $tran =~ ^(ata|sata|nvme)$ ]] || return 1
   [[ -z $esperado || $esperado == "$id" ]] || return 1
-  [[ -z $(lsblk -nr -o MOUNTPOINTS "$alvo" | sed '/^$/d') ]] || return 1
+  montagens=$(lsblk -nr -o MOUNTPOINTS "$alvo") || return 1
+  [[ ! $montagens =~ [^[:space:]] ]] || return 1
+  arvore=$(lsblk -nrpo NAME,TYPE "$alvo") || return 1
   while read -r node kind; do
     [[ -n $node && ( $kind == disk || $kind == part ) ]] || return 1
     [[ ! -d /sys/class/block/${node##*/}/holders || -z $(ls -A "/sys/class/block/${node##*/}/holders") ]] || return 1
@@ -231,7 +244,7 @@ callas_disco_secundario_seguro() {
     case $fs in
       crypto_LUKS|LVM2_member|linux_raid_member|zfs_member|btrfs) return 1 ;;
     esac
-  done < <(lsblk -nrpo NAME,TYPE "$alvo")
+  done <<< "$arvore"
 }
 
 # Primeiro identifica os discos internos realmente elegíveis; se não houver
@@ -250,6 +263,10 @@ if (( ${#CALLAS_DISCOS_ELEGIVEIS[@]} > 0 )); then
   printf '\n>>> Discos secundários — converter para ext4 (opcional)\n'
   printf 'PADRÃO: preservar. Formatar APAGA TODOS os arquivos e partições do disco.\n'
   for CALLAS_OUTRO_DISCO in "${CALLAS_DISCOS_ELEGIVEIS[@]}"; do
+    CALLAS_ID_ESCOLHA=$(identidade_disco "$CALLAS_OUTRO_DISCO") || {
+      echo "ERRO: o disco secundário $CALLAS_OUTRO_DISCO mudou durante a seleção." >&2
+      exit 1
+    }
     CALLAS_INDICE_DISCO=$(( CALLAS_INDICE_DISCO + 1 ))
     printf '\n>>> Armazenamento %s de %s — disco secundário\n' "$CALLAS_INDICE_DISCO" "$CALLAS_TOTAL_DISCOS"
     lsblk -o NAME,SIZE,MODEL,FSTYPE,MOUNTPOINTS "$CALLAS_OUTRO_DISCO"
@@ -262,7 +279,7 @@ if (( ${#CALLAS_DISCOS_ELEGIVEIS[@]} > 0 )); then
         # A opção 1, escolhida após o aviso explícito de perda de dados,
         # já é a autorização de formatação deste disco secundário.
         FORMATAR_SECUNDARIOS+=("$CALLAS_OUTRO_DISCO")
-        FORMATAR_SECUNDARIOS_IDS+=("$(lsblk -dnro MAJ:MIN "$CALLAS_OUTRO_DISCO")")
+        FORMATAR_SECUNDARIOS_IDS+=("$CALLAS_ID_ESCOLHA")
         printf 'Formatação autorizada: %s (ext4).\n' "$CALLAS_OUTRO_DISCO"
         ;;
       2|'') printf 'Dados preservados em %s.\n' "$CALLAS_OUTRO_DISCO" ;;
@@ -285,6 +302,7 @@ done
 CALLAS_INSTALL_LOG=$(mktemp /var/tmp/callas-install.XXXXXXXX.log)
 CALLAS_SECURITY_TMP=
 CALLAS_ARCHIVES=
+CALLAS_OWNS_TARGET=0
 finish_installation() {
   local code=$?
   trap - EXIT
@@ -292,7 +310,7 @@ finish_installation() {
   wait "$CALLAS_INSTALL_LOG_PID" || :
   [[ -z ${CALLAS_SECURITY_TMP:-} ]] || rm -rf -- "$CALLAS_SECURITY_TMP"
   [[ -z ${CALLAS_ARCHIVES:-} ]] || rm -rf -- "$CALLAS_ARCHIVES"
-  if mountpoint -q /mnt; then
+  if (( CALLAS_OWNS_TARGET )) && mountpoint -q /mnt; then
     install -d -m 0700 /mnt/var/log/callas-os/Instalacao
     install -d -m 0755 /mnt/var/lib/callas-os
     install -m 0600 "$CALLAS_INSTALL_LOG" "/mnt/var/log/callas-os/Instalacao/$(date +%Y-%m-%d_%Hh%Mm%Ss).log"
@@ -414,8 +432,16 @@ for CALLAS_I in "${!FORMATAR_SECUNDARIOS[@]}"; do
 done
 
 # ---------------- Particionamento ----------------
+if ! CALLAS_MONTAGENS=$(findmnt --kernel --raw --noheadings --output TARGET) ||
+   grep -Eq '^/mnt(/|$)' <<< "$CALLAS_MONTAGENS"; then
+  echo 'ERRO: /mnt ou um caminho abaixo dele já está em uso. Nenhum disco foi formatado.' >&2
+  exit 1
+fi
+if ! validar_disco_principal || [[ $(identidade_disco "$DISCO") != "$IDENTIDADE_PRINCIPAL" ]]; then
+  echo 'ERRO: o disco escolhido mudou ou foi montado durante a preparação. Nenhum disco foi formatado.' >&2
+  exit 1
+fi
 echo ">>> Particionando $DISCO"
-umount -R /mnt 2>/dev/null || true
 wipefs -af "$DISCO"
 sgdisk --zap-all "$DISCO"
 sgdisk -n 1:0:+1G -t 1:ef00 -c 1:"EFI" "$DISCO"
@@ -431,9 +457,11 @@ mkfs.fat -F32 "$EFI"
 mkfs.ext4 -F "$RAIZ"
 
 mount "$RAIZ" /mnt
+CALLAS_OWNS_TARGET=1
 mount --mkdir -o fmask=0077,dmask=0077 "$EFI" /mnt/boot
 
 # Somente unidades explicitamente selecionadas e confirmadas são formatadas.
+CALLAS_UUIDS_FORMATADOS=()
 for CALLAS_I in "${!FORMATAR_SECUNDARIOS[@]}"; do
   CALLAS_OUTRO_DISCO=${FORMATAR_SECUNDARIOS[$CALLAS_I]}
   callas_disco_secundario_seguro "$CALLAS_OUTRO_DISCO" "${FORMATAR_SECUNDARIOS_IDS[$CALLAS_I]}" || {
@@ -453,6 +481,9 @@ for CALLAS_I in "${!FORMATAR_SECUNDARIOS[@]}"; do
     exit 1
   }
   mkfs.ext4 -F -L CALLAS_DADOS "$CALLAS_PARTICAO_DADOS"
+  CALLAS_UUID_NOVO=$(blkid -p -s UUID -o value -- "$CALLAS_PARTICAO_DADOS")
+  [[ -n $CALLAS_UUID_NOVO ]] || exit 1
+  CALLAS_UUIDS_FORMATADOS+=("$CALLAS_UUID_NOVO")
   echo "Novo volume ext4: $CALLAS_PARTICAO_DADOS"
 done
 
@@ -2264,6 +2295,7 @@ risemode=${11}
 amd_gpu=${12}
 intel_gpu=${13}
 asset_base=${14:?Endereço dos assets não recebido pelo chroot}
+shift 14
 home=/home/$usuario
 libexec=/usr/local/libexec
 avisos=/var/log/callas-instalacao-avisos.log
@@ -2737,7 +2769,7 @@ SUDO_USER="$usuario" bash "$CALLAS_RELEASE_DIR/callas-security.sh" "$usuario" --
 # Monta dados internos por UUID no boot, sem senha no Dolphin. Em ext4,
 # systemd-fsck faz a checagem segura após queda de energia; falhas graves
 # são registradas, nunca levam a uma formatação ou reparação destrutiva.
-"$libexec/callas-storage-setup" "$usuario"
+"$libexec/callas-storage-setup" "$usuario" "$@"
 como_usuario "$libexec/callas-nekofetch"
 "$libexec/callas-version" --complete "$CALLAS_RELEASE_DIR/VERSION" "$CALLAS_RELEASE_REF"
 rm -rf -- "$CALLAS_RELEASE_DIR"
@@ -2747,7 +2779,10 @@ chmod 0700 /mnt/usr/local/share/callas-os/install-config.sh
 bash -n /mnt/usr/local/share/callas-os/install-config.sh
 arch-chroot /mnt /usr/bin/bash /usr/local/share/callas-os/install-config.sh \
   "$USUARIO" "$FUSO" "$LOCALE" "$TECLADO" "$HOSTNAME" "$UUID_RAIZ" \
-  "$NVIDIA" "$VM" "$BROADCOM" "$GPU_PCI" "$RISEMODE" "$AMD_GPU" "$INTEL_GPU" "$CALLAS_ASSET_BASE"
+  "$NVIDIA" "$VM" "$BROADCOM" "$GPU_PCI" "$RISEMODE" "$AMD_GPU" "$INTEL_GPU" "$CALLAS_ASSET_BASE" \
+  "${CALLAS_UUIDS_FORMATADOS[@]}"
+sync -f /mnt/boot
+sync -f /mnt
 
 # The EXIT handler exports the complete log on success and on failure.
 

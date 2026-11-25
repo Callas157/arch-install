@@ -52,7 +52,7 @@ class InstallerFlowTests(unittest.TestCase):
             logger.write_text('#!/bin/sh\nexit 0\n');logger.chmod(0o755)
             log=Path(temp)/'installer.log';log.write_text('Exact failure diagnostic\n')
             export=Path(temp)/'exported'
-            for status in (17,0):
+            for status, owns in ((17, '0'), (17, '1'), (0, '1')):
                 code='''mountpoint() { return 0; }
 arch-chroot() { printf 'exported\\n' >> "$EXPORT_MARKER"; }
 USUARIO=fixture
@@ -60,8 +60,12 @@ true &
 CALLAS_INSTALL_LOG_PID=$!
 exec 3>&1 4>&2
 '''+handler.replace('/mnt',str(root))+f'\ntrap finish_installation EXIT\nexit {status}\n'
-                result=subprocess.run(['bash','-eu','-c',code],env=dict(os.environ,CALLAS_INSTALL_LOG=str(log),EXPORT_MARKER=str(export)),capture_output=True,text=True)
+                result=subprocess.run(['bash','-eu','-c',code],env=dict(os.environ,CALLAS_INSTALL_LOG=str(log),EXPORT_MARKER=str(export),CALLAS_OWNS_TARGET=owns),capture_output=True,text=True)
                 self.assertEqual(result.returncode,status,result.stderr)
+                if owns == '0':
+                    self.assertFalse(export.exists())
+                    self.assertFalse((root/'var').exists())
+                    continue
                 self.assertEqual((root/'var/lib/callas-os/installation-failed').exists(),status!=0)
                 self.assertTrue(export.exists())
                 files=list((root/'var/log/callas-os/Instalacao').glob('*.log'))

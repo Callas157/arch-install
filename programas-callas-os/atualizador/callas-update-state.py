@@ -39,7 +39,7 @@ REQUIRED={
 # by an unchanged release SHA or by otherwise intact desktop anchors.
 REQUIRED['security'] += tuple('/usr/local/libexec/' + name for name in (
     'callas-browser', 'callas-defaults', 'callas-uninstall', 'callas-apps', 'callas-apps.json', 'callas-update-state', 'callas-native',
-    'callas-aur', 'callas-aur-install', 'callas-autostart', 'callas-kernel-policy',
+    'callas-aur', 'callas-aur-install', 'callas-autostart', 'callas-kernel-policy', 'callas-automount',
     'callas-nvidia-prepare', 'callas-game-logs', 'callas-spotify-permissions', 'callas-version',
     'callas-nekofetch', 'callas-release', 'callas-logs', 'callas-kernel-check',
     'callas-hd500-reparar',
@@ -51,7 +51,11 @@ REQUIRED['tools'] += tuple('/usr/local/libexec/' + name for name in (
     'callas-monitores', 'callas-janelas', 'callas-inicio-kde', 'callas-kde-desligamento-login'))
 DEPENDENCIES['security'] += ('callas-discord.py',)
 DEPENDENCIES['tools'] += ('callas-discord.py',)
-REQUIRED['security'] += ('/usr/local/libexec/callas-discord',)
+REQUIRED['security'] += (
+    '/usr/local/libexec/callas-discord',
+    '/etc/systemd/system/callas-ntfs-readonly.service',
+    '/etc/systemd/system/multi-user.target.wants/callas-ntfs-readonly.service',
+)
 REQUIRED['tools'] += ('/etc/systemd/user/callas-discord-memory.service',)
 for application_phase in ('security', 'apps', 'flatpaks'):
     REQUIRED[application_phase] += ('/var/lib/callas-os/apps-managed-' + application_phase + '.json',)

@@ -51,6 +51,38 @@ class TargetedInstallTests(unittest.TestCase):
                 self.assertNotEqual(code, 0)
                 self.assertEqual(seen, [])
 
+    def test_vulkan_install_requires_matching_mesa_packages(self):
+        for candidate, expected in (('26.1.0-1', 0), ('27.0.1-1', 1)):
+            with self.subTest(candidate=candidate), patch.object(
+                native.subprocess, 'check_output',
+                side_effect=['mesa 26.1.0-1', 'lib32-mesa 26.1.0-2',
+                             f'vulkan-swrast {candidate}\nlib32-vulkan-swrast 26.1.0-2\n'],
+            ), patch.object(native, 'guarded_transaction', return_value=types.SimpleNamespace(returncode=0)) as operation:
+                self.assertEqual(native.install_graphics('lavapipe'), expected)
+                if expected:
+                    operation.assert_not_called()
+                else:
+                    packages = ('vulkan-swrast', 'lib32-vulkan-swrast')
+                    operation.assert_called_once_with(['-S', '--needed', '--noconfirm', *packages],
+                                                      graphics=packages)
+
+    def test_vulkan_install_checks_existing_package_skipped_by_needed(self):
+        with patch.object(native.subprocess, 'check_output', side_effect=[
+            'mesa 26.1.0-1', 'lib32-mesa 26.1.0-2', 'lib32-vulkan-radeon 26.1.0-2',
+            'vulkan-radeon 26.2.0-1',
+        ]), patch.object(native, 'guarded_transaction') as operation:
+            self.assertEqual(native.install_graphics('radv'), 1)
+            operation.assert_not_called()
+
+    def test_vulkan_guard_rejects_unrelated_protected_dependencies(self):
+        with tempfile.TemporaryDirectory() as directory:
+            script = Path(directory) / 'hook.py'
+            script.write_text(native.pretransaction_code(allowed=native.GRAPHICS_PACKAGES['anv']))
+            for extra in ('', 'mesa', 'vulkan-radeon', 'nvidia-utils', 'linux'):
+                check = REAL_RUN(['python', str(script)], input='vulkan-intel\n' + extra,
+                                 text=True, capture_output=True)
+                self.assertEqual(check.returncode, int(bool(extra)), check.stderr)
+
     def test_package_manager_failure_is_propagated(self):
         self.assertNotEqual(self.transaction(result=1)[0], 0)
 
